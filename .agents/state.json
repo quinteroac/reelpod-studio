@@ -18,12 +18,12 @@
         "file": ".agents/PROJECT_CONTEXT.md"
       },
       "test_plan": {
-        "status": "completed",
+        "status": "created",
         "file": "it_000001_test-plan.md"
       },
       "tp_generation": {
-        "status": "completed",
-        "file": "it_000001_test-plan.md"
+        "status": "created",
+        "file": "it_000001_TP.json"
       },
       "prototype_build": {
         "status": "pending",
@@ -54,7 +54,7 @@
       }
     }
   },
-  "last_updated": "2026-02-27T21:36:21.000Z",
-  "updated_by": "nvst:create-test-plan",
+  "last_updated": "2026-02-27T21:37:14.963Z",
+  "updated_by": "nvst:approve-test-plan",
   "history": []
 }
