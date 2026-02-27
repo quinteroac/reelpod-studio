@@ -6,10 +6,11 @@ export default {
     extend: {
       colors: {
         lofi: {
-          bg: '#1c1714',
-          panel: '#2a211d',
-          accent: '#c08457',
-          text: '#f5ede5'
+          bg: 'var(--color-lofi-bg)',
+          panel: 'var(--color-lofi-panel)',
+          accent: 'var(--color-lofi-accent)',
+          accentMuted: 'var(--color-lofi-accent-muted)',
+          text: 'var(--color-lofi-text)'
         }
       },
       fontFamily: {

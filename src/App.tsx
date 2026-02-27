@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { generatePattern, type GenerationParams, type Mood, type Style } from './lib/pattern-generator';
 import { createBrowserStrudelController } from './lib/strudel-adapter';
-import { getUserFriendlyError, type StrudelController } from './lib/strudel';
+import type { StrudelController } from './lib/strudel';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -14,9 +14,22 @@ const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_STEP = 1;
 const SEEK_POLL_INTERVAL_MS = 500;
+const UNKNOWN_GENERATION_ERROR = 'Could not generate track: Unknown REPL error';
 
 interface AppProps {
   controller?: StrudelController;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return UNKNOWN_GENERATION_ERROR;
+}
+
+function clampSeekPosition(position: number): number {
+  return Math.min(Math.max(position, SEEK_MIN), SEEK_MAX);
 }
 
 export function App({ controller }: AppProps) {
@@ -34,7 +47,8 @@ export function App({ controller }: AppProps) {
     }
 
     const intervalId = window.setInterval(() => {
-      setSeekPosition((prev) => Math.min(prev + SEEK_STEP, SEEK_MAX));
+      // TODO: Replace this synthetic seek progression when Strudel exposes a public playback timeline API.
+      setSeekPosition((prev) => (prev >= SEEK_MAX ? SEEK_MIN : clampSeekPosition(prev + SEEK_STEP)));
     }, SEEK_POLL_INTERVAL_MS);
 
     return () => {
@@ -60,23 +74,39 @@ export function App({ controller }: AppProps) {
       setErrorMessage(null);
     } catch (error) {
       setStatus('error');
-      setErrorMessage(getUserFriendlyError(error));
+      setErrorMessage(getErrorMessage(error));
     }
   }
 
   async function handlePlay(): Promise<void> {
-    await strudelController.play();
-    setIsPlaying(true);
+    try {
+      await strudelController.play();
+      setIsPlaying(true);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
   }
 
   async function handlePause(): Promise<void> {
-    await strudelController.pause();
-    setIsPlaying(false);
+    try {
+      await strudelController.pause();
+      setIsPlaying(false);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
   }
 
-  function handleSeekChange(position: number): void {
-    setSeekPosition(position);
-    void strudelController.seek(position);
+  async function handleSeekChange(position: number): Promise<void> {
+    const nextPosition = clampSeekPosition(position);
+    setSeekPosition(nextPosition);
+    try {
+      await strudelController.seek(nextPosition);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
   }
 
   return (
@@ -84,7 +114,7 @@ export function App({ controller }: AppProps) {
       <div className="mx-auto max-w-3xl space-y-6">
         <header className="space-y-2">
           <h1 className="font-serif text-4xl font-bold text-lofi-text">Lofi Maker</h1>
-          <p className="text-sm text-stone-300">Generate warm, mellow loops in your browser.</p>
+          <p className="text-sm text-lofi-accentMuted">Generate warm, mellow loops in your browser.</p>
         </header>
 
         <section aria-label="Generation parameters" className="space-y-4 rounded-lg bg-lofi-panel p-5">
@@ -208,7 +238,6 @@ export function App({ controller }: AppProps) {
               className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-2 font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePlay()}
               disabled={isPlaying}
-              aria-pressed={isPlaying}
             >
               Play
             </button>
@@ -217,11 +246,12 @@ export function App({ controller }: AppProps) {
               className="rounded-md border border-amber-200/90 bg-amber-400/25 px-3 py-2 font-semibold text-amber-50 outline-none transition hover:bg-amber-400/40 focus-visible:ring-2 focus-visible:ring-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePause()}
               disabled={!isPlaying}
-              aria-pressed={!isPlaying}
             >
               Pause
             </button>
-            <label htmlFor="seek">Seek</label>
+            <label htmlFor="seek" className="text-sm font-semibold text-lofi-accentMuted">
+              Seek
+            </label>
             <input
               id="seek"
               className="seek-slider h-2 w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none transition hover:opacity-95 focus-visible:ring-2 focus-visible:ring-lofi-accent"
@@ -229,7 +259,7 @@ export function App({ controller }: AppProps) {
               min={SEEK_MIN}
               max={SEEK_MAX}
               value={seekPosition}
-              onChange={(event) => handleSeekChange(Number(event.target.value))}
+              onChange={(event) => void handleSeekChange(Number(event.target.value))}
             />
           </section>
         )}

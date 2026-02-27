@@ -40,4 +40,8 @@
 
 ## Implemented Capabilities
 <!-- Updated at the end of each iteration by bun nvst create project-context -->
-- (none yet — populated after first Refactor)
+- Lofi theme
+- Parameter controls
+- Audio generation
+- Playback controls
+- Error handling

@@ -1,18 +1,18 @@
-export class AudioSupportError extends Error {
+class AudioSupportError extends Error {
   constructor(message = 'Web Audio API is not supported in this browser.') {
     super(message);
     this.name = 'AudioSupportError';
   }
 }
 
-export class AudioBlockedError extends Error {
+class AudioBlockedError extends Error {
   constructor(message = 'Audio playback was blocked by the browser autoplay policy.') {
     super(message);
     this.name = 'AudioBlockedError';
   }
 }
 
-export class SilentOutputError extends Error {
+class SilentOutputError extends Error {
   constructor(message = 'Generation succeeded but no audible output was produced.') {
     super(message);
     this.name = 'SilentOutputError';
@@ -55,53 +55,81 @@ function missingEngine(): StrudelReplEngine {
   throw new Error('Strudel REPL is not available.');
 }
 
+function toUserFacingError(error: unknown): Error {
+  if (error instanceof AudioSupportError) {
+    return new Error(
+      'This browser does not support Web Audio. Try a modern browser such as Chrome, Edge, or Firefox.'
+    );
+  }
+
+  if (error instanceof AudioBlockedError) {
+    return new Error(
+      'Audio is blocked by autoplay policy. Click Generate after interacting with the page, and allow sound if prompted.'
+    );
+  }
+
+  if (error instanceof SilentOutputError) {
+    return new Error(
+      'Track generation completed, but no audible output was produced. Please retry with different settings.'
+    );
+  }
+
+  const normalized = normalizeError(error);
+  return new Error(`Could not generate track: ${normalized.message}`);
+}
+
 export function createStrudelController(runtime: Partial<StrudelRuntime> = {}): StrudelController {
   const hasWebAudioSupport = runtime.hasWebAudioSupport ?? (() => false);
   const resolveEngine = runtime.resolveEngine ?? missingEngine;
 
   return {
     async generate(pattern: string): Promise<void> {
-      if (!hasWebAudioSupport()) {
-        throw new AudioSupportError();
-      }
-
-      const activeEngine = resolveEngine();
-
       try {
-        await activeEngine.init();
-      } catch (error) {
-        const normalized = normalizeError(error);
-        if (/autoplay|gesture|notallowed/i.test(normalized.message)) {
-          throw new AudioBlockedError();
+        if (!hasWebAudioSupport()) {
+          throw new AudioSupportError();
         }
 
-        throw normalized;
-      }
+        const activeEngine = resolveEngine();
 
-      const result = await activeEngine.execute(pattern);
-      if (!result.audible) {
-        throw new SilentOutputError();
+        try {
+          await activeEngine.init();
+        } catch (error) {
+          const normalized = normalizeError(error);
+          if (/autoplay|gesture|notallowed/i.test(normalized.message)) {
+            throw new AudioBlockedError();
+          }
+
+          throw normalized;
+        }
+
+        const result = await activeEngine.execute(pattern);
+        if (!result.audible) {
+          throw new SilentOutputError();
+        }
+      } catch (error) {
+        throw toUserFacingError(error);
       }
     },
-    play: () => resolveEngine().play(),
-    pause: () => resolveEngine().pause(),
-    seek: (position: number) => resolveEngine().seek(position)
+    async play(): Promise<void> {
+      try {
+        await resolveEngine().play();
+      } catch (error) {
+        throw toUserFacingError(error);
+      }
+    },
+    async pause(): Promise<void> {
+      try {
+        await resolveEngine().pause();
+      } catch (error) {
+        throw toUserFacingError(error);
+      }
+    },
+    async seek(position: number): Promise<void> {
+      try {
+        await resolveEngine().seek(position);
+      } catch (error) {
+        throw toUserFacingError(error);
+      }
+    }
   };
-}
-
-export function getUserFriendlyError(error: unknown): string {
-  if (error instanceof AudioSupportError) {
-    return 'This browser does not support Web Audio. Try a modern browser such as Chrome, Edge, or Firefox.';
-  }
-
-  if (error instanceof AudioBlockedError) {
-    return 'Audio is blocked by autoplay policy. Click Generate after interacting with the page, and allow sound if prompted.';
-  }
-
-  if (error instanceof SilentOutputError) {
-    return 'Track generation completed, but no audible output was produced. Please retry with different settings.';
-  }
-
-  const normalized = normalizeError(error);
-  return `Could not generate track: ${normalized.message}`;
 }

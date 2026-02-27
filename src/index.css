@@ -5,6 +5,15 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --color-lofi-bg: #1c1714;
+    --color-lofi-panel: #2a211d;
+    --color-lofi-accent: #c08457;
+    --color-lofi-accent-muted: #8b5e3c;
+    --color-lofi-text: #f5ede5;
+    --color-lofi-shadow-ring: rgba(28, 23, 20, 0.35);
+  }
+
   body {
     @apply m-0 min-h-screen bg-lofi-bg text-lofi-text font-sans antialiased;
   }
@@ -18,7 +27,11 @@
   .seek-slider::-webkit-slider-runnable-track {
     height: 0.5rem;
     border-radius: 9999px;
-    background: linear-gradient(90deg, #c08457 0%, #8b5e3c 100%);
+    background: linear-gradient(
+      90deg,
+      var(--color-lofi-accent) 0%,
+      var(--color-lofi-accent-muted) 100%
+    );
   }
 
   .seek-slider::-webkit-slider-thumb {
@@ -27,25 +40,29 @@
     width: 1rem;
     height: 1rem;
     margin-top: -0.25rem;
-    border: 2px solid #f5ede5;
+    border: 2px solid var(--color-lofi-text);
     border-radius: 9999px;
-    background-color: #c08457;
-    box-shadow: 0 0 0 1px rgba(28, 23, 20, 0.35);
+    background-color: var(--color-lofi-accent);
+    box-shadow: 0 0 0 1px var(--color-lofi-shadow-ring);
   }
 
   .seek-slider::-moz-range-track {
     height: 0.5rem;
     border: 0;
     border-radius: 9999px;
-    background: linear-gradient(90deg, #c08457 0%, #8b5e3c 100%);
+    background: linear-gradient(
+      90deg,
+      var(--color-lofi-accent) 0%,
+      var(--color-lofi-accent-muted) 100%
+    );
   }
 
   .seek-slider::-moz-range-thumb {
     width: 1rem;
     height: 1rem;
-    border: 2px solid #f5ede5;
+    border: 2px solid var(--color-lofi-text);
     border-radius: 9999px;
-    background-color: #c08457;
-    box-shadow: 0 0 0 1px rgba(28, 23, 20, 0.35);
+    background-color: var(--color-lofi-accent);
+    box-shadow: 0 0 0 1px var(--color-lofi-shadow-ring);
   }
 }

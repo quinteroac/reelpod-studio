@@ -1,0 +1,76 @@
+{
+  "entries": [
+    {
+      "id": "RI-001",
+      "title": "Add error handling to playback handlers",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:37:32.246Z"
+    },
+    {
+      "id": "RI-002",
+      "title": "Surface REPL bootstrap errors to the user",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:38:29.279Z"
+    },
+    {
+      "id": "RI-003",
+      "title": "Encapsulate error message formatting inside the controller",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:40:38.664Z"
+    },
+    {
+      "id": "RI-004",
+      "title": "Fix aria-pressed misuse on Play and Pause buttons",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:41:44.263Z"
+    },
+    {
+      "id": "RI-005",
+      "title": "Replace hardcoded hex values in seek-slider CSS with design tokens",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:42:37.980Z"
+    },
+    {
+      "id": "RI-006",
+      "title": "Style the Seek label and subtitle paragraph with lofi palette tokens",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:43:20.262Z"
+    },
+    {
+      "id": "RI-007",
+      "title": "Document fake seek position and cap its range",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:43:58.024Z"
+    },
+    {
+      "id": "RI-008",
+      "title": "Resolve React Three Fiber tech stack gap (deferred)",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:44:19.651Z"
+    },
+    {
+      "id": "RI-009",
+      "title": "Update PROJECT_CONTEXT.md Implemented Capabilities",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:44:54.792Z"
+    }
+  ]
+}

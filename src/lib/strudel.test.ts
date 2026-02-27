@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  AudioBlockedError,
-  AudioSupportError,
-  SilentOutputError,
-  createStrudelController,
-  getUserFriendlyError
-} from './strudel';
+import { createStrudelController } from './strudel';
 import type { StrudelReplEngine, StrudelRuntime } from './strudel';
 
 function createEngine(overrides: Partial<StrudelReplEngine> = {}): StrudelReplEngine {
@@ -47,21 +41,21 @@ describe('createStrudelController', () => {
 
   it('throws a support error when Web Audio is unavailable', async () => {
     const controller = createStrudelController(createRuntime(createEngine(), { hasWebAudioSupport: () => false }));
-    await expect(controller.generate('pattern')).rejects.toBeInstanceOf(AudioSupportError);
+    await expect(controller.generate('pattern')).rejects.toThrow('does not support Web Audio');
   });
 
   it('throws autoplay-blocked error when init fails due to browser policy', async () => {
     const engine = createEngine({ init: vi.fn().mockRejectedValue(new Error('NotAllowedError: autoplay blocked')) });
     const controller = createStrudelController(createRuntime(engine));
 
-    await expect(controller.generate('pattern')).rejects.toBeInstanceOf(AudioBlockedError);
+    await expect(controller.generate('pattern')).rejects.toThrow('autoplay policy');
   });
 
   it('throws silent output error when execute returns no audible output', async () => {
     const engine = createEngine({ execute: vi.fn().mockResolvedValue({ audible: false }) });
     const controller = createStrudelController(createRuntime(engine));
 
-    await expect(controller.generate('pattern')).rejects.toBeInstanceOf(SilentOutputError);
+    await expect(controller.generate('pattern')).rejects.toThrow('no audible output');
   });
 
   it('throws when the runtime cannot resolve a REPL engine', async () => {
@@ -72,7 +66,9 @@ describe('createStrudelController', () => {
       }
     });
 
-    await expect(controller.generate('pattern')).rejects.toThrow('Strudel REPL is not available.');
+    await expect(controller.generate('pattern')).rejects.toThrow(
+      'Could not generate track: Strudel REPL is not available.'
+    );
   });
 
   it('forwards playback controls to the resolved engine', async () => {
@@ -92,9 +88,16 @@ describe('createStrudelController', () => {
     expect(engine.seek).toHaveBeenCalledWith(10);
   });
 
-  it('maps specialized errors into actionable messages', () => {
-    expect(getUserFriendlyError(new AudioSupportError())).toContain('does not support Web Audio');
-    expect(getUserFriendlyError(new AudioBlockedError())).toContain('autoplay policy');
-    expect(getUserFriendlyError(new SilentOutputError())).toContain('no audible output');
+  it('maps playback control failures to user-facing errors', async () => {
+    const engine = createEngine({
+      play: vi.fn().mockRejectedValue(new Error('engine unavailable')),
+      pause: vi.fn().mockRejectedValue(new Error('engine unavailable')),
+      seek: vi.fn().mockRejectedValue(new Error('engine unavailable'))
+    });
+    const controller = createStrudelController(createRuntime(engine));
+
+    await expect(controller.play()).rejects.toThrow('Could not generate track: engine unavailable');
+    await expect(controller.pause()).rejects.toThrow('Could not generate track: engine unavailable');
+    await expect(controller.seek(5)).rejects.toThrow('Could not generate track: engine unavailable');
   });
 });

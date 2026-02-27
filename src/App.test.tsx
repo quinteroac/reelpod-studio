@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { AudioBlockedError, AudioSupportError, SilentOutputError, type StrudelController } from './lib/strudel';
+import type { StrudelController } from './lib/strudel';
 
 function createController(overrides: Partial<StrudelController> = {}): StrudelController {
   return {
@@ -142,6 +142,9 @@ describe('App generation flow', () => {
     const pauseButton = screen.getByRole('button', { name: 'Pause' });
     const seek = screen.getByLabelText('Seek') as HTMLInputElement;
 
+    expect(playButton).not.toHaveAttribute('aria-pressed');
+    expect(pauseButton).not.toHaveAttribute('aria-pressed');
+
     expect(playButton.className).toContain('border-emerald-300/80');
     expect(playButton.className).toContain('bg-emerald-500/20');
     expect(pauseButton.className).toContain('border-amber-200/90');
@@ -175,11 +178,37 @@ describe('App generation flow', () => {
     expect(controller.seek).toHaveBeenCalledWith(42);
   });
 
+  it('keeps synthetic seek position in range and clamps manual seek values', async () => {
+    vi.useFakeTimers();
+    const controller = createController();
+    render(<App controller={controller} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    });
+
+    const seek = screen.getByLabelText('Seek') as HTMLInputElement;
+
+    vi.advanceTimersByTime(100 * 500);
+    expect(seek.value).toBe('100');
+
+    vi.advanceTimersByTime(500);
+    expect(seek.value).toBe('0');
+
+    fireEvent.change(seek, { target: { value: '999' } });
+    expect(seek.value).toBe('100');
+    expect(controller.seek).toHaveBeenCalledWith(100);
+
+    vi.useRealTimers();
+  });
+
   it('on generic failure shows clear error and allows retry', async () => {
     const controller = createController({
       generate: vi
         .fn()
-        .mockRejectedValueOnce(new Error('REPL init failed'))
+        .mockRejectedValueOnce(new Error('Could not generate track: REPL init failed'))
         .mockResolvedValueOnce(undefined)
     });
 
@@ -204,8 +233,24 @@ describe('App generation flow', () => {
   });
 
   it('shows explicit audio limitation messages for blocked audio and unsupported Web Audio', async () => {
-    const blockedController = createController({ generate: vi.fn().mockRejectedValue(new AudioBlockedError()) });
-    const unsupportedController = createController({ generate: vi.fn().mockRejectedValue(new AudioSupportError()) });
+    const blockedController = createController({
+      generate: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            'Audio is blocked by autoplay policy. Click Generate after interacting with the page, and allow sound if prompted.'
+          )
+        )
+    });
+    const unsupportedController = createController({
+      generate: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            'This browser does not support Web Audio. Try a modern browser such as Chrome, Edge, or Firefox.'
+          )
+        )
+    });
 
     const { rerender } = render(<App controller={blockedController} />);
 
@@ -223,7 +268,15 @@ describe('App generation flow', () => {
   });
 
   it('shows an unplayable warning when REPL succeeds with silent output', async () => {
-    const controller = createController({ generate: vi.fn().mockRejectedValue(new SilentOutputError()) });
+    const controller = createController({
+      generate: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            'Track generation completed, but no audible output was produced. Please retry with different settings.'
+          )
+        )
+    });
     render(<App controller={controller} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
