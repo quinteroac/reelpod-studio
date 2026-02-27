@@ -1,0 +1,295 @@
+{
+  "iteration": "000002",
+  "testPlanFile": "it_000002_TP.json",
+  "executedTestIds": [],
+  "results": [
+    {
+      "testCaseId": "TC-001",
+      "description": "Verify Tailwind CSS is listed in package.json and tailwind.config file exists",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-001_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002",
+      "description": "Verify entry CSS (e.g. main.css or index.css) imports Tailwind directives",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-002_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-003",
+      "description": "Verify root/App container uses dark warm background utility classes",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-2"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-003_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-004",
+      "description": "Verify headings and body text use lofi-appropriate font classes",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-3"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-004_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-005",
+      "description": "Run typecheck and lint on the project",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-005_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-007",
+      "description": "Verify Mood, Tempo, and Style controls are each in a labelled section/card",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-4"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-007_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-008",
+      "description": "Verify Generate button exists and has accent/prominent styling classes",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-5"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-008_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-009",
+      "description": "Verify interactive elements (button, sliders, selects) are focusable and have focus-visible styling",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-009_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-011",
+      "description": "Verify Play and Pause buttons are rendered with styled classes",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-6"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-011_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-012",
+      "description": "Verify seek slider is present and has theme-related styling (track/thumb)",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-6"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-012_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-013",
+      "description": "Verify loading state shows a styled indicator (e.g. spinner/skeleton), not raw text only",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-7"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-013_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-014",
+      "description": "Verify error state shows a styled alert/banner",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-7"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-014_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-016",
+      "description": "Run full Vitest test suite and ensure all tests pass",
+      "correlatedRequirements": [
+        "FR-8"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-016_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-006",
+      "description": "Visual verification of contrast and lofi aesthetic in browser",
+      "correlatedRequirements": [],
+      "mode": "exploratory_manual",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-006_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-010",
+      "description": "Visual verification of layout, spacing, and button prominence in browser",
+      "correlatedRequirements": [],
+      "mode": "exploratory_manual",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-010_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-015",
+      "description": "Visual verification of playback section polish and theme consistency in browser",
+      "correlatedRequirements": [],
+      "mode": "exploratory_manual",
+      "payload": {
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000002_test-execution-artifacts/TC-015_attempt_001.json"
+      ]
+    }
+  ]
+}

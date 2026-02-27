@@ -1,0 +1,148 @@
+{
+  "entries": [
+    {
+      "id": "TC-001",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.754Z"
+    },
+    {
+      "id": "TC-002",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.756Z"
+    },
+    {
+      "id": "TC-003",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.756Z"
+    },
+    {
+      "id": "TC-004",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.757Z"
+    },
+    {
+      "id": "TC-005",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:25.035Z"
+    },
+    {
+      "id": "TC-007",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.758Z"
+    },
+    {
+      "id": "TC-008",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.758Z"
+    },
+    {
+      "id": "TC-009",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.759Z"
+    },
+    {
+      "id": "TC-011",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.760Z"
+    },
+    {
+      "id": "TC-012",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.760Z"
+    },
+    {
+      "id": "TC-013",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.760Z"
+    },
+    {
+      "id": "TC-014",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:05.761Z"
+    },
+    {
+      "id": "TC-016",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:25.035Z"
+    },
+    {
+      "id": "TC-006",
+      "type": "exploratory_manual",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": null,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:18.646Z"
+    },
+    {
+      "id": "TC-010",
+      "type": "exploratory_manual",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": null,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:22.082Z"
+    },
+    {
+      "id": "TC-015",
+      "type": "exploratory_manual",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": null,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T22:29:25.014Z"
+    }
+  ]
+}
