@@ -1,0 +1,130 @@
+{
+  "entries": [
+    {
+      "id": "TC-US001-001",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:47:23.752Z"
+    },
+    {
+      "id": "TC-US001-002",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 4,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:49:32.559Z"
+    },
+    {
+      "id": "TC-US001-003",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:47:23.753Z"
+    },
+    {
+      "id": "TC-US002-001",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.325Z"
+    },
+    {
+      "id": "TC-US002-002",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:47:23.754Z"
+    },
+    {
+      "id": "TC-US002-003",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.328Z"
+    },
+    {
+      "id": "TC-US002-004",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.329Z"
+    },
+    {
+      "id": "TC-US002-005",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.330Z"
+    },
+    {
+      "id": "TC-US002-006",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.330Z"
+    },
+    {
+      "id": "TC-US002-007",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.331Z"
+    },
+    {
+      "id": "TC-US003-001",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:45:21.332Z"
+    },
+    {
+      "id": "TC-US003-002",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 4,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:49:32.562Z"
+    },
+    {
+      "id": "TC-US003-003",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 11,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:53:32.645Z"
+    },
+    {
+      "id": "TC-US001-004",
+      "type": "exploratory_manual",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": null,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T21:46:12.533Z"
+    }
+  ]
+}
