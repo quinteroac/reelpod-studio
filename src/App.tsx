@@ -87,56 +87,84 @@ export function App({ controller }: AppProps) {
           <p className="text-sm text-stone-300">Generate warm, mellow loops in your browser.</p>
         </header>
 
-        <section aria-label="Generation parameters" className="grid gap-3 rounded-lg bg-lofi-panel p-4">
-          <label htmlFor="mood">Mood</label>
-        <select
-          id="mood"
-          className="rounded-md border border-stone-500 bg-stone-900 px-2 py-1 text-lofi-text"
-          value={params.mood}
-          onChange={(event) => setParams((prev) => ({ ...prev, mood: event.target.value as Mood }))}
-          disabled={status === 'loading'}
-        >
-          <option value="chill">chill</option>
-          <option value="melancholic">melancholic</option>
-          <option value="upbeat">upbeat</option>
-        </select>
+        <section aria-label="Generation parameters" className="space-y-4 rounded-lg bg-lofi-panel p-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <fieldset
+              data-testid="mood-control-card"
+              className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+            >
+              <legend className="text-sm font-semibold text-lofi-text">Mood</legend>
+              <label htmlFor="mood" className="sr-only">
+                Mood
+              </label>
+              <select
+                id="mood"
+                className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                value={params.mood}
+                onChange={(event) => setParams((prev) => ({ ...prev, mood: event.target.value as Mood }))}
+                disabled={status === 'loading'}
+              >
+                <option value="chill">chill</option>
+                <option value="melancholic">melancholic</option>
+                <option value="upbeat">upbeat</option>
+              </select>
+            </fieldset>
 
-        <label htmlFor="tempo">Tempo (BPM)</label>
-        <input
-          id="tempo"
-          type="range"
-          className="accent-lofi-accent"
-          min={60}
-          max={120}
-          value={params.tempo}
-          onChange={(event) =>
-            setParams((prev) => ({
-              ...prev,
-              tempo: Number(event.target.value)
-            }))
-          }
-          disabled={status === 'loading'}
-        />
-        <output htmlFor="tempo">{params.tempo}</output>
+            <fieldset
+              data-testid="tempo-control-card"
+              className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+            >
+              <legend className="text-sm font-semibold text-lofi-text">Tempo</legend>
+              <label htmlFor="tempo" className="sr-only">
+                Tempo (BPM)
+              </label>
+              <input
+                id="tempo"
+                type="range"
+                className="w-full cursor-pointer accent-lofi-accent outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                min={60}
+                max={120}
+                value={params.tempo}
+                onChange={(event) =>
+                  setParams((prev) => ({
+                    ...prev,
+                    tempo: Number(event.target.value)
+                  }))
+                }
+                disabled={status === 'loading'}
+              />
+              <output htmlFor="tempo" className="block text-sm text-stone-300">
+                {params.tempo} BPM
+              </output>
+            </fieldset>
 
-        <label htmlFor="style">Style</label>
-        <select
-          id="style"
-          className="rounded-md border border-stone-500 bg-stone-900 px-2 py-1 text-lofi-text"
-          value={params.style}
-          onChange={(event) => setParams((prev) => ({ ...prev, style: event.target.value as Style }))}
-          disabled={status === 'loading'}
-        >
-          <option value="jazz">jazz</option>
-          <option value="hip-hop">hip-hop</option>
-          <option value="ambient">ambient</option>
-        </select>
+            <fieldset
+              data-testid="style-control-card"
+              className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+            >
+              <legend className="text-sm font-semibold text-lofi-text">Style</legend>
+              <label htmlFor="style" className="sr-only">
+                Style
+              </label>
+              <select
+                id="style"
+                className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                value={params.style}
+                onChange={(event) => setParams((prev) => ({ ...prev, style: event.target.value as Style }))}
+                disabled={status === 'loading'}
+              >
+                <option value="jazz">jazz</option>
+                <option value="hip-hop">hip-hop</option>
+                <option value="ambient">ambient</option>
+              </select>
+            </fieldset>
+          </div>
         </section>
 
         <section aria-label="Generation actions" className="space-y-3 rounded-lg bg-lofi-panel p-4">
           <button
             type="button"
-            className="rounded-md bg-lofi-accent px-4 py-2 font-semibold text-stone-950 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-md bg-lofi-accent px-6 py-3 text-lg font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             onClick={() => void handleGenerate()}
             disabled={status === 'loading'}
           >
@@ -150,7 +178,7 @@ export function App({ controller }: AppProps) {
               <p role="alert">{errorMessage}</p>
               <button
                 type="button"
-                className="rounded-md border border-lofi-accent px-3 py-1 text-lofi-text"
+                className="rounded-md border border-lofi-accent px-3 py-1 text-lofi-text outline-none transition hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-lofi-accent"
                 onClick={() => void handleGenerate()}
               >
                 Retry
@@ -163,7 +191,7 @@ export function App({ controller }: AppProps) {
           <section aria-label="Playback controls" className="grid gap-3 rounded-lg bg-lofi-panel p-4">
             <button
               type="button"
-              className="rounded-md border border-lofi-accent px-3 py-2 text-lofi-text disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-lofi-accent px-3 py-2 text-lofi-text outline-none transition hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePlay()}
               disabled={isPlaying}
               aria-pressed={isPlaying}
@@ -172,7 +200,7 @@ export function App({ controller }: AppProps) {
             </button>
             <button
               type="button"
-              className="rounded-md border border-lofi-accent px-3 py-2 text-lofi-text disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-lofi-accent px-3 py-2 text-lofi-text outline-none transition hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePause()}
               disabled={!isPlaying}
               aria-pressed={!isPlaying}
@@ -182,7 +210,7 @@ export function App({ controller }: AppProps) {
             <label htmlFor="seek">Seek</label>
             <input
               id="seek"
-              className="accent-lofi-accent"
+              className="cursor-pointer accent-lofi-accent outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
               type="range"
               min={SEEK_MIN}
               max={SEEK_MAX}

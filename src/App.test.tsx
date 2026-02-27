@@ -14,6 +14,46 @@ function createController(overrides: Partial<StrudelController> = {}): StrudelCo
 }
 
 describe('App generation flow', () => {
+  it('renders mood, tempo, and style inside clearly labelled control cards with consistent layout spacing', () => {
+    render(<App controller={createController()} />);
+
+    expect(screen.getByTestId('mood-control-card')).toHaveTextContent('Mood');
+    expect(screen.getByTestId('tempo-control-card')).toHaveTextContent('Tempo');
+    expect(screen.getByTestId('style-control-card')).toHaveTextContent('Style');
+
+    const parametersSection = screen.getByRole('region', { name: 'Generation parameters' });
+    expect(parametersSection.className).toContain('space-y-4');
+
+    const layoutGrid = screen.getByTestId('mood-control-card').parentElement;
+    expect(layoutGrid).not.toBeNull();
+    expect(layoutGrid?.className).toContain('grid');
+    expect(layoutGrid?.className).toContain('gap-4');
+    expect(layoutGrid?.className).toContain('md:grid-cols-3');
+  });
+
+  it('uses prominent generate button and visible hover/focus states for interactive controls', () => {
+    render(<App controller={createController()} />);
+
+    const generateButton = screen.getByRole('button', { name: 'Generate' });
+    expect(generateButton.className).toContain('bg-lofi-accent');
+    expect(generateButton.className).toContain('text-lg');
+    expect(generateButton.className).toContain('px-6');
+    expect(generateButton.className).toContain('py-3');
+    expect(generateButton.className).toContain('hover:bg-amber-400');
+    expect(generateButton.className).toContain('focus-visible:ring-2');
+
+    const moodSelect = screen.getByLabelText('Mood');
+    const tempoInput = screen.getByLabelText('Tempo (BPM)');
+    const styleSelect = screen.getByLabelText('Style');
+
+    expect(moodSelect.className).toContain('hover:border-lofi-accent');
+    expect(moodSelect.className).toContain('focus-visible:ring-2');
+    expect(tempoInput.className).toContain('hover:opacity-90');
+    expect(tempoInput.className).toContain('focus-visible:ring-2');
+    expect(styleSelect.className).toContain('hover:border-lofi-accent');
+    expect(styleSelect.className).toContain('focus-visible:ring-2');
+  });
+
   it('keeps player hidden until a track is generated successfully', async () => {
     const controller = createController();
     render(<App controller={controller} />);
