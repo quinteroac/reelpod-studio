@@ -1,0 +1,132 @@
+{
+  "goals": [
+    "Enable content creators to generate lofi music tracks in seconds via a browser-based UI.",
+    "Abstract Strudel pattern complexity behind a friendly parameter interface (mood, tempo, style).",
+    "Provide in-browser audio playback so the user can hear the result immediately."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Configure Lofi Parameters",
+      "description": "As a content creator, I want to configure lofi generation parameters (mood, tempo, style) through a visual UI so that I can shape the character of the track without knowing Strudel syntax.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "UI exposes at minimum: mood selector (e.g. chill, melancholic, upbeat), tempo control (BPM range), and style preset (e.g. jazz, hip-hop, ambient)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "All controls have sensible default values so the user can generate without touching anything."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Changing a control does not trigger generation automatically — user must explicitly click Generate."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Generate a Lofi Track",
+      "description": "As a content creator, I want to click a \"Generate\" button so that the system produces a lofi track based on my selected parameters.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Clicking \"Generate\" translates the selected parameters into a Strudel pattern and executes it in the browser via the Strudel REPL."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "A loading/progress indicator is shown while the REPL initialises and begins playback."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "On success, the UI shows the playback controls (play, pause, seek) as enabled and the user can start playback; no error message is shown."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "On failure, a clear error message is displayed and the user can retry."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "If the user clicks \"Generate\" while a generation is in progress, the behaviour is defined (e.g. ignore second click, or cancel and restart); the UI does not enter an inconsistent state."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "If the browser blocks audio (e.g. autoplay policy) or lacks Web Audio support, the user sees a clear message explaining the limitation and how to enable audio, rather than a generic failure."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "If the REPL reports success but no audible output is produced, the UI shows an error or warning so the user knows the result was not playable."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC09",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Play Back the Generated Track",
+      "description": "As a content creator, I want to play back the generated lofi track directly in the browser so that I can evaluate it immediately without downloading anything.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "An audio player appears (or updates) after successful generation."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Player supports play, pause, and seek; playback controls are those provided by the Strudel REPL integration (no separate custom audio pipeline)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Audio plays without requiring any browser plugin beyond standard Web Audio / HTML5 audio."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Visually verified in browser."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Web frontend with parameter controls: mood (enum/select), tempo (BPM slider or number input), style preset (enum/select)."
+    },
+    {
+      "id": "FR-2",
+      "description": "\"Generate\" button that triggers client-side parameter-to-Strudel-pattern translation and starts REPL execution."
+    },
+    {
+      "id": "FR-3",
+      "description": "Client-side logic that maps UI parameter values to a valid Strudel pattern string (no backend required for MVP)."
+    },
+    {
+      "id": "FR-4",
+      "description": "Strudel REPL execution in the browser renders audio via the Web Audio API."
+    },
+    {
+      "id": "FR-5",
+      "description": "Strudel REPL exposes playback controls (play, pause, seek) natively; no custom audio pipeline required."
+    },
+    {
+      "id": "FR-6",
+      "description": "Loading state and error handling communicated to the user in the UI."
+    }
+  ]
+}

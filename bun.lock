@@ -1,0 +1,16 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "dependencies": {
+        "@quinteroac/agents-coding-toolkit": "^0.2.0",
+      },
+    },
+  },
+  "packages": {
+    "@quinteroac/agents-coding-toolkit": ["@quinteroac/agents-coding-toolkit@0.2.0", "", { "dependencies": { "zod": "^3.23.8" }, "bin": { "nvst": "src/cli.ts" } }, "sha512-qcjP6p/kRbvwsvLbJscrrAbm8MezUGtSbw+7ZiACOEjcd1zAAs9Zk1Knq05vo8XjFUUbT3yOBH4wJG3c2Kr5JQ=="],
+
+    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+  }
+}
