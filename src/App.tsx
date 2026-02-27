@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { GenerationParams, Mood, Style } from './lib/pattern-generator';
 import { createBrowserStrudelController } from './lib/strudel-adapter';
 import type { StrudelController } from './lib/strudel';
-import { GENERATE_ENDPOINT_PATH } from './api/generate';
+import { GENERATE_ENDPOINT_PATH } from './api/constants';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 

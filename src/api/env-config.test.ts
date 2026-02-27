@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import envExample from '../../.env.example?raw';
 import gitignoreFile from '../../.gitignore?raw';
-import packageJson from '../../package.json';
+import backendRequirements from '../../backend/requirements.txt?raw';
 import viteConfigSource from '../../vite.config.ts?raw';
 
 describe('environment configuration', () => {
@@ -20,19 +20,22 @@ describe('environment configuration', () => {
     expect(entries).toContain('.env');
   });
 
-  it('package.json documents backend platform dependency (vite)', () => {
-    // The backend is implemented as a TypeScript Vite middleware (not Python).
-    // The dependency manifest is package.json; vite is required to run the
-    // /api/generate middleware alongside the frontend dev server.
-    expect(packageJson.devDependencies).toHaveProperty('vite');
+  it('backend/requirements.txt declares python backend dependencies', () => {
+    const lines = backendRequirements
+      .split('\n')
+      .map((line: string) => line.trim().toLowerCase())
+      .filter((line: string) => line.length > 0 && !line.startsWith('#'));
+
+    expect(lines.some((line: string) => line.startsWith('fastapi'))).toBe(true);
+    expect(lines.some((line: string) => line.startsWith('uvicorn'))).toBe(true);
+    expect(lines.some((line: string) => line.startsWith('openai'))).toBe(true);
+    expect(lines.some((line: string) => line.startsWith('python-dotenv'))).toBe(true);
   });
 
-  it('vite.config.ts uses loadEnv to read OPENAI_API_KEY for the middleware', () => {
-    // Vite does not inject .env variables into process.env for server-side
-    // middleware code. The config must explicitly use loadEnv to read the key
-    // and pass it to createGenerateHandler so it is available at request time.
-    expect(viteConfigSource).toContain('loadEnv');
-    expect(viteConfigSource).toContain('OPENAI_API_KEY');
-    expect(viteConfigSource).toContain('getOpenAiApiKey');
+  it('vite.config.ts proxies /api calls to the python backend', () => {
+    expect(viteConfigSource).toContain('proxy');
+    expect(viteConfigSource).toContain('/api');
+    expect(viteConfigSource).toContain('127.0.0.1:8000');
+    expect(viteConfigSource).not.toContain('createGenerateHandler');
   });
 });

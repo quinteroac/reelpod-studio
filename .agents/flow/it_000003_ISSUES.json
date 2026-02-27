@@ -1,32 +1,8 @@
 [
   {
     "id": "ISSUE-000003-001",
-    "title": "[skipped] TC-001-12: Backend code passes typecheck / lint",
-    "description": "Test case TC-001-12 resulted in status: skipped.\nNotes: Run manually: bun run typecheck && bun run lint.\nEvidence: Backend logic lives in src/api/generate.ts and vite.config.ts; typecheck (tsc) and lint (eslint) were not executed in this session.",
-    "status": "fixed"
-  },
-  {
-    "id": "ISSUE-000003-002",
-    "title": "[skipped] TC-002-06: Frontend code passes typecheck / lint",
-    "description": "Test case TC-002-06 resulted in status: skipped.\nNotes: Run manually: bun run typecheck && bun run lint.\nEvidence: Frontend code in src/App.tsx and related components; typecheck and lint were not executed in this session.",
-    "status": "fixed"
-  },
-  {
-    "id": "ISSUE-000003-003",
-    "title": "[skipped] TC-003-05: Backend code passes typecheck / lint",
-    "description": "Test case TC-003-05 resulted in status: skipped.\nNotes: Run manually: bun run typecheck && bun run lint.\nEvidence: Backend code (src/api/generate.ts, vite.config.ts) typecheck/lint not run in session.",
-    "status": "fixed"
-  },
-  {
-    "id": "ISSUE-000003-004",
-    "title": "[failed] TC-FR-10: Backend has `requirements.txt` or `pyproject.toml` with expected dependencies",
-    "description": "Test case TC-FR-10 resulted in status: failed.\nNotes: Test plan expected Python backend dependency files; implementation uses Node/bun and package.json.\nEvidence: No requirements.txt or pyproject.toml in repo. Backend is TypeScript (src/api/generate.ts) run as Vite dev middleware; dependencies in package.json.\nCorrelated requirements: FR-10",
-    "status": "fixed"
-  },
-  {
-    "id": "ISSUE-000003-005",
-    "title": "[failed] TC-002-07: Full flow in browser: set params → Generate → audible playback; visual and aural check",
-    "description": "Test case TC-002-07 resulted in status: failed.\nEvidence: OPENAI_API_KEY is not configured",
+    "title": "Python backend is mandatory, violation of FR",
+    "description": "The iteration built the backend in Vite instead of using Python as specified in the PRD.",
     "status": "fixed"
   }
 ]
