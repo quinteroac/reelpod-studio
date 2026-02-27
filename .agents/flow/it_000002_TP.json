@@ -1,0 +1,150 @@
+{
+  "overallStatus": "pending",
+  "scope": [
+    "Lofi-themed styling: Tailwind setup, dark/warm palette, typography, and visual consistency.",
+    "Parameter controls layout: grouping, labels, spacing, Generate button prominence, and hover/focus states.",
+    "Playback section: Play/Pause buttons, seek slider, loading indicator, and error UI styling.",
+    "Regression: all existing Vitest tests must pass after styling changes.",
+    "Typecheck and lint (ESLint, Prettier) for the modified codebase."
+  ],
+  "environmentData": [
+    "Node.js runtime with bun; run tests with `bun test` (Vitest).",
+    "Browser or jsdom environment for component tests that assert DOM structure and classes.",
+    "No backend or DB; no fixtures required beyond existing test setup.",
+    "Tailwind build pipeline (Vite/PostCSS) must be in place so utility classes are available in tests where components are rendered.",
+    "---",
+    "## User Story: US-001 - Lofi-Themed Color Palette and Typography"
+  ],
+  "automatedTests": [
+    {
+      "id": "TC-001",
+      "description": "Verify Tailwind CSS is listed in package.json and tailwind.config file exists",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1"
+      ]
+    },
+    {
+      "id": "TC-002",
+      "description": "Verify entry CSS (e.g. main.css or index.css) imports Tailwind directives",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1"
+      ]
+    },
+    {
+      "id": "TC-003",
+      "description": "Verify root/App container uses dark warm background utility classes",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-2"
+      ]
+    },
+    {
+      "id": "TC-004",
+      "description": "Verify headings and body text use lofi-appropriate font classes",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-3"
+      ]
+    },
+    {
+      "id": "TC-005",
+      "description": "Run typecheck and lint on the project",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-007",
+      "description": "Verify Mood, Tempo, and Style controls are each in a labelled section/card",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-4"
+      ]
+    },
+    {
+      "id": "TC-008",
+      "description": "Verify Generate button exists and has accent/prominent styling classes",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-5"
+      ]
+    },
+    {
+      "id": "TC-009",
+      "description": "Verify interactive elements (button, sliders, selects) are focusable and have focus-visible styling",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-011",
+      "description": "Verify Play and Pause buttons are rendered with styled classes",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-6"
+      ]
+    },
+    {
+      "id": "TC-012",
+      "description": "Verify seek slider is present and has theme-related styling (track/thumb)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-6"
+      ]
+    },
+    {
+      "id": "TC-013",
+      "description": "Verify loading state shows a styled indicator (e.g. spinner/skeleton), not raw text only",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-7"
+      ]
+    },
+    {
+      "id": "TC-014",
+      "description": "Verify error state shows a styled alert/banner",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-003",
+        "FR-7"
+      ]
+    },
+    {
+      "id": "TC-016",
+      "description": "Run full Vitest test suite and ensure all tests pass",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-8"
+      ]
+    }
+  ],
+  "exploratoryManualTests": [
+    {
+      "id": "TC-006",
+      "description": "Visual verification of contrast and lofi aesthetic in browser",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-010",
+      "description": "Visual verification of layout, spacing, and button prominence in browser",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-015",
+      "description": "Visual verification of playback section polish and theme consistency in browser",
+      "status": "pending",
+      "correlatedRequirements": []
+    }
+  ]
+}

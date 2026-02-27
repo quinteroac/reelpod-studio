@@ -1,0 +1,137 @@
+{
+  "goals": [
+    "Give the app a lofi aesthetic (dark/warm color palette, readable typography).",
+    "Lay out the parameter controls in a clean, usable structure.",
+    "Polish the playback section so it feels cohesive with the rest of the UI.",
+    "Keep all existing Vitest tests passing after the styling changes."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Lofi-Themed Color Palette and Typography",
+      "description": "As an end user, I want the app to have a dark, warm lofi visual theme so that the visual atmosphere matches the music I'm generating.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "Tailwind CSS is installed and configured (added to `package.json`, `tailwind.config.*` present, imported in the entry CSS)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The app background uses a dark, warm tone (e.g. deep brown, charcoal, or dark slate)."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Text is readable against the background with sufficient contrast."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "A lofi-appropriate font (e.g. a serif or rounded sans-serif from Google Fonts or system stack) is applied to headings and body text."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Styled Parameter Controls Layout",
+      "description": "As an end user, I want the mood, tempo, and style controls to be laid out in a clean, structured section so that I can easily understand and adjust the generation parameters.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Each control (Mood, Tempo, Style) is grouped in a clearly labelled card or section."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Controls are arranged in a readable vertical or grid layout with consistent spacing."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The Generate button is visually prominent (e.g. accent color, adequate size)."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Hover and focus states are visible on interactive elements (buttons, sliders, selects)."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Polished Playback Section",
+      "description": "As an end user, I want the playback controls (Play, Pause, seek slider) to look polished and consistent with the overall theme so that the audio controls feel like part of the same designed experience.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Play and Pause buttons are clearly styled and distinguishable."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The seek slider matches the app's color theme (track and thumb are styled)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Loading state (while Strudel initialises) shows a styled indicator rather than raw text."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Error messages are displayed in a styled alert/banner that is readable and not jarring."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "Visually verified in browser."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Tailwind CSS must be added as a project dependency and fully configured (PostCSS plugin or Vite plugin, config file, base import)."
+    },
+    {
+      "id": "FR-2",
+      "description": "The application background and surface colors must use a dark, warm lofi palette defined via Tailwind theme or utility classes."
+    },
+    {
+      "id": "FR-3",
+      "description": "Typography (font family, size scale, weight) must be applied consistently across headings, labels, and body text."
+    },
+    {
+      "id": "FR-4",
+      "description": "Parameter controls (Mood, Tempo, Style) must be visually grouped with clear labels and consistent spacing using Tailwind utility classes."
+    },
+    {
+      "id": "FR-5",
+      "description": "The Generate button must use an accent color that stands out from the background."
+    },
+    {
+      "id": "FR-6",
+      "description": "Playback controls (Play, Pause, seek slider) must be styled with Tailwind utility classes matching the overall palette."
+    },
+    {
+      "id": "FR-7",
+      "description": "Loading and error UI states must be styled (not raw unstyled text)."
+    },
+    {
+      "id": "FR-8",
+      "description": "All existing Vitest tests must pass without modification after styling changes."
+    }
+  ]
+}
