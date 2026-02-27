@@ -171,14 +171,28 @@ export function App({ controller }: AppProps) {
             Generate
           </button>
 
-          {status === 'loading' && <p role="status">Generating track...</p>}
+          {status === 'loading' && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
+            >
+              <span
+                aria-hidden="true"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-lofi-accent border-t-transparent"
+              />
+              <span>Generating track...</span>
+            </div>
+          )}
 
           {errorMessage && (
-            <div className="space-y-2">
-              <p role="alert">{errorMessage}</p>
+            <div className="space-y-2 rounded-md border border-red-400/60 bg-red-950/40 p-3">
+              <p role="alert" className="text-sm font-semibold leading-relaxed text-red-100">
+                {errorMessage}
+              </p>
               <button
                 type="button"
-                className="rounded-md border border-lofi-accent px-3 py-1 text-lofi-text outline-none transition hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                className="rounded-md border border-red-300/80 px-3 py-1 text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-200"
                 onClick={() => void handleGenerate()}
               >
                 Retry
@@ -191,7 +205,7 @@ export function App({ controller }: AppProps) {
           <section aria-label="Playback controls" className="grid gap-3 rounded-lg bg-lofi-panel p-4">
             <button
               type="button"
-              className="rounded-md border border-lofi-accent px-3 py-2 text-lofi-text outline-none transition hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-2 font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePlay()}
               disabled={isPlaying}
               aria-pressed={isPlaying}
@@ -200,7 +214,7 @@ export function App({ controller }: AppProps) {
             </button>
             <button
               type="button"
-              className="rounded-md border border-lofi-accent px-3 py-2 text-lofi-text outline-none transition hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-amber-200/90 bg-amber-400/25 px-3 py-2 font-semibold text-amber-50 outline-none transition hover:bg-amber-400/40 focus-visible:ring-2 focus-visible:ring-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handlePause()}
               disabled={!isPlaying}
               aria-pressed={!isPlaying}
@@ -210,7 +224,7 @@ export function App({ controller }: AppProps) {
             <label htmlFor="seek">Seek</label>
             <input
               id="seek"
-              className="cursor-pointer accent-lofi-accent outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+              className="seek-slider h-2 w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none transition hover:opacity-95 focus-visible:ring-2 focus-visible:ring-lofi-accent"
               type="range"
               min={SEEK_MIN}
               max={SEEK_MAX}

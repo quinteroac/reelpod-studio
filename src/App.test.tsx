@@ -106,7 +106,12 @@ describe('App generation flow', () => {
     const generate = screen.getByRole('button', { name: 'Generate' });
     fireEvent.click(generate);
 
-    expect(screen.getByText('Generating track...')).toBeInTheDocument();
+    const status = screen.getByText('Generating track...').closest('[role="status"]');
+    expect(status).not.toBeNull();
+    const statusElement = status as HTMLElement;
+    expect(statusElement).toHaveTextContent('Generating track...');
+    expect(statusElement.className).toContain('border-lofi-accent/60');
+    expect(statusElement.querySelector('.animate-spin')).not.toBeNull();
     expect(generate).toBeDisabled();
 
     fireEvent.click(generate);
@@ -136,6 +141,13 @@ describe('App generation flow', () => {
     const playButton = screen.getByRole('button', { name: 'Play' });
     const pauseButton = screen.getByRole('button', { name: 'Pause' });
     const seek = screen.getByLabelText('Seek') as HTMLInputElement;
+
+    expect(playButton.className).toContain('border-emerald-300/80');
+    expect(playButton.className).toContain('bg-emerald-500/20');
+    expect(pauseButton.className).toContain('border-amber-200/90');
+    expect(pauseButton.className).toContain('bg-amber-400/25');
+    expect(seek.className).toContain('seek-slider');
+    expect(seek.className).toContain('appearance-none');
 
     expect(playButton).toBeDisabled();
     expect(pauseButton).toBeEnabled();
@@ -176,7 +188,11 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Could not generate track: REPL init failed');
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Could not generate track: REPL init failed');
+      expect(alert.className).toContain('text-red-100');
+      expect(alert.parentElement?.className).toContain('bg-red-950/40');
+      expect(alert.parentElement?.className).toContain('border-red-400/60');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
