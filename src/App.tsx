@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { generatePattern, type GenerationParams, type Mood, type Style } from './lib/pattern-generator';
+import type { GenerationParams, Mood, Style } from './lib/pattern-generator';
 import { createBrowserStrudelController } from './lib/strudel-adapter';
 import type { StrudelController } from './lib/strudel';
+import { GENERATE_ENDPOINT_PATH } from './api/generate';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -15,6 +16,39 @@ const SEEK_MAX = 100;
 const SEEK_STEP = 1;
 const SEEK_POLL_INTERVAL_MS = 500;
 const UNKNOWN_GENERATION_ERROR = 'Could not generate track: Unknown REPL error';
+const INVALID_GENERATOR_RESPONSE_ERROR = 'Could not generate track: Invalid response from generator';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getApiErrorMessage(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const message = value.error;
+  if (typeof message !== 'string') {
+    return null;
+  }
+
+  const trimmedMessage = message.trim();
+  return trimmedMessage.length > 0 ? trimmedMessage : null;
+}
+
+function getApiPattern(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const pattern = value.pattern;
+  if (typeof pattern !== 'string') {
+    return null;
+  }
+
+  const trimmedPattern = pattern.trim();
+  return trimmedPattern.length > 0 ? trimmedPattern : null;
+}
 
 interface AppProps {
   controller?: StrudelController;
@@ -30,6 +64,43 @@ function getErrorMessage(error: unknown): string {
 
 function clampSeekPosition(position: number): number {
   return Math.min(Math.max(position, SEEK_MIN), SEEK_MAX);
+}
+
+async function requestGeneratedPattern(params: GenerationParams): Promise<string> {
+  const response = await fetch(GENERATE_ENDPOINT_PATH, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(params)
+  });
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    if (!response.ok) {
+      throw new Error(`Could not generate track: Request failed with status ${response.status}`);
+    }
+
+    throw new Error(INVALID_GENERATOR_RESPONSE_ERROR);
+  }
+
+  if (!response.ok) {
+    const apiErrorMessage = getApiErrorMessage(payload);
+    if (apiErrorMessage) {
+      throw new Error(apiErrorMessage);
+    }
+
+    throw new Error(`Could not generate track: Request failed with status ${response.status}`);
+  }
+
+  const pattern = getApiPattern(payload);
+  if (!pattern) {
+    throw new Error(INVALID_GENERATOR_RESPONSE_ERROR);
+  }
+
+  return pattern;
 }
 
 export function App({ controller }: AppProps) {
@@ -65,7 +136,7 @@ export function App({ controller }: AppProps) {
     setErrorMessage(null);
 
     try {
-      const pattern = generatePattern(params);
+      const pattern = await requestGeneratedPattern(params);
       await strudelController.generate(pattern);
       setStatus('success');
       setHasGeneratedTrack(true);

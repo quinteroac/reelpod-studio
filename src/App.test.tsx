@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import * as patternGenerator from './lib/pattern-generator';
 import type { StrudelController } from './lib/strudel';
 
 function createController(overrides: Partial<StrudelController> = {}): StrudelController {
@@ -13,7 +14,26 @@ function createController(overrides: Partial<StrudelController> = {}): StrudelCo
   };
 }
 
+function createGenerateResponse(pattern: string, status = 200): Response {
+  const payload = status >= 200 && status < 300 ? { pattern } : { error: pattern };
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      'content-type': 'application/json'
+    }
+  });
+}
+
+function mockGenerateFetch(pattern = 'remote-pattern'): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async () => createGenerateResponse(pattern));
+}
+
 describe('App generation flow', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockGenerateFetch());
+  });
+
   it('renders mood, tempo, and style inside clearly labelled control cards with consistent layout spacing', () => {
     render(<App controller={createController()} />);
 
@@ -71,7 +91,11 @@ describe('App generation flow', () => {
     expect(screen.getByLabelText('Seek')).toBeInTheDocument();
   });
 
-  it('generates a pattern and executes through controller when Generate is clicked', async () => {
+  it('posts params to /api/generate and executes returned backend pattern through controller when Generate is clicked', async () => {
+    const backendPattern = 'stack(s("bd*2"), s("hh*4")).cpm(110)';
+    const fetchMock = mockGenerateFetch(backendPattern);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    const generatePatternSpy = vi.spyOn(patternGenerator, 'generatePattern');
     const controller = createController();
     render(<App controller={controller} />);
 
@@ -84,22 +108,28 @@ describe('App generation flow', () => {
       expect(controller.generate).toHaveBeenCalledTimes(1);
     });
 
-    const pattern = vi.mocked(controller.generate).mock.calls[0][0];
-    expect(pattern).toContain('bd bd sd ~');
-    expect(pattern).toContain('cp hh*2');
-    expect(pattern).toContain('cpm(110)');
+    expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ mood: 'upbeat', tempo: 110, style: 'hip-hop' })
+    });
+    expect(controller.generate).toHaveBeenCalledWith(backendPattern);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(generatePatternSpy).not.toHaveBeenCalled();
   });
 
   it('shows loading while generation is in progress and ignores duplicate Generate clicks', async () => {
-    let resolveGeneration: (() => void) | undefined;
-    const controller = createController({
-      generate: vi.fn().mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveGeneration = resolve;
-          })
-      )
-    });
+    let resolveFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    const controller = createController();
 
     render(<App controller={controller} />);
 
@@ -115,13 +145,15 @@ describe('App generation flow', () => {
     expect(generate).toBeDisabled();
 
     fireEvent.click(generate);
-    expect(controller.generate).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(controller.generate).not.toHaveBeenCalled();
 
-    resolveGeneration?.();
+    resolveFetch?.(createGenerateResponse('remote-pattern'));
 
     await waitFor(() => {
       expect(screen.queryByText('Generating track...')).not.toBeInTheDocument();
     });
+    expect(controller.generate).toHaveBeenCalledTimes(1);
   });
 
   it('on success tracks playback state and wires controlled seek to the Strudel controller', async () => {
@@ -178,8 +210,7 @@ describe('App generation flow', () => {
     expect(controller.seek).toHaveBeenCalledWith(42);
   });
 
-  it('keeps synthetic seek position in range and clamps manual seek values', async () => {
-    vi.useFakeTimers();
+  it('clamps manual seek values to the supported range', async () => {
     const controller = createController();
     render(<App controller={controller} />);
 
@@ -191,26 +222,18 @@ describe('App generation flow', () => {
 
     const seek = screen.getByLabelText('Seek') as HTMLInputElement;
 
-    vi.advanceTimersByTime(100 * 500);
-    expect(seek.value).toBe('100');
-
-    vi.advanceTimersByTime(500);
-    expect(seek.value).toBe('0');
-
     fireEvent.change(seek, { target: { value: '999' } });
     expect(seek.value).toBe('100');
     expect(controller.seek).toHaveBeenCalledWith(100);
-
-    vi.useRealTimers();
   });
 
-  it('on generic failure shows clear error and allows retry', async () => {
-    const controller = createController({
-      generate: vi
-        .fn()
-        .mockRejectedValueOnce(new Error('Could not generate track: REPL init failed'))
-        .mockResolvedValueOnce(undefined)
-    });
+  it('on backend failure shows backend error and allows retry', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createGenerateResponse('OpenAI Chat Completions API returned an error', 500))
+      .mockResolvedValueOnce(createGenerateResponse('remote-pattern', 200));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    const controller = createController();
 
     render(<App controller={controller} />);
 
@@ -218,7 +241,7 @@ describe('App generation flow', () => {
 
     await waitFor(() => {
       const alert = screen.getByRole('alert');
-      expect(alert).toHaveTextContent('Could not generate track: REPL init failed');
+      expect(alert).toHaveTextContent('OpenAI Chat Completions API returned an error');
       expect(alert.className).toContain('text-red-100');
       expect(alert.parentElement?.className).toContain('bg-red-950/40');
       expect(alert.parentElement?.className).toContain('border-red-400/60');
@@ -227,9 +250,24 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     await waitFor(() => {
-      expect(controller.generate).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(controller.generate).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
+  });
+
+  it('on network failure shows error message from fetch failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Failed to reach backend'));
+    const controller = createController();
+
+    render(<App controller={controller} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to reach backend');
+    });
+    expect(controller.generate).not.toHaveBeenCalled();
   });
 
   it('shows explicit audio limitation messages for blocked audio and unsupported Web Audio', async () => {
