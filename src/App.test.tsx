@@ -14,6 +14,23 @@ function createController(overrides: Partial<StrudelController> = {}): StrudelCo
 }
 
 describe('App generation flow', () => {
+  it('keeps player hidden until a track is generated successfully', async () => {
+    const controller = createController();
+    render(<App controller={controller} />);
+
+    expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Seek')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Seek')).toBeInTheDocument();
+  });
+
   it('generates a pattern and executes through controller when Generate is clicked', async () => {
     const controller = createController();
     render(<App controller={controller} />);
@@ -62,18 +79,18 @@ describe('App generation flow', () => {
     });
   });
 
-  it('on success enables playback controls and clears errors', async () => {
+  it('on success wires playback controls to the Strudel controller and clears errors', async () => {
     const controller = createController();
     render(<App controller={controller} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
-    expect(screen.getByLabelText('Seek')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Seek')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
@@ -138,6 +155,6 @@ describe('App generation flow', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('no audible output');
     });
 
-    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument();
   });
 });

@@ -19,8 +19,7 @@ export function App({ controller }: AppProps) {
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const canUsePlayer = status === 'success';
+  const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
 
   async function handleGenerate(): Promise<void> {
     if (status === 'loading') {
@@ -34,6 +33,7 @@ export function App({ controller }: AppProps) {
       const pattern = generatePattern(params);
       await strudelController.generate(pattern);
       setStatus('success');
+      setHasGeneratedTrack(true);
       setErrorMessage(null);
     } catch (error) {
       setStatus('error');
@@ -105,24 +105,25 @@ export function App({ controller }: AppProps) {
         )}
       </section>
 
-      <section aria-label="Playback controls">
-        <button type="button" disabled={!canUsePlayer} onClick={() => void strudelController.play()}>
-          Play
-        </button>
-        <button type="button" disabled={!canUsePlayer} onClick={() => void strudelController.pause()}>
-          Pause
-        </button>
-        <label htmlFor="seek">Seek</label>
-        <input
-          id="seek"
-          type="range"
-          min={0}
-          max={100}
-          defaultValue={0}
-          disabled={!canUsePlayer}
-          onChange={(event) => void strudelController.seek(Number(event.target.value))}
-        />
-      </section>
+      {hasGeneratedTrack && (
+        <section aria-label="Playback controls">
+          <button type="button" onClick={() => void strudelController.play()}>
+            Play
+          </button>
+          <button type="button" onClick={() => void strudelController.pause()}>
+            Pause
+          </button>
+          <label htmlFor="seek">Seek</label>
+          <input
+            id="seek"
+            type="range"
+            min={0}
+            max={100}
+            defaultValue={0}
+            onChange={(event) => void strudelController.seek(Number(event.target.value))}
+          />
+        </section>
+      )}
     </main>
   );
 }
