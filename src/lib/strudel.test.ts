@@ -4,9 +4,9 @@ import {
   AudioSupportError,
   SilentOutputError,
   createStrudelController,
-  getUserFriendlyError,
-  type StrudelReplEngine
+  getUserFriendlyError
 } from './strudel';
+import type { StrudelReplEngine, StrudelRuntime } from './strudel';
 
 function createEngine(overrides: Partial<StrudelReplEngine> = {}): StrudelReplEngine {
   return {
@@ -19,53 +19,77 @@ function createEngine(overrides: Partial<StrudelReplEngine> = {}): StrudelReplEn
   };
 }
 
-function withWebAudioSupport(): () => void {
-  const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
-  Object.defineProperty(window, 'AudioContext', { value: function AudioContext() {}, configurable: true });
-
-  return () => {
-    if (originalAudioContext) {
-      Object.defineProperty(window, 'AudioContext', originalAudioContext);
-    }
+function createRuntime(
+  engine: StrudelReplEngine,
+  overrides: Partial<StrudelRuntime> = {}
+): Required<StrudelRuntime> {
+  return {
+    hasWebAudioSupport: () => true,
+    resolveEngine: () => engine,
+    ...overrides
   };
 }
 
 describe('createStrudelController', () => {
+  it('creates controller without eagerly resolving engine', () => {
+    const resolveEngine = vi.fn().mockImplementation(() => {
+      throw new Error('Strudel REPL is not available.');
+    });
+
+    expect(() =>
+      createStrudelController({
+        hasWebAudioSupport: () => true,
+        resolveEngine
+      })
+    ).not.toThrow();
+    expect(resolveEngine).not.toHaveBeenCalled();
+  });
+
   it('throws a support error when Web Audio is unavailable', async () => {
-    const originalAudioContext = Object.getOwnPropertyDescriptor(window, 'AudioContext');
-    const originalWebkitAudioContext = Object.getOwnPropertyDescriptor(window, 'webkitAudioContext');
-
-    Object.defineProperty(window, 'AudioContext', { value: undefined, configurable: true });
-    Object.defineProperty(window, 'webkitAudioContext', { value: undefined, configurable: true });
-
-    const controller = createStrudelController(createEngine());
+    const controller = createStrudelController(createRuntime(createEngine(), { hasWebAudioSupport: () => false }));
     await expect(controller.generate('pattern')).rejects.toBeInstanceOf(AudioSupportError);
-
-    if (originalAudioContext) {
-      Object.defineProperty(window, 'AudioContext', originalAudioContext);
-    }
-
-    if (originalWebkitAudioContext) {
-      Object.defineProperty(window, 'webkitAudioContext', originalWebkitAudioContext);
-    }
   });
 
   it('throws autoplay-blocked error when init fails due to browser policy', async () => {
-    const restore = withWebAudioSupport();
-    const controller = createStrudelController(
-      createEngine({ init: vi.fn().mockRejectedValue(new Error('NotAllowedError: autoplay blocked')) })
-    );
+    const engine = createEngine({ init: vi.fn().mockRejectedValue(new Error('NotAllowedError: autoplay blocked')) });
+    const controller = createStrudelController(createRuntime(engine));
 
     await expect(controller.generate('pattern')).rejects.toBeInstanceOf(AudioBlockedError);
-    restore();
   });
 
   it('throws silent output error when execute returns no audible output', async () => {
-    const restore = withWebAudioSupport();
-    const controller = createStrudelController(createEngine({ execute: vi.fn().mockResolvedValue({ audible: false }) }));
+    const engine = createEngine({ execute: vi.fn().mockResolvedValue({ audible: false }) });
+    const controller = createStrudelController(createRuntime(engine));
 
     await expect(controller.generate('pattern')).rejects.toBeInstanceOf(SilentOutputError);
-    restore();
+  });
+
+  it('throws when the runtime cannot resolve a REPL engine', async () => {
+    const controller = createStrudelController({
+      hasWebAudioSupport: () => true,
+      resolveEngine: () => {
+        throw new Error('Strudel REPL is not available.');
+      }
+    });
+
+    await expect(controller.generate('pattern')).rejects.toThrow('Strudel REPL is not available.');
+  });
+
+  it('forwards playback controls to the resolved engine', async () => {
+    const engine = createEngine();
+    const controller = createStrudelController(
+      createRuntime(engine, {
+        resolveEngine: vi.fn().mockReturnValue(engine)
+      })
+    );
+
+    await controller.play();
+    await controller.pause();
+    await controller.seek(10);
+
+    expect(engine.play).toHaveBeenCalledTimes(1);
+    expect(engine.pause).toHaveBeenCalledTimes(1);
+    expect(engine.seek).toHaveBeenCalledWith(10);
   });
 
   it('maps specialized errors into actionable messages', () => {

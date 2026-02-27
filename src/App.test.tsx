@@ -79,7 +79,7 @@ describe('App generation flow', () => {
     });
   });
 
-  it('on success wires playback controls to the Strudel controller and clears errors', async () => {
+  it('on success tracks playback state and wires controlled seek to the Strudel controller', async () => {
     const controller = createController();
     render(<App controller={controller} />);
 
@@ -93,11 +93,32 @@ describe('App generation flow', () => {
     expect(screen.getByLabelText('Seek')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
-    fireEvent.change(screen.getByLabelText('Seek'), { target: { value: '42' } });
+    const playButton = screen.getByRole('button', { name: 'Play' });
+    const pauseButton = screen.getByRole('button', { name: 'Pause' });
+    const seek = screen.getByLabelText('Seek') as HTMLInputElement;
 
-    expect(controller.play).toHaveBeenCalledTimes(1);
+    expect(playButton).toBeDisabled();
+    expect(pauseButton).toBeEnabled();
+    expect(seek.value).toBe('0');
+
+    fireEvent.click(playButton);
+    expect(controller.play).not.toHaveBeenCalled();
+
+    fireEvent.click(pauseButton);
+    await waitFor(() => {
+      expect(playButton).toBeEnabled();
+      expect(pauseButton).toBeDisabled();
+    });
+
+    fireEvent.click(playButton);
+    await waitFor(() => {
+      expect(controller.play).toHaveBeenCalledTimes(1);
+      expect(playButton).toBeDisabled();
+      expect(pauseButton).toBeEnabled();
+    });
+
+    fireEvent.change(seek, { target: { value: '42' } });
+    expect(seek.value).toBe('42');
     expect(controller.pause).toHaveBeenCalledTimes(1);
     expect(controller.seek).toHaveBeenCalledWith(42);
   });

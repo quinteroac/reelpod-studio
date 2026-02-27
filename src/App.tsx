@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { generatePattern, type GenerationParams, type Mood, type Style } from './lib/pattern-generator';
-import { createStrudelController, getUserFriendlyError, type StrudelController } from './lib/strudel';
+import { createBrowserStrudelController } from './lib/strudel-adapter';
+import { getUserFriendlyError, type StrudelController } from './lib/strudel';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -9,17 +10,37 @@ const defaultParams: GenerationParams = {
   tempo: 80,
   style: 'jazz'
 };
+const SEEK_MIN = 0;
+const SEEK_MAX = 100;
+const SEEK_STEP = 1;
+const SEEK_POLL_INTERVAL_MS = 500;
 
 interface AppProps {
   controller?: StrudelController;
 }
 
 export function App({ controller }: AppProps) {
-  const strudelController = useMemo(() => controller ?? createStrudelController(), [controller]);
+  const strudelController = useMemo(() => controller ?? createBrowserStrudelController(), [controller]);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
+  const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    if (!hasGeneratedTrack || !isPlaying) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setSeekPosition((prev) => Math.min(prev + SEEK_STEP, SEEK_MAX));
+    }, SEEK_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasGeneratedTrack, isPlaying]);
 
   async function handleGenerate(): Promise<void> {
     if (status === 'loading') {
@@ -34,11 +55,28 @@ export function App({ controller }: AppProps) {
       await strudelController.generate(pattern);
       setStatus('success');
       setHasGeneratedTrack(true);
+      setSeekPosition(SEEK_MIN);
+      setIsPlaying(true);
       setErrorMessage(null);
     } catch (error) {
       setStatus('error');
       setErrorMessage(getUserFriendlyError(error));
     }
+  }
+
+  async function handlePlay(): Promise<void> {
+    await strudelController.play();
+    setIsPlaying(true);
+  }
+
+  async function handlePause(): Promise<void> {
+    await strudelController.pause();
+    setIsPlaying(false);
+  }
+
+  function handleSeekChange(position: number): void {
+    setSeekPosition(position);
+    void strudelController.seek(position);
   }
 
   return (
@@ -107,20 +145,20 @@ export function App({ controller }: AppProps) {
 
       {hasGeneratedTrack && (
         <section aria-label="Playback controls">
-          <button type="button" onClick={() => void strudelController.play()}>
+          <button type="button" onClick={() => void handlePlay()} disabled={isPlaying} aria-pressed={isPlaying}>
             Play
           </button>
-          <button type="button" onClick={() => void strudelController.pause()}>
+          <button type="button" onClick={() => void handlePause()} disabled={!isPlaying} aria-pressed={!isPlaying}>
             Pause
           </button>
           <label htmlFor="seek">Seek</label>
           <input
             id="seek"
             type="range"
-            min={0}
-            max={100}
-            defaultValue={0}
-            onChange={(event) => void strudelController.seek(Number(event.target.value))}
+            min={SEEK_MIN}
+            max={SEEK_MAX}
+            value={seekPosition}
+            onChange={(event) => handleSeekChange(Number(event.target.value))}
           />
         </section>
       )}

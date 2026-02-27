@@ -38,22 +38,9 @@ export interface StrudelController {
   seek: (position: number) => Promise<void>;
 }
 
-declare global {
-  interface Window {
-    __strudelRepl?: StrudelReplEngine;
-    webkitAudioContext?: unknown;
-  }
-}
-
-function hasWebAudioSupport(): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  const audioContext = (window as unknown as { AudioContext?: unknown }).AudioContext;
-  const webkitAudioContext = window.webkitAudioContext;
-
-  return typeof audioContext === 'function' || typeof webkitAudioContext === 'function';
+export interface StrudelRuntime {
+  hasWebAudioSupport: () => boolean;
+  resolveEngine: () => StrudelReplEngine;
 }
 
 function normalizeError(error: unknown): Error {
@@ -64,25 +51,24 @@ function normalizeError(error: unknown): Error {
   return new Error('Unknown REPL error');
 }
 
-function defaultEngine(): StrudelReplEngine {
-  const engine = window.__strudelRepl;
-
-  if (!engine) {
-    throw new Error('Strudel REPL is not available.');
-  }
-
-  return engine;
+function missingEngine(): StrudelReplEngine {
+  throw new Error('Strudel REPL is not available.');
 }
 
-export function createStrudelController(engine: StrudelReplEngine = defaultEngine()): StrudelController {
+export function createStrudelController(runtime: Partial<StrudelRuntime> = {}): StrudelController {
+  const hasWebAudioSupport = runtime.hasWebAudioSupport ?? (() => false);
+  const resolveEngine = runtime.resolveEngine ?? missingEngine;
+
   return {
     async generate(pattern: string): Promise<void> {
       if (!hasWebAudioSupport()) {
         throw new AudioSupportError();
       }
 
+      const activeEngine = resolveEngine();
+
       try {
-        await engine.init();
+        await activeEngine.init();
       } catch (error) {
         const normalized = normalizeError(error);
         if (/autoplay|gesture|notallowed/i.test(normalized.message)) {
@@ -92,14 +78,14 @@ export function createStrudelController(engine: StrudelReplEngine = defaultEngin
         throw normalized;
       }
 
-      const result = await engine.execute(pattern);
+      const result = await activeEngine.execute(pattern);
       if (!result.audible) {
         throw new SilentOutputError();
       }
     },
-    play: () => engine.play(),
-    pause: () => engine.pause(),
-    seek: (position: number) => engine.seek(position)
+    play: () => resolveEngine().play(),
+    pause: () => resolveEngine().pause(),
+    seek: (position: number) => resolveEngine().seek(position)
   };
 }
 

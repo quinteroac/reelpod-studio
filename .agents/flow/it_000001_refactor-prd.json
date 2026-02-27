@@ -1,0 +1,52 @@
+{
+  "refactorItems": [
+    {
+      "id": "RI-001",
+      "title": "Fix Eager Engine Lookup — Make `defaultEngine` Lazy",
+      "description": "`createStrudelController(engine = defaultEngine())` evaluates `defaultEngine()` at call time, not lazily. In production, `App.tsx` calls `createStrudelController()` inside `useMemo` on mount; if `window.__strudelRepl` is not yet available, this throws during render, crashing the app to a blank page and bypassing all error handling.",
+      "rationale": "This is the most critical fix — it affects every production mount. Low effort (change default to a factory or defer the lookup inside each method), high blast radius if left untouched. Must be resolved before the Strudel library integration so that any timing issue during REPL initialisation surfaces as a user-visible error rather than a render crash. ---"
+    },
+    {
+      "id": "RI-002",
+      "title": "Integrate the Strudel Library and Wire `window.__strudelRepl`",
+      "description": "The app currently has no Strudel npm package and no script loading Strudel in `index.html`. `window.__strudelRepl` is never populated, so `generate`, `play`, `pause`, and `seek` all fail silently at runtime. Strudel must be installed (or loaded via CDN in `index.html`) and a concrete `StrudelReplEngine` implementation must be wired up in `main.tsx` or a dedicated bootstrap module.",
+      "rationale": "Without Strudel, the app produces no audio — it cannot satisfy its core purpose. This is a functional blocker. Doing it after RI-001 ensures the controller is robust to any timing gap between page load and REPL readiness. ---"
+    },
+    {
+      "id": "RI-003",
+      "title": "Add ESLint and Prettier Configuration",
+      "description": "`package.json` has no ESLint or Prettier packages; the `lint` script is only `tsc --noEmit`. PROJECT_CONTEXT.md mandates \"Prettier + ESLint defaults.\" ESLint (with the React and TypeScript plugins) and Prettier must be installed, and appropriate config files (`.eslintrc.cjs` / `eslint.config.js` and `.prettierrc`) must be added. The `lint` script should run ESLint and the `format` (or `lint:fix`) script Prettier.",
+      "rationale": "Convention compliance is required from iteration 2 onward. This is low-effort and unblocks the enforcement of consistent code style across all future contributions. Doing it early in the refactor means all subsequent items in this plan are written to the enforced standard. ---"
+    },
+    {
+      "id": "RI-004",
+      "title": "Create `src/components/` and Decompose `App.tsx`",
+      "description": "`App.tsx` currently contains all UI — parameter controls, generate button/status, error display, and playback controls — in a single 130-line component. PROJECT_CONTEXT.md specifies `src/components/` for UI components. The UI should be decomposed into at least: `ParameterControls`, `GenerateButton` (or `GenerationPanel`), and `Player` (or `PlaybackControls`). `App.tsx` becomes the orchestrator holding state and wiring these together.",
+      "rationale": "Required by the project's module structure. Decomposition reduces per-component cognitive load, makes individual components independently testable, and aligns the codebase with the conventions that all future iterations will assume are in place. ---"
+    },
+    {
+      "id": "RI-005",
+      "title": "Enrich the Pattern Generator (Melody, Chords, Bass)",
+      "description": "`generatePattern` currently stacks two drum patterns (mood-selected kick/snare and style-selected hi-hat/clap) with no melody, harmony, or bass. The resulting output is percussive only and lacks the characteristic lofi feel. The function should be extended to produce at minimum a chord voicing layer and a bass line, using mood and style to select appropriate note patterns. The function must remain a pure function with no side effects.",
+      "rationale": "The user explicitly requested this for the refactor. Richer patterns significantly increase the core product value demonstrated by the prototype. The `pattern-generator.ts` module is self-contained and its test suite can be extended in parallel, making this a well-scoped improvement even at higher effort. ---"
+    },
+    {
+      "id": "RI-006",
+      "title": "Install React Three Fiber (Defer Visual Integration)",
+      "description": "React Three Fiber is listed in PROJECT_CONTEXT.md as a key library but is absent from `package.json`. Per the decision made during planning, R3F and its peer dependencies (`three`, `@react-three/fiber`) should be installed now to make the declared tech stack accurate, but no canvas or animation code will be written in this iteration. A follow-up iteration will implement the visual layer.",
+      "rationale": "Installing the package aligns the dependency manifest with the declared tech stack and avoids a version-compatibility surprise when the visual layer is finally added. Zero-code cost in this iteration. ---"
+    },
+    {
+      "id": "RI-007",
+      "title": "Fix Seek Control and Add Playback State Tracking",
+      "description": "The seek `<input>` uses `defaultValue={0}` (uncontrolled) and is not backed by any playback-position state. There is also no `isPlaying` boolean, so Play and Pause buttons are always rendered identically regardless of playback status. The seek input should become a controlled component driven by a `seekPosition` state value updated via a `StrudelController` callback or polling mechanism; an `isPlaying` flag should toggle the enabled/active state of the Play and Pause buttons.",
+      "rationale": "Without these fixes, the playback section communicates nothing about current playback state and the seek handle resets to 0 on any re-render. This is a functional UX gap that would confuse end users. Lower priority than the structural and compliance items above, but important before the refactor is considered complete. ---"
+    },
+    {
+      "id": "RI-008",
+      "title": "Decouple `window` Access from `strudel.ts` Pure Logic",
+      "description": "`strudel.ts` accesses `window.__strudelRepl` and `window.webkitAudioContext` directly. PROJECT_CONTEXT.md designates `src/lib/` as the home of \"pure logic.\" The window-coupling should be lifted out of the module — either into a thin adapter in `src/lib/strudel-adapter.ts` or into `main.tsx` — so that the controller and error classes remain environment-agnostic. Tests would no longer need `Object.defineProperty` workarounds.",
+      "rationale": "A clean pure-logic boundary makes the library layer independently testable without DOM manipulation. Lower priority than the items above because the current tests pass, but completing this aligns `src/lib/strudel.ts` with the architecture and is low effort."
+    }
+  ]
+}

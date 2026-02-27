@@ -1,0 +1,68 @@
+{
+  "entries": [
+    {
+      "id": "RI-001",
+      "title": "Fix Eager Engine Lookup — Make `defaultEngine` Lazy",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:03:55.925Z"
+    },
+    {
+      "id": "RI-002",
+      "title": "Integrate the Strudel Library and Wire `window.__strudelRepl`",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:05:50.442Z"
+    },
+    {
+      "id": "RI-003",
+      "title": "Add ESLint and Prettier Configuration",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:07:22.506Z"
+    },
+    {
+      "id": "RI-004",
+      "title": "Create `src/components/` and Decompose `App.tsx`",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:07:34.718Z"
+    },
+    {
+      "id": "RI-005",
+      "title": "Enrich the Pattern Generator (Melody, Chords, Bass)",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:07:50.503Z"
+    },
+    {
+      "id": "RI-006",
+      "title": "Install React Three Fiber (Defer Visual Integration)",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:08:05.861Z"
+    },
+    {
+      "id": "RI-007",
+      "title": "Fix Seek Control and Add Playback State Tracking",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:09:26.811Z"
+    },
+    {
+      "id": "RI-008",
+      "title": "Decouple `window` Access from `strudel.ts` Pure Logic",
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "updated_at": "2026-02-27T22:11:28.678Z"
+    }
+  ]
+}
