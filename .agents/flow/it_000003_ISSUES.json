@@ -15,7 +15,7 @@
     "id": "ISSUE-000003-003",
     "title": "[skipped] TC-003-05: Backend code passes typecheck / lint",
     "description": "Test case TC-003-05 resulted in status: skipped.\nNotes: Run manually: bun run typecheck && bun run lint.\nEvidence: Backend code (src/api/generate.ts, vite.config.ts) typecheck/lint not run in session.",
-    "status": "open"
+    "status": "fixed"
   },
   {
     "id": "ISSUE-000003-004",
