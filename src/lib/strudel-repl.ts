@@ -1,4 +1,4 @@
-import { evaluate, hush, initStrudel } from '@strudel/web';
+import { evaluate, hush, initStrudel, samples } from '@strudel/web';
 import type { StrudelReplEngine } from './strudel';
 
 class StrudelWebReplEngine implements StrudelReplEngine {
@@ -7,7 +7,9 @@ class StrudelWebReplEngine implements StrudelReplEngine {
 
   init(): Promise<void> {
     if (!this.initPromise) {
-      this.initPromise = Promise.resolve(initStrudel()).then(() => undefined);
+      this.initPromise = Promise.resolve(
+        initStrudel({ prebake: () => samples('github:tidalcycles/dirt-samples') })
+      ).then(() => undefined);
     }
 
     return this.initPromise;

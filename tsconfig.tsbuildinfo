@@ -1,1 +1,1 @@
-{"root":["./src/App.test.tsx","./src/App.tsx","./src/main.tsx","./src/lib/pattern-generator.test.ts","./src/lib/pattern-generator.ts","./src/lib/strudel.test.ts","./src/lib/strudel.ts","./src/test/setup.ts"],"version":"5.9.3"}
+{"root":["./src/App.test.tsx","./src/App.tsx","./src/main.tsx","./src/lib/pattern-generator.test.ts","./src/lib/pattern-generator.ts","./src/lib/strudel-adapter.ts","./src/lib/strudel-repl.ts","./src/lib/strudel.test.ts","./src/lib/strudel.ts","./src/test/setup.ts","./src/types/strudel-web.d.ts"],"version":"5.9.3"}
