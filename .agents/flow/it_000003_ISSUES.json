@@ -9,7 +9,7 @@
     "id": "ISSUE-000003-002",
     "title": "[skipped] TC-002-06: Frontend code passes typecheck / lint",
     "description": "Test case TC-002-06 resulted in status: skipped.\nNotes: Run manually: bun run typecheck && bun run lint.\nEvidence: Frontend code in src/App.tsx and related components; typecheck and lint were not executed in this session.",
-    "status": "open"
+    "status": "fixed"
   },
   {
     "id": "ISSUE-000003-003",
