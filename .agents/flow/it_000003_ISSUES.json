@@ -27,6 +27,6 @@
     "id": "ISSUE-000003-005",
     "title": "[failed] TC-002-07: Full flow in browser: set params → Generate → audible playback; visual and aural check",
     "description": "Test case TC-002-07 resulted in status: failed.\nEvidence: OPENAI_API_KEY is not configured",
-    "status": "open"
+    "status": "fixed"
   }
 ]

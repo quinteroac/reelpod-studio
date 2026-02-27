@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react';
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { createGenerateHandler, GENERATE_ENDPOINT_PATH } from './src/api/generate';
 
@@ -20,47 +21,52 @@ const readBody = async (req: { on: (event: string, cb: (...args: unknown[]) => v
   });
 };
 
-const generateHandler = createGenerateHandler();
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const generateHandler = createGenerateHandler({
+    getOpenAiApiKey: () => env.OPENAI_API_KEY
+  });
 
-export default defineConfig({
-  plugins: [
-    react(),
-    {
-      name: 'generate-api-endpoint',
-      configureServer(server) {
-        server.middlewares.use(async (req, res, next) => {
-          const pathname = req.url?.split('?')[0] ?? '';
+  return {
+    plugins: [
+      react(),
+      {
+        name: 'generate-api-endpoint',
+        configureServer(server) {
+          server.middlewares.use(async (req, res, next) => {
+            const pathname = req.url?.split('?')[0] ?? '';
 
-          if (pathname !== GENERATE_ENDPOINT_PATH) {
-            next();
-            return;
-          }
+            if (pathname !== GENERATE_ENDPOINT_PATH) {
+              next();
+              return;
+            }
 
-          const method = req.method ?? 'GET';
-          const body = method === 'POST' ? await readBody(req) : undefined;
-          const requestInit: RequestInit = {
-            method,
-            headers: req.headers as HeadersInit
-          };
+            const method = req.method ?? 'GET';
+            const body = method === 'POST' ? await readBody(req) : undefined;
+            const requestInit: RequestInit = {
+              method,
+              headers: req.headers as HeadersInit
+            };
 
-          if (body !== undefined) {
-            requestInit.body = body;
-          }
+            if (body !== undefined) {
+              requestInit.body = body;
+            }
 
-          const request = new Request(`http://localhost${req.url ?? GENERATE_ENDPOINT_PATH}`, requestInit);
-          const response = await generateHandler(request);
+            const request = new Request(`http://localhost${req.url ?? GENERATE_ENDPOINT_PATH}`, requestInit);
+            const response = await generateHandler(request);
 
-          res.statusCode = response.status;
-          response.headers.forEach((value, key) => {
-            res.setHeader(key, value);
+            res.statusCode = response.status;
+            response.headers.forEach((value, key) => {
+              res.setHeader(key, value);
+            });
+            res.end(await response.text());
           });
-          res.end(await response.text());
-        });
+        }
       }
+    ],
+    test: {
+      environment: 'jsdom',
+      setupFiles: './src/test/setup.ts'
     }
-  ],
-  test: {
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts'
-  }
+  };
 });
