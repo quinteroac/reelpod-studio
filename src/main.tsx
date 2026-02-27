@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bootstrapStrudelRepl } from './lib/strudel-repl';
+import './index.css';
 
 void bootstrapStrudelRepl().catch((error) => {
   console.error('Failed to initialize Strudel REPL.', error);
