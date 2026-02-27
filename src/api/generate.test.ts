@@ -64,6 +64,45 @@ describe('createGenerateHandler', () => {
     expect((await invalidRangeResponse.json()) as { error: string }).toHaveProperty('error');
   });
 
+  it('reads OPENAI_API_KEY from process env by default when getter is not provided', async () => {
+    const maybeProcess = globalThis as { process?: { env?: Record<string, string | undefined> } };
+    if (!maybeProcess.process) {
+      maybeProcess.process = {};
+    }
+    if (!maybeProcess.process.env) {
+      maybeProcess.process.env = {};
+    }
+    const env = maybeProcess.process.env;
+    const originalApiKey = env.OPENAI_API_KEY;
+    env.OPENAI_API_KEY = 'process-env-key';
+
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 's("bd ~ sd ~").cpm(88)' } }]
+        }),
+        { status: 200 }
+      )
+    );
+
+    try {
+      const handler = createGenerateHandler({ fetchFn });
+
+      await handler(createPostRequest({ mood: 'focus', tempo: 88, style: 'ambient' }));
+
+      const call = fetchFn.mock.calls[0] as [string, RequestInit];
+      const headers = call[1].headers as Record<string, string>;
+
+      expect(headers.authorization).toBe('Bearer process-env-key');
+    } finally {
+      if (originalApiKey === undefined) {
+        delete env.OPENAI_API_KEY;
+      } else {
+        env.OPENAI_API_KEY = originalApiKey;
+      }
+    }
+  });
+
   it('reads OPENAI_API_KEY from server environment getter, not request body', async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(
@@ -93,6 +132,22 @@ describe('createGenerateHandler', () => {
 
     expect(headers.authorization).toBe('Bearer env-only-key');
     expect(headers.authorization).not.toContain('from-request-should-be-ignored');
+  });
+
+  it('returns descriptive 500 if OPENAI_API_KEY is not configured', async () => {
+    const fetchFn = vi.fn();
+    const handler = createGenerateHandler({
+      fetchFn,
+      getOpenAiApiKey: () => undefined
+    });
+
+    const response = await handler(createPostRequest({ mood: 'focus', tempo: 88, style: 'ambient' }));
+
+    expect(response.status).toBe(500);
+    expect((await response.json()) as { error: string }).toEqual({
+      error: 'OPENAI_API_KEY is not configured'
+    });
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('sends prompt instructions requiring only a Strudel pattern string', async () => {
