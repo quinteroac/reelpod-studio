@@ -1,0 +1,238 @@
+{
+  "entries": [
+    {
+      "id": "TC-001-01",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.625Z"
+    },
+    {
+      "id": "TC-001-02",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.627Z"
+    },
+    {
+      "id": "TC-001-03",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.628Z"
+    },
+    {
+      "id": "TC-001-04",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.629Z"
+    },
+    {
+      "id": "TC-001-05",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.629Z"
+    },
+    {
+      "id": "TC-001-06",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.630Z"
+    },
+    {
+      "id": "TC-001-07",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.630Z"
+    },
+    {
+      "id": "TC-001-08",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.630Z"
+    },
+    {
+      "id": "TC-001-09",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.630Z"
+    },
+    {
+      "id": "TC-001-10",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.631Z"
+    },
+    {
+      "id": "TC-001-11",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.631Z"
+    },
+    {
+      "id": "TC-001-12",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:39:19.113Z"
+    },
+    {
+      "id": "TC-002-01",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.631Z"
+    },
+    {
+      "id": "TC-002-02",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.632Z"
+    },
+    {
+      "id": "TC-002-03",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.632Z"
+    },
+    {
+      "id": "TC-002-04",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.632Z"
+    },
+    {
+      "id": "TC-002-05",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.632Z"
+    },
+    {
+      "id": "TC-002-06",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:39:19.114Z"
+    },
+    {
+      "id": "TC-003-01",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.633Z"
+    },
+    {
+      "id": "TC-003-02",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.633Z"
+    },
+    {
+      "id": "TC-003-03",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.633Z"
+    },
+    {
+      "id": "TC-003-04",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.633Z"
+    },
+    {
+      "id": "TC-003-05",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:39:19.114Z"
+    },
+    {
+      "id": "TC-FR-08",
+      "type": "automated",
+      "status": "passed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:30:35.634Z"
+    },
+    {
+      "id": "TC-FR-10",
+      "type": "automated",
+      "status": "failed",
+      "attempt_count": 2,
+      "last_agent_exit_code": 0,
+      "last_error_summary": "FR-10 explicitly requires a requirements.txt or pyproject.toml listing Python dependencies (fastapi, uvicorn, openai, python-dotenv). The iteration implemented the backend endpoint in TypeScript rather than Python, so this requirement cannot be satisfied.",
+      "updated_at": "2026-02-27T23:39:19.115Z"
+    },
+    {
+      "id": "TC-002-07",
+      "type": "exploratory_manual",
+      "status": "in_progress",
+      "attempt_count": 1,
+      "last_agent_exit_code": null,
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:39:19.115Z"
+    }
+  ]
+}

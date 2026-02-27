@@ -1,0 +1,493 @@
+{
+  "iteration": "000003",
+  "testPlanFile": "it_000003_TP.json",
+  "executedTestIds": [
+    "TC-001-01",
+    "TC-001-02",
+    "TC-001-03",
+    "TC-001-04",
+    "TC-001-05",
+    "TC-001-06",
+    "TC-001-07",
+    "TC-001-08",
+    "TC-001-09",
+    "TC-001-10",
+    "TC-001-11",
+    "TC-001-12",
+    "TC-002-01",
+    "TC-002-02",
+    "TC-002-03",
+    "TC-002-04",
+    "TC-002-05",
+    "TC-002-06",
+    "TC-003-01",
+    "TC-003-02",
+    "TC-003-03",
+    "TC-003-04",
+    "TC-003-05",
+    "TC-FR-08",
+    "TC-FR-10",
+    "TC-002-07"
+  ],
+  "results": [
+    {
+      "testCaseId": "TC-001-01",
+      "description": "Valid `POST /api/generate` with `{ mood, tempo, style }` returns 200 and `{ pattern: string }` when OpenAI returns a valid pattern",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1",
+        "FR-2",
+        "FR-3",
+        "FR-6"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "src/api/generate.test.ts: handler with mocked OpenAI returns 200 and payload.pattern for valid { mood, tempo, style }; extractPatternFromOpenAiResponse trims and validatePattern enforces non-empty, max length, no markdown.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-01_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-02",
+      "description": "Request with missing `mood` returns 422 and `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-11"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "src/api/generate.ts parseAndValidatePayload rejects missing mood (typeof mood !== 'string' || mood.trim().length === 0); generate.test.ts 'rejects invalid payloads' covers missing-field case with 422 and { error }.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-02_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-03",
+      "description": "Request with missing `tempo` or `style` returns 422 and `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-11"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "parseAndValidatePayload requires mood, tempo, style; missing tempo or style yields null -> jsonResponse(422, { error }). Test uses createPostRequest({ mood, tempo }) (missing style) and expects 422 with error.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-03_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-04",
+      "description": "Request with invalid types (e.g. `tempo` as string) returns 422 and `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-11"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "Test createPostRequest({ mood: 'chill', tempo: '90', style: 'jazz' }); parseAndValidatePayload checks typeof tempo !== 'number' -> 422. wrongTypeResponse.status 422 and toHaveProperty('error').",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-04_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-05",
+      "description": "Request with `tempo` outside valid range returns 422 and `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-11"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "parseAndValidatePayload enforces tempo in [MIN_TEMPO, MAX_TEMPO] (60-120); createPostRequest({ mood: 'chill', tempo: 200, style: 'jazz' }) -> invalidRangeResponse 422 with error.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-05_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-06",
+      "description": "Handler uses `OPENAI_API_KEY` from server environment only (not from request body or headers)",
+      "correlatedRequirements": [
+        "FR-9"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "generate.test.ts: 'reads OPENAI_API_KEY from server environment getter, not request body' sends OPENAI_API_KEY in body; assertion headers.authorization === 'Bearer env-only-key' and not from request.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-06_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-07",
+      "description": "Prompt sent to OpenAI instructs “return only a valid Strudel pattern string” (no markdown/explanation)",
+      "correlatedRequirements": [
+        "FR-3",
+        "FR-4"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "buildPrompt in generate.ts system message: 'Return only a valid Strudel pattern string. No markdown. No explanation.'; test asserts body.messages[0].content includes 'Return only a valid Strudel pattern string' and 'No markdown'.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-07_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-08",
+      "description": "On success, response is 200 with `{ pattern: string }` and pattern passes backend validation",
+      "correlatedRequirements": [
+        "FR-6",
+        "FR-12"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "First test: mock returns content with spaces; handler returns 200 and payload.pattern trimmed (validatePattern). extractPatternFromOpenAiResponse uses validatePattern (length, no markdown).",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-08_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-09",
+      "description": "When OpenAI returns empty/blank string, endpoint returns 500 with `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-5",
+        "FR-12"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "validatePattern returns null for trimmed.length === 0; invalidResponseShapeHandler mocks choices: [] -> empty content -> 500. Test expects 500 with error.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-09_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-10",
+      "description": "When OpenAI returns malformed output (e.g. markdown block), endpoint returns 500 with `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-5",
+        "FR-12"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "isMalformedPattern checks for ```, 'pattern:', 'here is'; malformedOutputHandler mocks content '```\\npattern: s(\"bd\")\\n```' -> 500 with { error }.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-10_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-11",
+      "description": "When OpenAI API throws (network/auth error), endpoint returns 500 with `{ error: string }`",
+      "correlatedRequirements": [
+        "FR-5",
+        "FR-6"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "Handler catch block returns jsonResponse(500, 'Failed to reach OpenAI Chat Completions API'); !upstreamResponse.ok returns 500. upstreamErrorHandler mock 500 -> test expects 500 with error.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-11_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-001-12",
+      "description": "Backend code passes typecheck / lint",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "skipped",
+        "evidence": "Backend logic lives in src/api/generate.ts and vite.config.ts; typecheck (tsc) and lint (eslint) were not executed in this session.",
+        "notes": "Run manually: bun run typecheck && bun run lint."
+      },
+      "passFail": null,
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-12_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-01",
+      "description": "Clicking Generate sends `POST /api/generate` with current `{ mood, tempo, style }`",
+      "correlatedRequirements": [
+        "FR-7"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "App.test.tsx: 'posts params to /api/generate and executes returned backend pattern' asserts fetchMock called with '/api/generate', POST, body: JSON.stringify({ mood: 'upbeat', tempo: 110, style: 'hip-hop' }).",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-01_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-02",
+      "description": "While request is in flight, “Generating track…” loading state is shown",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "App.test.tsx: 'shows loading while generation is in progress' asserts screen.getByText('Generating track...'), role=status, animate-spin class, Generate button disabled during fetch.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-02_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-03",
+      "description": "On 200 response, returned `pattern` is passed to `strudelController.generate(pattern)` and no error UI",
+      "correlatedRequirements": [
+        "FR-7"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "Same test: on 200, controller.generate called with backendPattern; expect(screen.queryByRole('alert')).not.toBeInTheDocument(). App.tsx requestGeneratedPattern then strudelController.generate(pattern).",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-03_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-04",
+      "description": "On network or backend error (4xx/5xx or network failure), error UI shows backend error message",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "App.test.tsx: 'on backend failure shows backend error and allows retry' (500 response with error message in alert); 'on network failure shows error message from fetch failure'.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-04_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-05",
+      "description": "Main Generate flow does not call local `generatePattern()` from `pattern-generator.ts`",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "App.test.tsx spies on patternGenerator.generatePattern and asserts generatePatternSpy.not.toHaveBeenCalled(); App.tsx handleGenerate uses requestGeneratedPattern (fetch) only.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-05_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-06",
+      "description": "Frontend code passes typecheck / lint",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "skipped",
+        "evidence": "Frontend code in src/App.tsx and related components; typecheck and lint were not executed in this session.",
+        "notes": "Run manually: bun run typecheck && bun run lint."
+      },
+      "passFail": null,
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-06_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-003-01",
+      "description": "Backend reads `OPENAI_API_KEY` from process environment (e.g. via `.env` at startup)",
+      "correlatedRequirements": [
+        "FR-9"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "generate.ts defaultGetOpenAiApiKey reads (globalThis as any).process?.env?.OPENAI_API_KEY; Vite dev server runs middleware in Node so process.env available at runtime.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-01_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-003-02",
+      "description": "`.env.example` exists and documents `OPENAI_API_KEY=`",
+      "correlatedRequirements": [
+        "FR-9"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": ".env.example exists with content 'OPENAI_API_KEY='; env-config.test.ts asserts envExample.toContain('OPENAI_API_KEY=').",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-02_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-003-03",
+      "description": "`.env` is listed in `.gitignore` (or already ignored)",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": ".gitignore contains '.env'; env-config.test.ts asserts entries.toContain('.env').",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-03_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-003-04",
+      "description": "When `OPENAI_API_KEY` is missing at startup, server logs clear error and exits (or returns descriptive 500 on first request)",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "createGenerateHandler returns 500 with { error: 'OPENAI_API_KEY is not configured' } when getOpenAiApiKey() is undefined; generate.test.ts 'returns descriptive 500 if OPENAI_API_KEY is not configured' asserts 500 and that message.",
+        "notes": "Server does not exit at startup; first POST returns descriptive 500."
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-04_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-003-05",
+      "description": "Backend code passes typecheck / lint",
+      "correlatedRequirements": [],
+      "mode": "automated",
+      "payload": {
+        "status": "skipped",
+        "evidence": "Backend code (src/api/generate.ts, vite.config.ts) typecheck/lint not run in session.",
+        "notes": "Run manually: bun run typecheck && bun run lint."
+      },
+      "passFail": null,
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-05_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-FR-08",
+      "description": "Frontend and backend can be started together (e.g. root `dev` script or Procfile)",
+      "correlatedRequirements": [
+        "FR-8"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "passed",
+        "evidence": "package.json scripts.dev is 'vite'; vite.config.ts plugin 'generate-api-endpoint' configures middleware for /api/generate. Single 'bun run dev' serves frontend and POST /api/generate.",
+        "notes": ""
+      },
+      "passFail": "pass",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-FR-08_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-FR-10",
+      "description": "Backend has `requirements.txt` or `pyproject.toml` with expected dependencies",
+      "correlatedRequirements": [
+        "FR-10"
+      ],
+      "mode": "automated",
+      "payload": {
+        "status": "failed",
+        "evidence": "No requirements.txt or pyproject.toml in repo. Backend is TypeScript (src/api/generate.ts) run as Vite dev middleware; dependencies in package.json.",
+        "notes": "Test plan expected Python backend dependency files; implementation uses Node/bun and package.json."
+      },
+      "passFail": "fail",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-FR-10_attempt_001.json"
+      ]
+    },
+    {
+      "testCaseId": "TC-002-07",
+      "description": "Full flow in browser: set params → Generate → audible playback; visual and aural check",
+      "correlatedRequirements": [],
+      "mode": "exploratory_manual",
+      "payload": {
+        "status": "failed",
+        "evidence": "OPENAI_API_KEY is not configured",
+        "notes": ""
+      },
+      "passFail": "fail",
+      "agentExitCode": 0,
+      "artifactReferences": [
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-07_attempt_001.json"
+      ]
+    }
+  ]
+}
