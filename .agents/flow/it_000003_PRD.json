@@ -1,0 +1,160 @@
+{
+  "goals": [
+    "Replace the deterministic pattern generator with an AI-generated Strudel pattern produced by the OpenAI API.",
+    "Introduce a minimal backend server that holds the API key and proxies generation requests.",
+    "Keep the end-user experience identical: set parameters → click Generate → audio plays."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Backend Generation Endpoint",
+      "description": "As a backend service, I want to expose a `POST /api/generate` endpoint that accepts mood, tempo, and style, so that the frontend can request an AI-generated Strudel pattern without handling the OpenAI API key.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`POST /api/generate` accepts a JSON body `{ mood: string, tempo: number, style: string }`."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Invalid request payloads (missing fields, wrong types, or invalid tempo range) are rejected with `4xx` (e.g. `422`) and `{ error: string }`."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The handler reads `OPENAI_API_KEY` from the server environment (never from the request)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The handler sends a prompt to the OpenAI Chat Completions API instructing it to return a valid Strudel pattern string only (no markdown, no explanation)."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "On success, the endpoint returns `200` with `{ pattern: string }`."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Before returning success, the backend validates the returned pattern (trimmed non-empty string, length guard, and malformed-output rejection)."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "On OpenAI error, invalid OpenAI response, or failed pattern validation, the endpoint returns `500` with `{ error: string }` describing the failure."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Frontend Calls Backend Instead of Local Generator",
+      "description": "As an end user, I want the Generate button to call the backend endpoint, so that the AI-generated pattern is fetched and played by Strudel automatically.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Clicking Generate sends a `POST /api/generate` request with the current `{ mood, tempo, style }` values."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "While the request is in flight, the existing \"Generating track…\" loading state is shown."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "On a successful response, the returned `pattern` string is passed to `strudelController.generate(pattern)` and no error state is rendered."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "On a network or backend error, the existing error UI is shown with the error message returned by the backend."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "The local `generatePattern()` function from `pattern-generator.ts` is no longer called in the main flow."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Visually verified in browser: full end-to-end flow (set params → Generate → audible playback)."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Backend API Key Configuration",
+      "description": "As a developer running the app locally, I want to set the OpenAI API key via an environment variable, so that the key is never committed or exposed to the browser.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The backend reads `OPENAI_API_KEY` from the process environment (e.g. via a `.env` file loaded at startup)."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "A `.env.example` file documents the required variable (`OPENAI_API_KEY=`)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "`.env` is listed in `.gitignore` (or already ignored)."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "If `OPENAI_API_KEY` is missing at startup, the server logs a clear error and exits (or returns a descriptive `500` on the first request)."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "A Python backend server is added under `backend/` in the repo."
+    },
+    {
+      "id": "FR-2",
+      "description": "The backend exposes exactly one endpoint: `POST /api/generate`."
+    },
+    {
+      "id": "FR-3",
+      "description": "The endpoint builds a system + user prompt from the incoming parameters and calls the OpenAI Chat Completions API (model: `gpt-4o-mini` by default)."
+    },
+    {
+      "id": "FR-4",
+      "description": "The prompt instructs OpenAI to return only a valid Strudel pattern string with no surrounding text, markdown, or explanation."
+    },
+    {
+      "id": "FR-5",
+      "description": "If OpenAI returns an empty, blank, or otherwise invalid pattern string, the backend returns `500` with `{ \"error\": string }` describing the failure."
+    },
+    {
+      "id": "FR-6",
+      "description": "The backend returns `{ \"pattern\": string }` on success or `{ \"error\": string }` on failure."
+    },
+    {
+      "id": "FR-7",
+      "description": "The frontend replaces the `generatePattern()` call with a `fetch` to `POST /api/generate`."
+    },
+    {
+      "id": "FR-8",
+      "description": "Both frontend (Vite dev server) and backend (Python) can be started together in development (e.g. via a root-level `dev` script or a `Procfile`)."
+    },
+    {
+      "id": "FR-9",
+      "description": "`OPENAI_API_KEY` is read from the server environment; `.env.example` documents it; `.env` is git-ignored."
+    },
+    {
+      "id": "FR-10",
+      "description": "The backend includes a `requirements.txt` (or `pyproject.toml`) listing its dependencies (e.g. `fastapi`, `uvicorn`, `openai`, `python-dotenv`)."
+    },
+    {
+      "id": "FR-11",
+      "description": "The endpoint validates request payload shape and value constraints; malformed client input returns `4xx` (e.g. `422`) and does not call OpenAI."
+    },
+    {
+      "id": "FR-12",
+      "description": "The backend applies minimum output validation before returning success (trimmed non-empty string, reasonable max length, malformed-output rejection)."
+    }
+  ]
+}

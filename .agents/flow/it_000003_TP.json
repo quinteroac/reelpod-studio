@@ -1,0 +1,221 @@
+{
+  "overallStatus": "pending",
+  "scope": [
+    "Backend: `POST /api/generate` endpoint behaviour (request validation, OpenAI integration, response shape, error handling).",
+    "Backend: API key configuration (env loading, missing-key handling, `.env.example` and `.gitignore`).",
+    "Frontend: Generate flow calling backend instead of local `generatePattern()`; loading and error states; passing returned pattern to Strudel.",
+    "End-to-end: Parameter set → Generate → backend returns pattern → Strudel plays (automated where possible; one manual visual check for subjective playback feel)."
+  ],
+  "environmentData": [
+    "Node/bun for frontend (Vitest); Python 3.x for backend tests (e.g. pytest with `httpx.ASGITransport` or `TestClient`).",
+    "Backend tests may use mocked OpenAI client to avoid real API calls; integration tests may use a real OpenAI client with a test key or remain mocked.",
+    "Frontend tests use mocked `fetch` (or MSW) to simulate backend success/error responses.",
+    "Optional: `.env.test` or env vars in CI for backend integration tests if not fully mocked.",
+    "Vite dev server and backend server runnable for local e2e/manual checks (e.g. root `dev` script or separate terminals).",
+    "---",
+    "## User Story: US-001 - Backend Generation Endpoint"
+  ],
+  "automatedTests": [
+    {
+      "id": "TC-001-01",
+      "description": "Valid `POST /api/generate` with `{ mood, tempo, style }` returns 200 and `{ pattern: string }` when OpenAI returns a valid pattern",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1",
+        "FR-2",
+        "FR-3",
+        "FR-6"
+      ]
+    },
+    {
+      "id": "TC-001-02",
+      "description": "Request with missing `mood` returns 422 and `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-11"
+      ]
+    },
+    {
+      "id": "TC-001-03",
+      "description": "Request with missing `tempo` or `style` returns 422 and `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-11"
+      ]
+    },
+    {
+      "id": "TC-001-04",
+      "description": "Request with invalid types (e.g. `tempo` as string) returns 422 and `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-11"
+      ]
+    },
+    {
+      "id": "TC-001-05",
+      "description": "Request with `tempo` outside valid range returns 422 and `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-11"
+      ]
+    },
+    {
+      "id": "TC-001-06",
+      "description": "Handler uses `OPENAI_API_KEY` from server environment only (not from request body or headers)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-9"
+      ]
+    },
+    {
+      "id": "TC-001-07",
+      "description": "Prompt sent to OpenAI instructs “return only a valid Strudel pattern string” (no markdown/explanation)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-3",
+        "FR-4"
+      ]
+    },
+    {
+      "id": "TC-001-08",
+      "description": "On success, response is 200 with `{ pattern: string }` and pattern passes backend validation",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-6",
+        "FR-12"
+      ]
+    },
+    {
+      "id": "TC-001-09",
+      "description": "When OpenAI returns empty/blank string, endpoint returns 500 with `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-5",
+        "FR-12"
+      ]
+    },
+    {
+      "id": "TC-001-10",
+      "description": "When OpenAI returns malformed output (e.g. markdown block), endpoint returns 500 with `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-5",
+        "FR-12"
+      ]
+    },
+    {
+      "id": "TC-001-11",
+      "description": "When OpenAI API throws (network/auth error), endpoint returns 500 with `{ error: string }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-5",
+        "FR-6"
+      ]
+    },
+    {
+      "id": "TC-001-12",
+      "description": "Backend code passes typecheck / lint",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-002-01",
+      "description": "Clicking Generate sends `POST /api/generate` with current `{ mood, tempo, style }`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-7"
+      ]
+    },
+    {
+      "id": "TC-002-02",
+      "description": "While request is in flight, “Generating track…” loading state is shown",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-002-03",
+      "description": "On 200 response, returned `pattern` is passed to `strudelController.generate(pattern)` and no error UI",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-7"
+      ]
+    },
+    {
+      "id": "TC-002-04",
+      "description": "On network or backend error (4xx/5xx or network failure), error UI shows backend error message",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-002-05",
+      "description": "Main Generate flow does not call local `generatePattern()` from `pattern-generator.ts`",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-002-06",
+      "description": "Frontend code passes typecheck / lint",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-003-01",
+      "description": "Backend reads `OPENAI_API_KEY` from process environment (e.g. via `.env` at startup)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-9"
+      ]
+    },
+    {
+      "id": "TC-003-02",
+      "description": "`.env.example` exists and documents `OPENAI_API_KEY=`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-9"
+      ]
+    },
+    {
+      "id": "TC-003-03",
+      "description": "`.env` is listed in `.gitignore` (or already ignored)",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-003-04",
+      "description": "When `OPENAI_API_KEY` is missing at startup, server logs clear error and exits (or returns descriptive 500 on first request)",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-003-05",
+      "description": "Backend code passes typecheck / lint",
+      "status": "pending",
+      "correlatedRequirements": []
+    },
+    {
+      "id": "TC-FR-08",
+      "description": "Frontend and backend can be started together (e.g. root `dev` script or Procfile)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-8"
+      ]
+    },
+    {
+      "id": "TC-FR-10",
+      "description": "Backend has `requirements.txt` or `pyproject.toml` with expected dependencies",
+      "status": "pending",
+      "correlatedRequirements": [
+        "FR-10"
+      ]
+    }
+  ],
+  "exploratoryManualTests": [
+    {
+      "id": "TC-002-07",
+      "description": "Full flow in browser: set params → Generate → audible playback; visual and aural check",
+      "status": "pending",
+      "correlatedRequirements": []
+    }
+  ]
+}
