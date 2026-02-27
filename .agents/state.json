@@ -26,8 +26,8 @@
         "file": "it_000001_TP.json"
       },
       "prototype_build": {
-        "status": "pending",
-        "file": null
+        "status": "in_progress",
+        "file": "it_000001_progress.json"
       },
       "test_execution": {
         "status": "pending",
@@ -54,7 +54,7 @@
       }
     }
   },
-  "last_updated": "2026-02-27T21:37:14.963Z",
-  "updated_by": "nvst:approve-test-plan",
+  "last_updated": "2026-02-27T21:37:26.271Z",
+  "updated_by": "nvst:create-prototype",
   "history": []
 }
