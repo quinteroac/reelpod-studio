@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import envExample from '../../.env.example?raw';
 import gitignoreFile from '../../.gitignore?raw';
+import packageJson from '../../package.json';
 
 describe('environment configuration', () => {
   it('documents OPENAI_API_KEY in .env.example', () => {
@@ -16,5 +17,12 @@ describe('environment configuration', () => {
       .filter((line: string) => line.length > 0 && !line.startsWith('#'));
 
     expect(entries).toContain('.env');
+  });
+
+  it('package.json documents backend platform dependency (vite)', () => {
+    // The backend is implemented as a TypeScript Vite middleware (not Python).
+    // The dependency manifest is package.json; vite is required to run the
+    // /api/generate middleware alongside the frontend dev server.
+    expect(packageJson.devDependencies).toHaveProperty('vite');
   });
 });

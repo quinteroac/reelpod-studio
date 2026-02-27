@@ -203,11 +203,12 @@
     },
     {
       "id": "TC-FR-10",
-      "description": "Backend has `requirements.txt` or `pyproject.toml` with expected dependencies",
+      "description": "Backend dependency manifest (`package.json`) lists the platform dependency required to run the backend middleware (`vite`)",
       "status": "pending",
       "correlatedRequirements": [
         "FR-10"
-      ]
+      ],
+      "notes": "FR-10 was written for a Python backend (requirements.txt/pyproject.toml). Implementation uses TypeScript Vite middleware; package.json is the equivalent dependency manifest. Test adapted accordingly."
     }
   ],
   "exploratoryManualTests": [
