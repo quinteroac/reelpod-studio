@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
@@ -95,6 +96,30 @@ class TestSourceGuards:
             with TestClient(app=main.app):
                 pass
             assert calls == []
+
+
+class TestBackendDependencies:
+    def test_pyproject_does_not_include_ace_step(self) -> None:
+        pyproject_path = Path(__file__).parent.joinpath("pyproject.toml")
+        project = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        dependencies = project["project"]["dependencies"]
+        assert "ace-step" not in dependencies
+
+    def test_uv_lock_does_not_include_ace_step(self) -> None:
+        lockfile = Path(__file__).parent.joinpath("uv.lock").read_text(encoding="utf-8")
+        assert 'name = "ace-step"' not in lockfile
+        assert "github.com/ace-step/ACE-Step.git" not in lockfile
+
+    def test_backend_has_http_client_for_acestep_api_calls(self) -> None:
+        source = Path(__file__).parent.joinpath("main.py").read_text(encoding="utf-8")
+        pyproject_path = Path(__file__).parent.joinpath("pyproject.toml")
+        project = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        dependencies = project["project"]["dependencies"]
+
+        has_httpx_dependency = any(dep == "httpx" or dep.startswith("httpx") for dep in dependencies)
+        has_urllib_client = "from urllib.request import Request, urlopen" in source
+
+        assert has_httpx_dependency or has_urllib_client
 
 
 class TestGenerateEndpoint:

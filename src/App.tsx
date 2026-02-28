@@ -11,7 +11,6 @@ const defaultParams: GenerationParams = {
 };
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
-const SEEK_STEP = 1;
 const SEEK_POLL_INTERVAL_MS = 500;
 
 function getErrorMessage(error: unknown): string {
