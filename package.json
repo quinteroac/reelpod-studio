@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bash -c 'python3 -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 & backend_pid=$!; trap \"kill $backend_pid\" EXIT; vite'",
+    "dev": "bash -c '(cd backend && uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000) & backend_pid=$!; trap \"kill $backend_pid\" EXIT; vite'",
     "dev:frontend": "vite",
-    "dev:backend": "python3 -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:backend": "bash -c 'cd backend && uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000'",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

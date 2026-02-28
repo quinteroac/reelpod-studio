@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -149,16 +153,18 @@ def generate_pattern(body: GenerateRequestBody) -> dict[str, str]:
     for attempt in range(MAX_GENERATION_ATTEMPTS):
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=0.8,
+                model="gpt-5-mini",
                 messages=build_messages(body),
             )
+            logger.debug("OpenAI response: %s", response)
         except Exception as exc:
+            logger.error("OpenAI API error (attempt %d): %s: %s", attempt + 1, type(exc).__name__, exc)
             if attempt == MAX_GENERATION_ATTEMPTS - 1:
                 raise HTTPException(status_code=500, detail="Failed to reach OpenAI Chat Completions API") from exc
             continue
 
         content = flatten_text_content(extract_pattern_candidate(response))
+        logger.debug("Extracted content: %r", content)
         pattern = validate_pattern(content)
         if pattern:
             return {"pattern": pattern}
