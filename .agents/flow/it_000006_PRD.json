@@ -1,0 +1,124 @@
+{
+  "goals": [
+    "The LLM generates multi-layer Strudel patterns that include at least one melodic or harmonic",
+    "All generated patterns remain within the 500-character limit and play without errors in the",
+    "No new frontend UI changes or new audio libraries are introduced."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Extend SKILL.md with melodic notation",
+      "description": "As an end user, I want the AI to know how to write note-based and synth-based Strudel layers so that the generated track includes melody, bass, or chords.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`SKILL.md` documents the `note()` function for pitch sequences (e.g. `note(\"c3 eb3 g3 bb3\")`)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "`SKILL.md` documents at least two melodic/harmonic sound names available in the browser"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "`SKILL.md` documents how to combine a note pattern with a sound:"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "`SKILL.md` documents how to stack melodic voices with the existing drum stack."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "`SKILL.md` maps each mood and style to recommended melodic characteristics (e.g. scale,"
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes (Python tests in `backend/tests/` still pass)."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Add melodic example patterns to valid-patterns.md",
+      "description": "As an end user, I want the few-shot examples sent to the LLM to demonstrate full-track patterns so that the model produces similar multi-layer output.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "`valid-patterns.md` is updated so that each of the three style sections (Jazz, Hip-Hop,"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Each example pattern plays in the browser Strudel REPL at `https://strudel.cc` without"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Each example pattern remains on a single line and does not exceed 500 characters."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "The `**Parameters:**` and fenced code block format required by `load_few_shot_examples()`"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Existing Python unit tests in `backend/tests/` still pass."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "End-to-end verification of melodic generation",
+      "description": "As an end user, I want the full generation pipeline to produce a multi-layer pattern when I click Generate so that I can actually hear a lofi track with melody, not just a drum beat.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "A manual test request to `POST /api/generate` (with any valid mood/style/tempo) returns a"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The returned pattern plays in the browser without JavaScript console errors."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Melodic audio is audible in the browser alongside the drum beat — visually verified in"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "The pattern length does not exceed 500 characters (enforced by the existing"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "`SKILL.md` must document the `note(\"...\")` function for pitch sequences using scientific"
+    },
+    {
+      "id": "FR-2",
+      "description": "`SKILL.md` must document at least two melodic sound names valid in the browser Strudel"
+    },
+    {
+      "id": "FR-3",
+      "description": "`SKILL.md` must provide at least one complete multi-layer example pattern (drums + at"
+    },
+    {
+      "id": "FR-4",
+      "description": "`SKILL.md` must update the Mood and Style parameter mapping tables to include melodic"
+    },
+    {
+      "id": "FR-5",
+      "description": "`valid-patterns.md` must contain exactly three style sections (Jazz, Hip-Hop, Ambient),"
+    },
+    {
+      "id": "FR-6",
+      "description": "Every pattern in `valid-patterns.md` must be verified to play in the browser Strudel REPL"
+    },
+    {
+      "id": "FR-7",
+      "description": "No changes to `main.py`, the FastAPI routes, or any frontend file are required or"
+    },
+    {
+      "id": "FR-8",
+      "description": "All new Strudel syntax documented in `SKILL.md` must use only functions and sound names"
+    }
+  ]
+}
