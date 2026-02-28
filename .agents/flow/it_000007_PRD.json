@@ -1,0 +1,137 @@
+{
+  "goals": [
+    "Eliminate the OpenAI dependency and `OPENAI_API_KEY` requirement.",
+    "Generate audio locally using ACEStep weights running inside the FastAPI process.",
+    "Return a playable WAV audio stream from `POST /api/generate`.",
+    "Replace Strudel REPL playback in the frontend with an HTML5 `<audio>` element.",
+    "Remove all dead code related to OpenAI, Strudel skill files, and pattern validation."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Backend generates audio with ACEStep instead of OpenAI",
+      "description": "As a backend service, I want to load ACEStep locally and run inference on each generate request so that music is produced without any external API call or API key.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`ace-step` is listed as a backend Python dependency (e.g., in `requirements.txt` or `pyproject.toml`)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The `ACEStep` model is instantiated once at FastAPI application startup (not per request)."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "`POST /api/generate` accepts the same request body as before: `{ mood: string, tempo: integer, style: string }` with the same validation rules (tempo 60–120, non-empty strings)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The handler builds an ACEStep `prompt` string from the three parameters, e.g. `\"chill lofi jazz, 80 BPM\"`. The exact template must be documented in a code comment."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "ACEStep is called with `lyrics=\"\"` (instrumental — no lyrics input)."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "`audio_duration` defaults to 30 seconds; `infer_step` defaults to 20."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "On success, the endpoint returns a `StreamingResponse` with `media_type=\"audio/wav\"` containing the generated WAV bytes."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "On ACEStep inference failure, the endpoint returns HTTP 500 with `{ \"error\": \"Audio generation failed\" }`."
+        },
+        {
+          "id": "US-001-AC09",
+          "text": "All OpenAI imports (`from openai import OpenAI`), `OPENAI_API_KEY` env-var reads, and the `build_messages` / `load_skill_body` / `load_few_shot_examples` / `validate_pattern` / `extract_pattern_candidate` / `flatten_text_content` / `is_malformed_pattern` helper functions are removed."
+        },
+        {
+          "id": "US-001-AC10",
+          "text": "The `backend/llm-skills/` directory (Strudel skill files and examples) is removed."
+        },
+        {
+          "id": "US-001-AC11",
+          "text": "Typecheck / lint passes on the backend."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Frontend plays the returned WAV audio via HTML5 `<audio>`",
+      "description": "As an end user, I want the Generate button to produce audible music that plays immediately in my browser so that I can hear the generated track without any Strudel REPL.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "`requestGeneratedPattern` is replaced by a new function (e.g., `requestGeneratedAudio`) that `fetch`es `POST /api/generate` and, on success, creates an object URL from the response `Blob` (`URL.createObjectURL`)."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "An HTML5 `<audio>` element (or a `new Audio(url)` instance) is used for playback; the Strudel controller (`createBrowserStrudelController`, `StrudelController`) is removed from `App.tsx`."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "After a successful generate, the audio plays automatically (equivalent to the previous auto-play behaviour)."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "The existing Play / Pause buttons control the `<audio>` element's `play()` / `pause()` methods."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "The Seek slider controls `audio.currentTime` proportionally (0–100 mapped to 0–`audio.duration`)."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Error messages for network failures or non-OK responses remain user-visible (same error-display UI as before)."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "The parameter controls (Mood, Tempo, Style selects/slider) are unchanged."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "All imports of `strudel-adapter`, `strudel.ts`, `strudel-repl.ts`, and related Strudel types are removed from `App.tsx`."
+        },
+        {
+          "id": "US-002-AC09",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC10",
+          "text": "Visually verified in browser: clicking Generate produces audible audio; Play/Pause/Seek work."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "End-to-end smoke test",
+      "description": "As a developer, I want an automated test that verifies the new generate endpoint returns valid WAV audio so that regressions are caught without manual testing.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "A test file (e.g., `backend/test_main.py`) contains at least one test for `POST /api/generate`."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The test mocks the ACEStep model's `infer()` call so it returns a minimal valid WAV byte sequence without loading GPU weights."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The test asserts: HTTP status 200, `content-type: audio/wav`, and non-empty response body."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "A second test asserts: when ACEStep `infer()` raises an exception, the endpoint returns HTTP 500 with `{\"error\": \"Audio generation failed\"}`."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "All tests pass."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": []
+}

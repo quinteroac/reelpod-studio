@@ -9,42 +9,40 @@
 - Workflow: Define → Prototype → Refactor per iteration; adhere to this file from iteration 2 onward
 
 ## Tech Stack
-- Language: TypeScript
-- Runtime: Browser frontend (React/Vite) + Python backend (FastAPI + OpenAI)
+- Language: TypeScript (frontend) + Python (backend)
+- Runtime: Browser frontend (React/Vite) + Python backend (FastAPI + ACEStep)
 - Frameworks: React 19 + Vite, React Three Fiber (R3F)
-- Key libraries: Strudel REPL (in-browser audio via Web Audio API)
+- Key libraries: ACEStep (`ace-step` Python package, local music generation model, in-process inference)
 - Package manager: bun
 - Build / tooling: Vite
 
 ## Code Standards
 - Style patterns: functional components, hooks for state and side effects
-- Error handling: user-visible error messages for audio failures (autoplay policy, Web Audio support, REPL errors)
-- Module organisation: `src/components/` for UI, `src/lib/` for pure logic (pattern generation, parameter mapping)
-- Forbidden patterns: no custom audio pipeline (use Strudel REPL natively)
+- Error handling: user-visible error messages for audio failures (network errors, non-OK responses, inference errors)
+- Module organisation: `src/components/` for UI, `src/lib/` for pure logic (parameter mapping, audio utilities)
+- Forbidden patterns: no external API calls for audio generation (use ACEStep in-process); no Strudel REPL
 
 ## Testing Strategy
 - Approach: TDD — write tests before implementation
-- Runner: Vitest
+- Runner: Vitest (frontend) + pytest (backend)
 - Coverage targets: none enforced for MVP
-- Test location convention: co-located `*.test.ts` / `*.test.tsx` next to source files
+- Test location convention: co-located `*.test.ts` / `*.test.tsx` next to frontend source; `backend/test_main.py` for backend
 
 ## Product Architecture
 - Browser frontend (React/Vite) + Python backend (FastAPI, port 8000); Vite proxies `/api` to backend
-- User configures parameters (mood, tempo, style) → clicks Generate → `POST /api/generate` (FastAPI + OpenAI) returns a Strudel pattern string → Strudel REPL executes pattern in-browser via Web Audio API
+- User configures parameters (mood, tempo, style) → clicks Generate → `POST /api/generate` (FastAPI + ACEStep) runs local inference and returns a WAV audio stream → HTML5 `<audio>` element plays it in-browser
+- ACEStep model loaded once at FastAPI startup; prompt template: `"{mood} lofi {style}, {tempo} BPM"`; inference defaults: `lyrics=""`, `audio_duration=30`, `infer_step=20`
 - R3F used for visual/animation layer alongside audio playback
 
 ## Modular Structure
 - `src/App.tsx`: all UI (parameter controls, player, error/loading states); `src/components/` reserved for future extraction
-- `src/lib/pattern-generator.ts`: pure function mapping UI params → Strudel pattern string
-- `src/lib/strudel.ts`: controller interface, error types, and user-facing error mapping
-- `src/lib/strudel-adapter.ts`: browser-specific Strudel controller (`createBrowserStrudelController`)
-- `src/lib/strudel-repl.ts`: low-level Strudel REPL wrapper (`bootstrapStrudelRepl`, `StrudelWebReplEngine`)
 - `src/api/constants.ts`: API endpoint constants (`/api/generate`)
+- `backend/main.py`: FastAPI app; ACEStep model instantiation at startup; `POST /api/generate` handler; returns `StreamingResponse` with `media_type="audio/wav"`
 
 ## Implemented Capabilities
 <!-- Updated at the end of each iteration by bun nvst create project-context -->
 - Lofi theme
 - Parameter controls
-- Audio generation
-- Playback controls
+- Audio generation (ACEStep local inference)
+- Playback controls (HTML5 audio element — play, pause, seek)
 - Error handling

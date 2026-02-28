@@ -227,7 +227,7 @@ def generate_pattern(body: GenerateRequestBody) -> dict[str, str]:
     for attempt in range(MAX_GENERATION_ATTEMPTS):
         try:
             response = client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-5.1",
                 messages=build_messages(body),
             )
             logger.debug("OpenAI response: %s", response)
