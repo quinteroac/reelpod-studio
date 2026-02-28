@@ -1,222 +1,245 @@
 from __future__ import annotations
 
-import unittest
+import os
+import tempfile
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
 
 import main
 
 
-class LoadSkillBodyTests(unittest.TestCase):
-    def test_load_skill_body_returns_content_after_frontmatter(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            skill_path = Path(temp_dir) / "SKILL.md"
-            skill_path.write_text("---\nname: demo\n---\n# Prompt Body\nUse this.\n", encoding="utf-8")
-
-            result = main.load_skill_body(skill_path)
-
-        self.assertEqual(result, "# Prompt Body\nUse this.\n")
-
-    def test_load_skill_body_returns_full_content_without_frontmatter(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            skill_path = Path(temp_dir) / "SKILL.md"
-            content = "# Prompt Body\nNo frontmatter here.\n"
-            skill_path.write_text(content, encoding="utf-8")
-
-            result = main.load_skill_body(skill_path)
-
-        self.assertEqual(result, content)
+# ---------------------------------------------------------------------------
+# US-001-AC03: Request body validation (mood, tempo, style)
+# ---------------------------------------------------------------------------
 
 
-class BuildMessagesTests(unittest.TestCase):
-    def test_build_messages_uses_loaded_skill_body_for_system_prompt(self) -> None:
-        request = main.GenerateRequestBody(mood="calm", tempo=90, style="jazz")
+class TestGenerateRequestBody:
+    def test_valid_request_body(self) -> None:
+        body = main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        assert body.mood == "chill"
+        assert body.tempo == 80
+        assert body.style == "jazz"
 
-        few_shots = [{"user": "few-shot-user", "assistant": "few-shot-assistant"}]
-        with (
-            patch("main.load_skill_body", return_value="loaded prompt from file") as load_skill,
-            patch("main.load_few_shot_examples", return_value=few_shots) as load_few_shots,
-        ):
-            messages = main.build_messages(request)
+    def test_tempo_below_minimum_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="chill", tempo=59, style="jazz")
 
-        self.assertEqual(messages[0]["role"], "system")
-        self.assertEqual(messages[0]["content"], "loaded prompt from file")
-        self.assertEqual(messages[1], {"role": "user", "content": "few-shot-user"})
-        self.assertEqual(messages[2], {"role": "assistant", "content": "few-shot-assistant"})
-        self.assertEqual(
-            messages[3],
-            {
-                "role": "user",
-                "content": 'Generate one lo-fi Strudel pattern using mood "calm", style "jazz", and tempo 90. Return only the pattern.',
-            },
-        )
-        load_skill.assert_called_once_with(main.SKILL_MARKDOWN_PATH)
-        load_few_shots.assert_called_once_with(main.VALID_PATTERNS_MARKDOWN_PATH)
+    def test_tempo_above_maximum_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="chill", tempo=121, style="jazz")
 
-    def test_build_messages_inserts_three_few_shot_pairs_before_user_request(self) -> None:
-        request = main.GenerateRequestBody(mood="warm", tempo=75, style="ambient")
-        few_shots = [
-            {"user": "example-user-1", "assistant": "example-assistant-1"},
-            {"user": "example-user-2", "assistant": "example-assistant-2"},
-            {"user": "example-user-3", "assistant": "example-assistant-3"},
-        ]
+    def test_empty_mood_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="", tempo=80, style="jazz")
 
-        with (
-            patch("main.load_skill_body", return_value="system prompt"),
-            patch("main.load_few_shot_examples", return_value=few_shots),
-        ):
-            messages = main.build_messages(request)
+    def test_empty_style_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="chill", tempo=80, style="")
 
-        self.assertEqual(messages[0], {"role": "system", "content": "system prompt"})
-        self.assertEqual(messages[1], {"role": "user", "content": "example-user-1"})
-        self.assertEqual(messages[2], {"role": "assistant", "content": "example-assistant-1"})
-        self.assertEqual(messages[3], {"role": "user", "content": "example-user-2"})
-        self.assertEqual(messages[4], {"role": "assistant", "content": "example-assistant-2"})
-        self.assertEqual(messages[5], {"role": "user", "content": "example-user-3"})
-        self.assertEqual(messages[6], {"role": "assistant", "content": "example-assistant-3"})
-        self.assertEqual(
-            messages[7],
-            {
-                "role": "user",
-                "content": 'Generate one lo-fi Strudel pattern using mood "warm", style "ambient", and tempo 75. Return only the pattern.',
-            },
-        )
-        self.assertEqual(len(messages), 8)
+    def test_whitespace_only_mood_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="   ", tempo=80, style="jazz")
 
-    def test_build_messages_falls_back_to_no_few_shot_when_loading_fails(self) -> None:
-        request = main.GenerateRequestBody(mood="calm", tempo=90, style="jazz")
-
-        with (
-            patch("main.load_skill_body", return_value="system prompt"),
-            patch("main.load_few_shot_examples", side_effect=ValueError("invalid markdown")),
-            patch("main.logger.warning") as warn,
-        ):
-            messages = main.build_messages(request)
-
-        self.assertEqual(messages[0], {"role": "system", "content": "system prompt"})
-        self.assertEqual(
-            messages[1],
-            {
-                "role": "user",
-                "content": 'Generate one lo-fi Strudel pattern using mood "calm", style "jazz", and tempo 90. Return only the pattern.',
-            },
-        )
-        self.assertEqual(len(messages), 2)
-        warn.assert_called_once()
-
-    def test_skill_path_is_resolved_relative_to_main_module(self) -> None:
-        expected = (
-            Path(main.__file__).resolve().parent
-            / "llm-skills"
-            / "strudel-pattern-generator"
-            / "SKILL.md"
-        )
-        self.assertEqual(main.SKILL_MARKDOWN_PATH, expected)
-
-    def test_valid_patterns_path_is_resolved_relative_to_main_module(self) -> None:
-        expected = (
-            Path(main.__file__).resolve().parent
-            / "llm-skills"
-            / "strudel-pattern-generator"
-            / "examples"
-            / "valid-patterns.md"
-        )
-        self.assertEqual(main.VALID_PATTERNS_MARKDOWN_PATH, expected)
+    def test_tempo_at_boundaries_accepted(self) -> None:
+        low = main.GenerateRequestBody(mood="chill", tempo=60, style="jazz")
+        high = main.GenerateRequestBody(mood="chill", tempo=120, style="jazz")
+        assert low.tempo == 60
+        assert high.tempo == 120
 
 
-class LoadFewShotExamplesTests(unittest.TestCase):
-    def test_load_few_shot_examples_returns_three_user_assistant_dicts(self) -> None:
-        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
-
-        self.assertEqual(len(examples), 3)
-        for example in examples:
-            self.assertEqual(set(example.keys()), {"user", "assistant"})
-            self.assertIsInstance(example["user"], str)
-            self.assertIsInstance(example["assistant"], str)
-
-    def test_load_few_shot_examples_builds_expected_user_prompts(self) -> None:
-        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
-
-        self.assertEqual(
-            [example["user"] for example in examples],
-            [
-                'Generate one lo-fi Strudel pattern using mood "melancholic", style "jazz", and tempo 90. Return only the pattern.',
-                'Generate one lo-fi Strudel pattern using mood "energetic", style "hip-hop", and tempo 85. Return only the pattern.',
-                'Generate one lo-fi Strudel pattern using mood "calm", style "ambient", and tempo 70. Return only the pattern.',
-            ],
-        )
-
-    def test_load_few_shot_examples_extracts_raw_patterns_without_fences(self) -> None:
-        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
-
-        self.assertEqual(
-            examples[0]["assistant"],
-            'stack([s("bd ~ [~ bd] ~"), s("~ ~ sd ~"), s("hh*2"), note("c3 eb3 f3 ~ g3 ~ bb3 ~").sound("piano")]).slow(2).gain(0.7).cpm(90)',
-        )
-        self.assertEqual(
-            examples[1]["assistant"],
-            'stack([s("bd ~ bd ~"), s("~ sd ~ sd"), s("hh ~ hh ~"), note("c3 ~ eb3 ~ g3 ~ bb3 ~").sound("piano")]).slow(2).gain(0.85).cpm(85)',
-        )
-        self.assertEqual(
-            examples[2]["assistant"],
-            'stack([s("bd ~ ~ ~"), s("~ ~ sd ~"), s("~ hh ~ hh"), note("c3 ~ ~ e3 ~ ~ g3 ~").sound("piano")]).slow(4).gain(0.5).cpm(70)',
-        )
-        for example in examples:
-            self.assertFalse(example["assistant"].startswith("```"))
-            self.assertFalse(example["assistant"].endswith("```"))
+# ---------------------------------------------------------------------------
+# US-001-AC04: Prompt template
+# ---------------------------------------------------------------------------
 
 
-class ValidatePatternTests(unittest.TestCase):
-    # US-003-AC04: validate_pattern enforces the 500-character limit
-    def test_validate_pattern_rejects_pattern_exceeding_500_chars(self) -> None:
-        long_pattern = "s(\"bd\").cpm(90)" + "x" * 490
-        self.assertGreater(len(long_pattern), 500)
-        self.assertIsNone(main.validate_pattern(long_pattern))
+class TestBuildPrompt:
+    def test_prompt_follows_template(self) -> None:
+        body = main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        prompt = main.build_prompt(body)
+        assert prompt == "chill lofi jazz, 80 BPM"
 
-    def test_validate_pattern_accepts_pattern_at_exactly_500_chars(self) -> None:
-        base = 's("bd ~ sd ~").gain(0.7).cpm(90)'
-        pattern = base + "x" * (500 - len(base))
-        self.assertEqual(len(pattern), 500)
-        result = main.validate_pattern(pattern)
-        self.assertIsNotNone(result)
+    def test_prompt_includes_all_parameters(self) -> None:
+        body = main.GenerateRequestBody(mood="warm", tempo=95, style="hip-hop")
+        prompt = main.build_prompt(body)
+        assert "warm" in prompt
+        assert "hip-hop" in prompt
+        assert "95 BPM" in prompt
+        assert "lofi" in prompt
 
-    def test_validate_pattern_accepts_valid_melodic_pattern(self) -> None:
-        # AC01: a multi-layer melodic pattern is accepted by validate_pattern
-        melodic = 'stack([s("bd ~ sd ~"), note("c3 eb3 g3 bb3").sound("piano")]).slow(2).gain(0.7).cpm(90)'
-        self.assertIsNotNone(main.validate_pattern(melodic))
-
-    def test_validate_pattern_rejects_response_with_code_fences(self) -> None:
-        fenced = '```\nstack([s("bd")]).cpm(90)\n```'
-        self.assertIsNone(main.validate_pattern(fenced))
-
-    def test_validate_pattern_rejects_empty_string(self) -> None:
-        self.assertIsNone(main.validate_pattern(""))
-        self.assertIsNone(main.validate_pattern("   "))
-
-    def test_validate_pattern_rejects_non_string(self) -> None:
-        self.assertIsNone(main.validate_pattern(None))
-        self.assertIsNone(main.validate_pattern(42))
+    def test_prompt_template_documented_in_source(self) -> None:
+        """US-001-AC04: The exact template must be documented in a code comment."""
+        source = Path(__file__).parent.joinpath("main.py").read_text()
+        assert '# Prompt template: "{mood} lofi {style}, {tempo} BPM"' in source
 
 
-class ValidPatternExamplesTests(unittest.TestCase):
-    # US-003-AC01: few-shot example patterns include melodic layers
-    def test_all_few_shot_examples_contain_melodic_note_layer(self) -> None:
-        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
-        for example in examples:
-            self.assertIn("note(", example["assistant"])
-
-    # US-003-AC04: few-shot example patterns are within the 500-character guard
-    def test_all_few_shot_examples_are_within_500_chars(self) -> None:
-        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
-        for example in examples:
-            pattern = example["assistant"]
-            self.assertLessEqual(
-                len(pattern),
-                main.MAX_PATTERN_LENGTH,
-                f"Pattern length {len(pattern)} exceeds {main.MAX_PATTERN_LENGTH}: {pattern!r}",
-            )
+# ---------------------------------------------------------------------------
+# US-001-AC01: ace-step dependency
+# ---------------------------------------------------------------------------
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestDependencyListed:
+    def test_ace_step_in_requirements_txt(self) -> None:
+        requirements = (Path(__file__).parent / "requirements.txt").read_text()
+        assert "ace-step" in requirements
+
+    def test_ace_step_in_pyproject_toml(self) -> None:
+        pyproject = (Path(__file__).parent / "pyproject.toml").read_text()
+        assert "ace-step" in pyproject
+
+
+# ---------------------------------------------------------------------------
+# US-001-AC09: OpenAI removal verification
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAIRemoved:
+    def test_no_openai_imports_in_main(self) -> None:
+        source = (Path(__file__).parent / "main.py").read_text()
+        assert "from openai" not in source
+        assert "import openai" not in source
+
+    def test_no_openai_api_key_reference(self) -> None:
+        source = (Path(__file__).parent / "main.py").read_text()
+        assert "OPENAI_API_KEY" not in source
+
+    def test_removed_helpers_absent(self) -> None:
+        assert not hasattr(main, "build_messages")
+        assert not hasattr(main, "load_skill_body")
+        assert not hasattr(main, "load_few_shot_examples")
+        assert not hasattr(main, "validate_pattern")
+        assert not hasattr(main, "extract_pattern_candidate")
+        assert not hasattr(main, "flatten_text_content")
+        assert not hasattr(main, "is_malformed_pattern")
+
+
+# ---------------------------------------------------------------------------
+# US-001-AC10: llm-skills directory removed
+# ---------------------------------------------------------------------------
+
+
+class TestLlmSkillsRemoved:
+    def test_llm_skills_directory_does_not_exist(self) -> None:
+        llm_skills_dir = Path(__file__).parent / "llm-skills"
+        assert not llm_skills_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for endpoint tests
+# ---------------------------------------------------------------------------
+
+WAV_HEADER = b"RIFF" + b"\x00" * 100
+
+
+@pytest.fixture
+def mock_ace_model(tmp_path):
+    """Provide a mock ACEStepPipeline that writes a fake WAV file and returns its path."""
+    mock_model = MagicMock(spec=main.ACEStepPipeline)
+
+    def fake_call(**kwargs):
+        save_path = kwargs.get("save_path", str(tmp_path))
+        wav_file = os.path.join(save_path, "output_0.wav")
+        with open(wav_file, "wb") as f:
+            f.write(WAV_HEADER)
+        return [wav_file, {"params": "json"}]
+
+    mock_model.side_effect = fake_call
+    return mock_model
+
+
+@pytest.fixture
+def client(mock_ace_model):
+    """TestClient with the ACEStep model replaced by a mock via lifespan."""
+    with patch("main.ACEStepPipeline", return_value=mock_ace_model):
+        with TestClient(app=main.app, raise_server_exceptions=False) as c:
+            yield c
+
+
+# ---------------------------------------------------------------------------
+# US-001-AC02, AC05, AC06, AC07, AC08: Endpoint behavior with mocked ACEStep
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateEndpoint:
+    # US-001-AC03: endpoint accepts same request body
+    def test_valid_request_returns_200(self, client, mock_ace_model) -> None:
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert response.status_code == 200
+
+    # US-001-AC07: returns StreamingResponse with audio/wav
+    def test_response_media_type_is_wav(self, client, mock_ace_model) -> None:
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert response.headers["content-type"] == "audio/wav"
+
+    # US-001-AC07: response contains WAV bytes
+    def test_response_contains_wav_bytes(self, client, mock_ace_model) -> None:
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert response.content.startswith(b"RIFF")
+
+    # US-001-AC05: lyrics="" (instrumental)
+    def test_pipeline_called_with_empty_lyrics(self, client, mock_ace_model) -> None:
+        client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        call_kwargs = mock_ace_model.call_args.kwargs
+        assert call_kwargs["lyrics"] == ""
+
+    # US-001-AC06: audio_duration=30, infer_step=20
+    def test_pipeline_called_with_default_duration_and_steps(self, client, mock_ace_model) -> None:
+        client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        call_kwargs = mock_ace_model.call_args.kwargs
+        assert call_kwargs["audio_duration"] == 30
+        assert call_kwargs["infer_step"] == 20
+
+    # US-001-AC04: prompt built from parameters
+    def test_pipeline_called_with_correct_prompt(self, client, mock_ace_model) -> None:
+        client.post("/api/generate", json={"mood": "warm", "tempo": 95, "style": "hip-hop"})
+        call_kwargs = mock_ace_model.call_args.kwargs
+        assert call_kwargs["prompt"] == "warm lofi hip-hop, 95 BPM"
+
+    # US-001-AC08: inference failure returns 500
+    def test_inference_failure_returns_500_with_error(self, client, mock_ace_model) -> None:
+        mock_ace_model.side_effect = RuntimeError("GPU out of memory")
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert response.status_code == 500
+        assert response.json() == {"error": "Audio generation failed"}
+
+    # US-001-AC03: validation errors return 422
+    def test_invalid_tempo_returns_422(self, client) -> None:
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 50, "style": "jazz"})
+        assert response.status_code == 422
+        assert "error" in response.json()
+
+    def test_empty_mood_returns_422(self, client) -> None:
+        response = client.post("/api/generate", json={"mood": "", "tempo": 80, "style": "jazz"})
+        assert response.status_code == 422
+
+    def test_missing_field_returns_422(self, client) -> None:
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80})
+        assert response.status_code == 422
+
+    # US-001-AC07: format=wav passed to pipeline
+    def test_pipeline_called_with_wav_format(self, client, mock_ace_model) -> None:
+        client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        call_kwargs = mock_ace_model.call_args.kwargs
+        assert call_kwargs["format"] == "wav"
+
+
+# ---------------------------------------------------------------------------
+# US-001-AC02: Model loaded once at startup (lifespan test)
+# ---------------------------------------------------------------------------
+
+
+class TestModelLifespan:
+    def test_model_is_loaded_via_lifespan(self) -> None:
+        with patch("main.ACEStepPipeline") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            with TestClient(app=main.app):
+                mock_cls.assert_called_once()
+
+    def test_model_is_none_after_shutdown(self) -> None:
+        with patch("main.ACEStepPipeline") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            with TestClient(app=main.app):
+                pass
+            assert main.ace_model is None
