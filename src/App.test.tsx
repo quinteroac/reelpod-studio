@@ -160,6 +160,82 @@ describe('App generation flow', () => {
     expect(screen.getByTestId('visual-canvas').className).toContain('h-[min(60vh,420px)]');
   });
 
+  it('keeps the image prompt editable after a successful image generation', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/generated-visual-url');
+
+    render(<App />);
+
+    const promptInput = screen.getByLabelText('Image prompt') as HTMLInputElement;
+    fireEvent.change(promptInput, { target: { value: 'first neon alley' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-image-url',
+        'blob:http://localhost/generated-visual-url'
+      );
+    });
+
+    fireEvent.change(promptInput, { target: { value: 'second foggy street' } });
+    expect(promptInput).toHaveValue('second foggy street');
+  });
+
+  it('replaces the current image when generating again with a new prompt and cleans the previous blob URL', async () => {
+    const firstImageUrl = 'blob:http://localhost/generated-visual-url-1';
+    const secondImageUrl = 'blob:http://localhost/generated-visual-url-2';
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce(firstImageUrl)
+      .mockReturnValueOnce(secondImageUrl);
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    const promptInput = screen.getByLabelText('Image prompt');
+    fireEvent.change(promptInput, { target: { value: 'lofi diner at midnight' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', firstImageUrl);
+    });
+
+    fireEvent.change(promptInput, { target: { value: 'retro subway station rain' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', secondImageUrl);
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/generate-image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'lofi diner at midnight' })
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/generate-image', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'retro subway station rain' })
+    });
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(firstImageUrl);
+  });
+
+  it('revokes the active generated image blob URL on unmount', async () => {
+    const generatedImageUrl = 'blob:http://localhost/generated-visual-url-cleanup';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue(generatedImageUrl);
+
+    const { unmount } = render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Image prompt'), { target: { value: 'city rooftop sunrise haze' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', generatedImageUrl);
+    });
+
+    unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(generatedImageUrl);
+  });
+
   it('shows loading while image generation is in progress and ignores duplicate Generate Image clicks', async () => {
     let resolveImageFetch: ((value: Response) => void) | undefined;
     const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
