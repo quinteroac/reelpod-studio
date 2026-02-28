@@ -3,7 +3,7 @@ import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { computeContainScale } from '../lib/visual-scene';
-import { WaveformVisualizer } from './visualizers';
+import { VisualizerFactory, type VisualizerType } from './visualizers';
 
 const FALLBACK_VISUAL_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3a2b24"/><stop offset="100%" stop-color="#12100f"/></linearGradient></defs><rect width="1200" height="800" fill="url(#g)"/><circle cx="950" cy="190" r="130" fill="#c08457" fill-opacity="0.2"/><circle cx="250" cy="650" r="190" fill="#8b5e3c" fill-opacity="0.25"/></svg>'
@@ -19,10 +19,11 @@ type VisualSceneProps = {
 };
 
 type SceneContentProps = VisualSceneProps & {
+  visualizerType: VisualizerType;
   onDerived: (planeWidth: number, planeHeight: number) => void;
 };
 
-function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, onDerived }: SceneContentProps) {
+function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, visualizerType, onDerived }: SceneContentProps) {
   const texture = useLoader(THREE.TextureLoader, imageUrl ?? FALLBACK_VISUAL_DATA_URI);
   const { viewport } = useThree();
 
@@ -53,7 +54,8 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, on
         <meshBasicMaterial color="#000000" transparent opacity={0.45} />
       </mesh>
 
-      <WaveformVisualizer
+      <VisualizerFactory
+        type={visualizerType}
         audioCurrentTime={audioCurrentTime}
         audioDuration={audioDuration}
         isPlaying={isPlaying}
@@ -65,6 +67,8 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, on
 }
 
 export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlaying }: VisualSceneProps) {
+  // In the future this could be a prop passed down or selected from UI. For now defaulting to waveform.
+  const currentVisualizerType: VisualizerType = 'waveform';
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -102,6 +106,7 @@ export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlayi
           audioCurrentTime={audioCurrentTime}
           audioDuration={audioDuration}
           isPlaying={isPlaying}
+          visualizerType={currentVisualizerType}
           onDerived={handleDerived}
         />
       </Canvas>
