@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
-import tempfile
-from contextlib import asynccontextmanager
-from pathlib import Path
+import os
+import time
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin
+from urllib.request import Request, urlopen
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-from acestep.pipeline_ace_step import ACEStepPipeline
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -23,21 +25,13 @@ INVALID_PAYLOAD_ERROR = (
     f"Invalid payload. Expected {{ mood: string, tempo: number ({MIN_TEMPO}-{MAX_TEMPO}), style: string }}"
 )
 
-# ACEStep model instance, loaded once at startup (US-001-AC02)
-ace_model: ACEStepPipeline | None = None
+DEFAULT_ACESTEP_API_URL = "http://localhost:8001"
+RELEASE_TASK_PATH = "/release_task"
+QUERY_RESULT_PATH = "/query_result"
+POLL_INTERVAL_SECONDS = 0.25
+MAX_POLL_ATTEMPTS = 120
 
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    global ace_model
-    logger.info("Loading ACEStep model...")
-    ace_model = ACEStepPipeline()
-    logger.info("ACEStep model loaded.")
-    yield
-    ace_model = None
-
-
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
 class GenerateRequestBody(BaseModel):
@@ -64,36 +58,94 @@ def build_prompt(body: GenerateRequestBody) -> str:
     return f"{body.mood} lofi {body.style}, {body.tempo} BPM"
 
 
+def get_acestep_api_url() -> str:
+    return os.getenv("ACESTEP_API_URL", DEFAULT_ACESTEP_API_URL).rstrip("/")
+
+
+def make_absolute_url(path: str) -> str:
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    return urljoin(f"{get_acestep_api_url()}/", path.lstrip("/"))
+
+
+def post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    request = Request(
+        url=url,
+        method="POST",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urlopen(request, timeout=30) as response:
+        body = response.read().decode("utf-8")
+    parsed = json.loads(body)
+    if not isinstance(parsed, dict):
+        raise RuntimeError("Unexpected JSON response")
+    return parsed
+
+
+def get_bytes(url: str) -> bytes:
+    request = Request(url=url, method="GET")
+    with urlopen(request, timeout=30) as response:
+        return response.read()
+
+
+def submit_task(prompt: str) -> str:
+    payload = {
+        "prompt": prompt,
+        "lyrics": "",
+        "audio_duration": 30,
+        "inference_steps": 20,
+        "audio_format": "wav",
+    }
+    response = post_json(make_absolute_url(RELEASE_TASK_PATH), payload)
+    task_id = response.get("task_id")
+    if not isinstance(task_id, str) or not task_id:
+        raise RuntimeError("Missing task_id in response")
+    return task_id
+
+
+def poll_until_complete(task_id: str) -> dict[str, Any]:
+    for _ in range(MAX_POLL_ATTEMPTS):
+        response = post_json(make_absolute_url(QUERY_RESULT_PATH), {"task_id": task_id})
+        status = response.get("status")
+        if status == 1:
+            return response
+        if status == 2:
+            raise RuntimeError("ACE-Step task failed")
+        time.sleep(POLL_INTERVAL_SECONDS)
+    raise RuntimeError("ACE-Step task polling timed out")
+
+
+def extract_file_path(response: dict[str, Any]) -> str:
+    result_json = response.get("result")
+    if not isinstance(result_json, str):
+        raise RuntimeError("Missing result JSON")
+    parsed_result = json.loads(result_json)
+    if not isinstance(parsed_result, dict):
+        raise RuntimeError("Invalid result JSON")
+    file_path = parsed_result.get("file")
+    if not isinstance(file_path, str) or not file_path:
+        raise RuntimeError("Missing file path")
+    return file_path
+
+
 @app.post("/api/generate")
 def generate_audio(body: GenerateRequestBody) -> StreamingResponse:
-    if ace_model is None:
-        raise HTTPException(status_code=500, detail="Audio generation failed")
-
     prompt = build_prompt(body)
-    logger.debug("ACEStep prompt: %s", prompt)
+    logger.debug("ACE-Step prompt: %s", prompt)
 
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # ACEStep inference: instrumental (lyrics=""), 30s duration, 20 steps (US-001-AC05, AC06)
-            results = ace_model(
-                prompt=prompt,
-                lyrics="",
-                audio_duration=30,
-                infer_step=20,
-                format="wav",
-                save_path=tmp_dir,
-            )
-
-            # results is a list of file paths + a trailing params dict; pick the first WAV file
-            wav_paths = [r for r in results if isinstance(r, str) and r.endswith(".wav")]
-            if not wav_paths:
-                raise RuntimeError("ACEStep produced no WAV output")
-
-            wav_bytes = Path(wav_paths[0]).read_bytes()
+        task_id = submit_task(prompt)
+        completed_task = poll_until_complete(task_id)
+        file_path = extract_file_path(completed_task)
+        wav_bytes = get_bytes(make_absolute_url(file_path))
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error("ACEStep inference error: %s: %s", type(exc).__name__, exc)
+    except (RuntimeError, URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
+        logger.error("ACE-Step API error: %s: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=500, detail="Audio generation failed") from exc
+    except Exception as exc:  # pragma: no cover - final safety net
+        logger.error("Unexpected audio generation error: %s: %s", type(exc).__name__, exc)
         raise HTTPException(status_code=500, detail="Audio generation failed") from exc
 
     return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav")
