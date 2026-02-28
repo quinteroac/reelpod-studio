@@ -193,6 +193,7 @@ export function RainVisualizer({ isPlaying, planeWidth, planeHeight, texture }: 
             materialRef.current.uniforms.uResolution.value.set(planeWidth * 100, planeHeight * 100);
             if (texture) {
                 materialRef.current.uniforms.uTexture.value = texture;
+                materialRef.current.uniformsNeedUpdate = true;
             }
         }
     });
