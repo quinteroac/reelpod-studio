@@ -30,8 +30,12 @@ RELEASE_TASK_PATH = "/release_task"
 QUERY_RESULT_PATH = "/query_result"
 POLL_INTERVAL_SECONDS = 0.25
 MAX_POLL_ATTEMPTS = 120
+IMAGE_MODEL_ID = "circlestone-labs/Anima"
+IMAGE_SIZE = 1024
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+image_pipeline: Any | None = None
+image_model_load_error: str | None = None
 
 
 class GenerateRequestBody(BaseModel):
@@ -42,6 +46,18 @@ class GenerateRequestBody(BaseModel):
     @field_validator("mood", "style")
     @classmethod
     def validate_non_empty_text(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Value must be a non-empty string.")
+        return trimmed
+
+
+class GenerateImageRequestBody(BaseModel):
+    prompt: StrictStr
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_non_empty_prompt(cls, value: str) -> str:
         trimmed = value.strip()
         if not trimmed:
             raise ValueError("Value must be a non-empty string.")
@@ -87,6 +103,12 @@ def get_bytes(url: str) -> bytes:
     request = Request(url=url, method="GET")
     with urlopen(request, timeout=30) as response:
         return response.read()
+
+
+def load_image_pipeline() -> Any:
+    from diffusers import DiffusionPipeline
+
+    return DiffusionPipeline.from_pretrained(IMAGE_MODEL_ID)
 
 
 def submit_task(prompt: str) -> str:
@@ -140,6 +162,18 @@ def extract_file_path(response: dict[str, Any]) -> str:
     raise RuntimeError(f"Missing file path in result: {parsed_result}")
 
 
+@app.on_event("startup")
+def startup_load_image_model() -> None:
+    global image_pipeline, image_model_load_error
+    try:
+        image_pipeline = load_image_pipeline()
+        image_model_load_error = None
+    except Exception as exc:  # pragma: no cover - startup fallback safety
+        image_pipeline = None
+        image_model_load_error = str(exc)
+        logger.error("Image model load failed: %s: %s", type(exc).__name__, exc)
+
+
 @app.post("/api/generate")
 def generate_audio(body: GenerateRequestBody) -> StreamingResponse:
     prompt = build_prompt(body)
@@ -160,6 +194,30 @@ def generate_audio(body: GenerateRequestBody) -> StreamingResponse:
         raise HTTPException(status_code=500, detail="Audio generation failed") from exc
 
     return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav")
+
+
+@app.post("/api/generate-image")
+def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
+    if image_pipeline is None:
+        reason = image_model_load_error or "model unavailable"
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {reason}")
+
+    try:
+        result = image_pipeline(prompt=body.prompt, width=IMAGE_SIZE, height=IMAGE_SIZE)
+        images = getattr(result, "images", None)
+        if not isinstance(images, list) or not images:
+            raise RuntimeError("No generated image returned by model")
+
+        output = io.BytesIO()
+        images[0].save(output, format="PNG")
+        output.seek(0)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Image inference error: %s: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {exc}") from exc
+
+    return StreamingResponse(output, media_type="image/png")
 
 
 @app.exception_handler(HTTPException)

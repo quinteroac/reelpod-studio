@@ -27,6 +27,17 @@ class FakeHTTPResponse:
         return False
 
 
+class FakeImage:
+    def save(self, output, format: str) -> None:  # noqa: ANN001
+        assert format == "PNG"
+        output.write(b"\x89PNG\r\n\x1a\nfake")
+
+
+class FakeImageResult:
+    def __init__(self, images: list[FakeImage]):
+        self.images = images
+
+
 @pytest.fixture
 def client() -> TestClient:
     with TestClient(app=main.app, raise_server_exceptions=False) as c:
@@ -145,13 +156,13 @@ class TestGenerateEndpoint:
             if url.endswith("/query_result"):
                 assert method == "POST"
                 payload = json.loads(request.data.decode("utf-8"))
-                assert payload == {"task_id": "task-123"}
+                assert payload == {"task_id_list": ["task-123"]}
                 query_call_count += 1
                 if query_call_count == 1:
-                    return FakeHTTPResponse(json.dumps({"status": 0}).encode("utf-8"))
+                    return FakeHTTPResponse(json.dumps({"data": [{"status": 0}]}).encode("utf-8"))
                 return FakeHTTPResponse(
                     json.dumps(
-                        {"status": 1, "result": json.dumps({"file": "/v1/audio?path=out.wav"})}
+                        {"data": [{"status": 1, "result": json.dumps({"file": "/v1/audio?path=out.wav"})}]}
                     ).encode("utf-8")
                 )
             if "/v1/audio?path=out.wav" in url:
@@ -222,3 +233,79 @@ class TestGenerateEndpoint:
         assert response.json() == {
             "error": "Invalid payload. Expected { mood: string, tempo: number (60-120), style: string }"
         }
+
+
+class TestGenerateImageEndpoint:
+    def test_model_is_loaded_once_at_startup_with_expected_model_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        def fake_load_image_pipeline() -> object:
+            calls.append(main.IMAGE_MODEL_ID)
+            return object()
+
+        monkeypatch.setattr(main, "load_image_pipeline", fake_load_image_pipeline)
+        with TestClient(app=main.app, raise_server_exceptions=False):
+            pass
+
+        assert calls == ["circlestone-labs/Anima"]
+
+    def test_generate_image_returns_png_binary_and_uses_1024_square_resolution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen_calls: list[dict[str, object]] = []
+
+        class Pipeline:
+            def __call__(self, *, prompt: str, width: int, height: int) -> FakeImageResult:
+                seen_calls.append({"prompt": prompt, "width": width, "height": height})
+                return FakeImageResult([FakeImage()])
+
+        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            response = test_client.post("/api/generate-image", json={"prompt": "misty mountains"})
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "image/png"
+            assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+            second = test_client.post("/api/generate-image", json={"prompt": "city sunset"})
+            assert second.status_code == 200
+
+        assert seen_calls == [
+            {"prompt": "misty mountains", "width": 1024, "height": 1024},
+            {"prompt": "city sunset", "width": 1024, "height": 1024},
+        ]
+
+    def test_model_load_failure_returns_500_with_meaningful_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def raise_model_load_error() -> object:
+            raise RuntimeError("model weights missing")
+
+        monkeypatch.setattr(main, "load_image_pipeline", raise_model_load_error)
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            response = test_client.post("/api/generate-image", json={"prompt": "forest path"})
+
+        assert response.status_code == 500
+        assert response.json() == {"error": "Image generation failed: model weights missing"}
+
+    def test_inference_failure_returns_500_with_meaningful_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class Pipeline:
+            def __call__(self, *, prompt: str, width: int, height: int) -> FakeImageResult:
+                raise RuntimeError("inference error")
+
+        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            response = test_client.post("/api/generate-image", json={"prompt": "forest path"})
+
+        assert response.status_code == 500
+        assert response.json() == {"error": "Image generation failed: inference error"}
+
+
+class TestViteProxyConfiguration:
+    def test_generate_image_proxy_routes_to_backend_port_8000(self) -> None:
+        vite_config = Path(__file__).resolve().parents[1].joinpath("vite.config.ts").read_text(encoding="utf-8")
+        assert "'/api/generate-image'" in vite_config
+        assert "target: 'http://127.0.0.1:8000'" in vite_config
