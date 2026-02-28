@@ -1,5 +1,4 @@
 diffusers>=0.35.1
 fastapi==0.116.1
 uvicorn==0.35.0
-ace-step
 python-dotenv==1.1.1

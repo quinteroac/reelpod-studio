@@ -30,7 +30,7 @@ RELEASE_TASK_PATH = "/release_task"
 QUERY_RESULT_PATH = "/query_result"
 POLL_INTERVAL_SECONDS = 0.25
 MAX_POLL_ATTEMPTS = 120
-IMAGE_MODEL_ID = "circlestone-labs/Anima"
+IMAGE_MODEL_ID = "Ine007/waiIllustriousSDXL_v160"
 IMAGE_SIZE = 1024
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -106,9 +106,30 @@ def get_bytes(url: str) -> bytes:
 
 
 def load_image_pipeline() -> Any:
+    try:
+        import torch
+    except ImportError as exc:
+        raise ImportError(
+            "PyTorch is required for image generation. "
+            "Install it with: uv add torch torchvision"
+        ) from exc
+
     from diffusers import DiffusionPipeline
 
-    return DiffusionPipeline.from_pretrained(IMAGE_MODEL_ID)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if device == "cuda" else torch.float32
+
+    pipeline = DiffusionPipeline.from_pretrained(IMAGE_MODEL_ID, torch_dtype=dtype)
+    
+    if device == "cuda":
+        # Memory optimizations to allow running alongside ACE-Step
+        pipeline.enable_model_cpu_offload()
+        if hasattr(pipeline, "enable_vae_slicing"):
+            pipeline.enable_vae_slicing()
+            
+        return pipeline  # model_cpu_offload handles the to(device) implicitly
+        
+    return pipeline.to(device)
 
 
 def submit_task(prompt: str) -> str:
