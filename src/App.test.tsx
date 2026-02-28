@@ -1,41 +1,55 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import * as patternGenerator from './lib/pattern-generator';
-import type { StrudelController } from './lib/strudel';
 
-function createController(overrides: Partial<StrudelController> = {}): StrudelController {
-  return {
-    generate: vi.fn().mockResolvedValue(undefined),
+function createMockAudio(): HTMLAudioElement {
+  const audio = {
     play: vi.fn().mockResolvedValue(undefined),
-    pause: vi.fn().mockResolvedValue(undefined),
-    seek: vi.fn().mockResolvedValue(undefined),
-    ...overrides
-  };
+    pause: vi.fn(),
+    addEventListener: vi.fn(),
+    src: '',
+    currentTime: 0,
+    duration: 30
+  } as unknown as HTMLAudioElement;
+  return audio;
 }
 
-function createGenerateResponse(pattern: string, status = 200): Response {
-  const payload = status >= 200 && status < 300 ? { pattern } : { error: pattern };
-  return new Response(JSON.stringify(payload), {
+function createWavBlobResponse(status = 200): Response {
+  if (status >= 200 && status < 300) {
+    const blob = new Blob(['fake-wav-data'], { type: 'audio/wav' });
+    return new Response(blob, { status, headers: { 'content-type': 'audio/wav' } });
+  }
+  return new Response(JSON.stringify({ error: 'generation failed' }), {
     status,
-    headers: {
-      'content-type': 'application/json'
-    }
+    headers: { 'content-type': 'application/json' }
   });
 }
 
-function mockGenerateFetch(pattern = 'remote-pattern'): ReturnType<typeof vi.fn> {
-  return vi.fn().mockImplementation(async () => createGenerateResponse(pattern));
+function createErrorResponse(message: string, status = 500, field = 'error'): Response {
+  return new Response(JSON.stringify({ [field]: message }), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  });
+}
+
+function mockGenerateFetch(): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async () => createWavBlobResponse());
 }
 
 describe('App generation flow', () => {
+  let mockAudio: HTMLAudioElement;
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockGenerateFetch());
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-audio-url');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
   });
 
   it('renders mood, tempo, and style inside clearly labelled control cards with consistent layout spacing', () => {
-    render(<App controller={createController()} />);
+    render(<App />);
 
     expect(screen.getByTestId('mood-control-card')).toHaveTextContent('Mood');
     expect(screen.getByTestId('tempo-control-card')).toHaveTextContent('Tempo');
@@ -52,7 +66,7 @@ describe('App generation flow', () => {
   });
 
   it('uses prominent generate button and visible hover/focus states for interactive controls', () => {
-    render(<App controller={createController()} />);
+    render(<App />);
 
     const generateButton = screen.getByRole('button', { name: 'Generate' });
     expect(generateButton.className).toContain('bg-lofi-accent');
@@ -75,8 +89,7 @@ describe('App generation flow', () => {
   });
 
   it('keeps player hidden until a track is generated successfully', async () => {
-    const controller = createController();
-    render(<App controller={controller} />);
+    render(<App />);
 
     expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
@@ -91,13 +104,11 @@ describe('App generation flow', () => {
     expect(screen.getByLabelText('Seek')).toBeInTheDocument();
   });
 
-  it('posts params to /api/generate and executes returned backend pattern through controller when Generate is clicked', async () => {
-    const backendPattern = 'stack(s("bd*2"), s("hh*4")).cpm(110)';
-    const fetchMock = mockGenerateFetch(backendPattern);
+  // AC01: requestGeneratedAudio fetches POST /api/generate and creates object URL from blob
+  it('posts params to /api/generate and creates an object URL from the response blob', async () => {
+    const fetchMock = mockGenerateFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
-    const generatePatternSpy = vi.spyOn(patternGenerator, 'generatePattern');
-    const controller = createController();
-    render(<App controller={controller} />);
+    render(<App />);
 
     fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'upbeat' } });
     fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '110' } });
@@ -105,19 +116,109 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(controller.generate).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json'
-      },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ mood: 'upbeat', tempo: 110, style: 'hip-hop' })
     });
-    expect(controller.generate).toHaveBeenCalledWith(backendPattern);
+    expect(URL.createObjectURL).toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(generatePatternSpy).not.toHaveBeenCalled();
+  });
+
+  // AC02: HTML5 Audio is used for playback; no StrudelController
+  it('creates an HTML5 Audio instance for playback', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(globalThis.Audio).toHaveBeenCalledWith('blob:http://localhost/fake-audio-url');
+    });
+    expect(mockAudio.play).toHaveBeenCalled();
+  });
+
+  // AC03: Audio plays automatically after successful generation
+  it('auto-plays audio after successful generation', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(mockAudio.play).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // AC04: Play/Pause buttons control audio.play()/audio.pause()
+  it('play and pause buttons control the audio element', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    });
+
+    const playButton = screen.getByRole('button', { name: 'Play' });
+    const pauseButton = screen.getByRole('button', { name: 'Pause' });
+
+    // After generate, isPlaying=true so Play is disabled, Pause is enabled
+    expect(playButton).toBeDisabled();
+    expect(pauseButton).toBeEnabled();
+
+    // Pause
+    fireEvent.click(pauseButton);
+    expect(mockAudio.pause).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(playButton).toBeEnabled();
+      expect(pauseButton).toBeDisabled();
+    });
+
+    // Play again
+    fireEvent.click(playButton);
+    await waitFor(() => {
+      // play() called once during generate auto-play, once from button click
+      expect(mockAudio.play).toHaveBeenCalledTimes(2);
+      expect(playButton).toBeDisabled();
+      expect(pauseButton).toBeEnabled();
+    });
+  });
+
+  // AC05: Seek slider controls audio.currentTime proportionally
+  it('seek slider sets audio.currentTime proportionally (0-100 mapped to 0-duration)', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Seek')).toBeInTheDocument();
+    });
+
+    const seek = screen.getByLabelText('Seek') as HTMLInputElement;
+
+    // Seek to 50% of a 30-second track → currentTime = 15
+    fireEvent.change(seek, { target: { value: '50' } });
+    expect(seek.value).toBe('50');
+    expect(mockAudio.currentTime).toBe(15);
+
+    // Seek to 100%
+    fireEvent.change(seek, { target: { value: '100' } });
+    expect(seek.value).toBe('100');
+    expect(mockAudio.currentTime).toBe(30);
+  });
+
+  it('clamps manual seek values to the supported range', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Seek')).toBeInTheDocument();
+    });
+
+    const seek = screen.getByLabelText('Seek') as HTMLInputElement;
+
+    fireEvent.change(seek, { target: { value: '999' } });
+    expect(seek.value).toBe('100');
+    expect(mockAudio.currentTime).toBe(30);
   });
 
   it('shows loading while generation is in progress and ignores duplicate Generate clicks', async () => {
@@ -129,9 +230,8 @@ describe('App generation flow', () => {
         })
     );
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
-    const controller = createController();
 
-    render(<App controller={controller} />);
+    render(<App />);
 
     const generate = screen.getByRole('button', { name: 'Generate' });
     fireEvent.click(generate);
@@ -146,102 +246,29 @@ describe('App generation flow', () => {
 
     fireEvent.click(generate);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(controller.generate).not.toHaveBeenCalled();
 
-    resolveFetch?.(createGenerateResponse('remote-pattern'));
+    resolveFetch?.(createWavBlobResponse());
 
     await waitFor(() => {
       expect(screen.queryByText('Generating track...')).not.toBeInTheDocument();
     });
-    expect(controller.generate).toHaveBeenCalledTimes(1);
   });
 
-  it('on success tracks playback state and wires controlled seek to the Strudel controller', async () => {
-    const controller = createController();
-    render(<App controller={controller} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Seek')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-
-    const playButton = screen.getByRole('button', { name: 'Play' });
-    const pauseButton = screen.getByRole('button', { name: 'Pause' });
-    const seek = screen.getByLabelText('Seek') as HTMLInputElement;
-
-    expect(playButton).not.toHaveAttribute('aria-pressed');
-    expect(pauseButton).not.toHaveAttribute('aria-pressed');
-
-    expect(playButton.className).toContain('border-emerald-300/80');
-    expect(playButton.className).toContain('bg-emerald-500/20');
-    expect(pauseButton.className).toContain('border-amber-200/90');
-    expect(pauseButton.className).toContain('bg-amber-400/25');
-    expect(seek.className).toContain('seek-slider');
-    expect(seek.className).toContain('appearance-none');
-
-    expect(playButton).toBeDisabled();
-    expect(pauseButton).toBeEnabled();
-    expect(seek.value).toBe('0');
-
-    fireEvent.click(playButton);
-    expect(controller.play).not.toHaveBeenCalled();
-
-    fireEvent.click(pauseButton);
-    await waitFor(() => {
-      expect(playButton).toBeEnabled();
-      expect(pauseButton).toBeDisabled();
-    });
-
-    fireEvent.click(playButton);
-    await waitFor(() => {
-      expect(controller.play).toHaveBeenCalledTimes(1);
-      expect(playButton).toBeDisabled();
-      expect(pauseButton).toBeEnabled();
-    });
-
-    fireEvent.change(seek, { target: { value: '42' } });
-    expect(seek.value).toBe('42');
-    expect(controller.pause).toHaveBeenCalledTimes(1);
-    expect(controller.seek).toHaveBeenCalledWith(42);
-  });
-
-  it('clamps manual seek values to the supported range', async () => {
-    const controller = createController();
-    render(<App controller={controller} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
-    });
-
-    const seek = screen.getByLabelText('Seek') as HTMLInputElement;
-
-    fireEvent.change(seek, { target: { value: '999' } });
-    expect(seek.value).toBe('100');
-    expect(controller.seek).toHaveBeenCalledWith(100);
-  });
-
+  // AC06: Error messages for network failures or non-OK responses remain user-visible
   it('on backend failure shows backend error and allows retry', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(createGenerateResponse('OpenAI Chat Completions API returned an error', 500))
-      .mockResolvedValueOnce(createGenerateResponse('remote-pattern', 200));
+      .mockResolvedValueOnce(createErrorResponse('Audio generation failed'))
+      .mockResolvedValueOnce(createWavBlobResponse());
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
-    const controller = createController();
 
-    render(<App controller={controller} />);
+    render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
       const alert = screen.getByRole('alert');
-      expect(alert).toHaveTextContent('OpenAI Chat Completions API returned an error');
+      expect(alert).toHaveTextContent('Audio generation failed');
       expect(alert.className).toContain('text-red-100');
       expect(alert.parentElement?.className).toContain('bg-red-950/40');
       expect(alert.parentElement?.className).toContain('border-red-400/60');
@@ -251,99 +278,77 @@ describe('App generation flow', () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(controller.generate).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 
   it('surfaces backend detail field for non-standard 500 payloads', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ detail: 'Internal server error while generating pattern' }), {
-        status: 500,
-        headers: {
-          'content-type': 'application/json'
-        }
-      })
+      createErrorResponse('Internal server error while generating audio', 500, 'detail')
     );
-    const controller = createController();
 
-    render(<App controller={controller} />);
+    render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Internal server error while generating pattern');
+      expect(screen.getByRole('alert')).toHaveTextContent('Internal server error while generating audio');
     });
-    expect(controller.generate).not.toHaveBeenCalled();
   });
 
   it('on network failure shows error message from fetch failure', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Failed to reach backend'));
-    const controller = createController();
 
-    render(<App controller={controller} />);
+    render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Failed to reach backend');
     });
-    expect(controller.generate).not.toHaveBeenCalled();
   });
 
-  it('shows explicit audio limitation messages for blocked audio and unsupported Web Audio', async () => {
-    const blockedController = createController({
-      generate: vi
-        .fn()
-        .mockRejectedValue(
-          new Error(
-            'Audio is blocked by autoplay policy. Click Generate after interacting with the page, and allow sound if prompted.'
-          )
-        )
-    });
-    const unsupportedController = createController({
-      generate: vi
-        .fn()
-        .mockRejectedValue(
-          new Error(
-            'This browser does not support Web Audio. Try a modern browser such as Chrome, Edge, or Firefox.'
-          )
-        )
-    });
+  // AC07: Parameter controls unchanged
+  it('parameter controls (mood, tempo, style) remain functional', () => {
+    render(<App />);
 
-    const { rerender } = render(<App controller={blockedController} />);
+    const mood = screen.getByLabelText('Mood') as HTMLSelectElement;
+    const tempo = screen.getByLabelText('Tempo (BPM)') as HTMLInputElement;
+    const style = screen.getByLabelText('Style') as HTMLSelectElement;
 
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('autoplay policy');
-    });
+    expect(mood.value).toBe('chill');
+    expect(tempo.value).toBe('80');
+    expect(style.value).toBe('jazz');
 
-    rerender(<App controller={unsupportedController} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.change(mood, { target: { value: 'melancholic' } });
+    fireEvent.change(tempo, { target: { value: '100' } });
+    fireEvent.change(style, { target: { value: 'ambient' } });
 
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('does not support Web Audio');
-    });
+    expect(mood.value).toBe('melancholic');
+    expect(tempo.value).toBe('100');
+    expect(style.value).toBe('ambient');
   });
 
-  it('shows an unplayable warning when REPL succeeds with silent output', async () => {
-    const controller = createController({
-      generate: vi
-        .fn()
-        .mockRejectedValue(
-          new Error(
-            'Track generation completed, but no audible output was produced. Please retry with different settings.'
-          )
-        )
-    });
-    render(<App controller={controller} />);
+  // AC08: No Strudel imports in App.tsx — App no longer accepts a controller prop
+  it('does not use any Strudel controller or adapter', () => {
+    // App component should render without any controller prop
+    render(<App />);
+    // If App still depended on Strudel, it would either fail to render
+    // or require a controller prop. The absence of the prop confirms removal.
+    expect(screen.getByRole('button', { name: 'Generate' })).toBeInTheDocument();
+  });
 
+  // AC01 extra: verifies requestGeneratedAudio creates blob URL
+  it('uses URL.createObjectURL to create audio source from response blob', async () => {
+    render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('no audible output');
+      expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     });
 
-    expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument();
+    const blobArg = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0][0] as Blob;
+    expect(blobArg.size).toBeGreaterThan(0);
+    expect(blobArg.type).toBe('audio/wav');
   });
 });

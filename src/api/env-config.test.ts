@@ -28,7 +28,7 @@ describe('environment configuration', () => {
 
     expect(lines.some((line: string) => line.startsWith('fastapi'))).toBe(true);
     expect(lines.some((line: string) => line.startsWith('uvicorn'))).toBe(true);
-    expect(lines.some((line: string) => line.startsWith('openai'))).toBe(true);
+    expect(lines.some((line: string) => line.startsWith('ace-step'))).toBe(true);
     expect(lines.some((line: string) => line.startsWith('python-dotenv'))).toBe(true);
   });
 

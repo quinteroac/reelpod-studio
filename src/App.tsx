@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { GenerationParams, Mood, Style } from './lib/pattern-generator';
-import { createBrowserStrudelController } from './lib/strudel-adapter';
-import type { StrudelController } from './lib/strudel';
 import { GENERATE_ENDPOINT_PATH } from './api/constants';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -15,63 +13,20 @@ const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_STEP = 1;
 const SEEK_POLL_INTERVAL_MS = 500;
-const UNKNOWN_GENERATION_ERROR = 'Could not generate track: Unknown REPL error';
-const INVALID_GENERATOR_RESPONSE_ERROR = 'Could not generate track: Invalid response from generator';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function getApiErrorMessage(value: unknown): string | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const candidates = [value.error, value.detail];
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string') {
-      continue;
-    }
-
-    const trimmedMessage = candidate.trim();
-    if (trimmedMessage.length > 0) {
-      return trimmedMessage;
-    }
-  }
-  return null;
-}
-
-function getApiPattern(value: unknown): string | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const pattern = value.pattern;
-  if (typeof pattern !== 'string') {
-    return null;
-  }
-
-  const trimmedPattern = pattern.trim();
-  return trimmedPattern.length > 0 ? trimmedPattern : null;
-}
-
-interface AppProps {
-  controller?: StrudelController;
-}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
 
-  return UNKNOWN_GENERATION_ERROR;
+  return 'Could not generate track: Unknown error';
 }
 
 function clampSeekPosition(position: number): number {
   return Math.min(Math.max(position, SEEK_MIN), SEEK_MAX);
 }
 
-async function requestGeneratedPattern(params: GenerationParams): Promise<string> {
+async function requestGeneratedAudio(params: GenerationParams): Promise<string> {
   const response = await fetch(GENERATE_ENDPOINT_PATH, {
     method: 'POST',
     headers: {
@@ -80,57 +35,55 @@ async function requestGeneratedPattern(params: GenerationParams): Promise<string
     body: JSON.stringify(params)
   });
 
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    if (!response.ok) {
-      throw new Error(`Could not generate track: Request failed with status ${response.status}`);
-    }
-
-    throw new Error(INVALID_GENERATOR_RESPONSE_ERROR);
-  }
-
   if (!response.ok) {
-    const apiErrorMessage = getApiErrorMessage(payload);
-    if (apiErrorMessage) {
-      throw new Error(apiErrorMessage);
+    let errorText: string | null = null;
+    try {
+      const payload: unknown = await response.json();
+      if (typeof payload === 'object' && payload !== null) {
+        const record = payload as Record<string, unknown>;
+        const candidate = record.error ?? record.detail;
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+          errorText = candidate.trim();
+        }
+      }
+    } catch {
+      // ignore JSON parse errors for non-JSON error responses
     }
 
-    throw new Error(`Could not generate track: Request failed with status ${response.status}`);
+    throw new Error(errorText ?? `Could not generate track: Request failed with status ${response.status}`);
   }
 
-  const pattern = getApiPattern(payload);
-  if (!pattern) {
-    throw new Error(INVALID_GENERATOR_RESPONSE_ERROR);
-  }
-
-  return pattern;
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }
 
-export function App({ controller }: AppProps) {
-  const strudelController = useMemo(() => controller ?? createBrowserStrudelController(), [controller]);
+export function App() {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
+  const seekPollRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!hasGeneratedTrack || !isPlaying) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      // TODO: Replace this synthetic seek progression when Strudel exposes a public playback timeline API.
-      setSeekPosition((prev) => (prev >= SEEK_MAX ? SEEK_MIN : clampSeekPosition(prev + SEEK_STEP)));
+  function startSeekPolling(): void {
+    stopSeekPolling();
+    seekPollRef.current = window.setInterval(() => {
+      const audio = audioRef.current;
+      if (audio && audio.duration && isFinite(audio.duration)) {
+        const pct = (audio.currentTime / audio.duration) * SEEK_MAX;
+        setSeekPosition(clampSeekPosition(Math.round(pct)));
+      }
     }, SEEK_POLL_INTERVAL_MS);
+  }
 
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [hasGeneratedTrack, isPlaying]);
+  function stopSeekPolling(): void {
+    if (seekPollRef.current !== null) {
+      window.clearInterval(seekPollRef.current);
+      seekPollRef.current = null;
+    }
+  }
 
   async function handleGenerate(): Promise<void> {
     if (status === 'loading') {
@@ -141,13 +94,29 @@ export function App({ controller }: AppProps) {
     setErrorMessage(null);
 
     try {
-      const pattern = await requestGeneratedPattern(params);
-      await strudelController.generate(pattern);
+      const audioUrl = await requestGeneratedAudio(params);
+
+      // Revoke previous object URL if any
+      if (audioRef.current?.src) {
+        URL.revokeObjectURL(audioRef.current.src);
+      }
+
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+        stopSeekPolling();
+      });
+
+      await audio.play();
+
       setStatus('success');
       setHasGeneratedTrack(true);
       setSeekPosition(SEEK_MIN);
       setIsPlaying(true);
       setErrorMessage(null);
+      startSeekPolling();
     } catch (error) {
       setStatus('error');
       setErrorMessage(getErrorMessage(error));
@@ -156,32 +125,32 @@ export function App({ controller }: AppProps) {
 
   async function handlePlay(): Promise<void> {
     try {
-      await strudelController.play();
+      await audioRef.current?.play();
       setIsPlaying(true);
       setErrorMessage(null);
+      startSeekPolling();
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
   }
 
-  async function handlePause(): Promise<void> {
+  function handlePause(): void {
     try {
-      await strudelController.pause();
+      audioRef.current?.pause();
       setIsPlaying(false);
       setErrorMessage(null);
+      stopSeekPolling();
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     }
   }
 
-  async function handleSeekChange(position: number): Promise<void> {
+  function handleSeekChange(position: number): void {
     const nextPosition = clampSeekPosition(position);
     setSeekPosition(nextPosition);
-    try {
-      await strudelController.seek(nextPosition);
-      setErrorMessage(null);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+    const audio = audioRef.current;
+    if (audio && audio.duration && isFinite(audio.duration)) {
+      audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
     }
   }
 
