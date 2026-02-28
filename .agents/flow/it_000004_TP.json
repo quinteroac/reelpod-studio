@@ -1,0 +1,174 @@
+{
+  "overallStatus": "pending",
+  "scope": [
+    "Validate that `backend/llm-skills/strudel-pattern-generator/SKILL.md` is created with correct structure, YAML frontmatter, and required content sections.",
+    "Validate that the YAML frontmatter is syntactically valid and contains all mandatory fields (`name`, `description`, `disable-model-invocation: true`).",
+    "Validate that the SKILL.md body documents Strudel mini-notation syntax, parameter mappings for all `Mood` and `Style` values, the LLM output contract, and at least 3 complete example patterns (one per style).",
+    "Validate that `backend/llm-skills/strudel-pattern-generator/examples/valid-patterns.md` is created with at least 3 pattern strings conforming to the `stack([...]).slow(N).gain(N).cpm(N)` structure.",
+    "Manually verify that each example pattern in `valid-patterns.md` plays in the Strudel browser REPL without console errors."
+  ],
+  "environmentData": [
+    "Runtime: Node.js / Bun — tests run via Vitest in the repository root.",
+    "File system: repository must be checked out; tests access files via `fs.readFileSync` relative to the project root.",
+    "YAML parsing: use `js-yaml` (or equivalent available in the project) for frontmatter validation.",
+    "Source of truth for `Mood` and `Style` enum values: `src/lib/pattern-generator.ts` — the expected values are `chill`, `melancholic`, `upbeat` (Mood) and `jazz`, `hip-hop`, `ambient` (Style).",
+    "Browser environment (for manual tests): Chromium/Firefox with Strudel REPL accessible; developer console open to observe errors.",
+    "---",
+    "## User Story: US-001 - Create the Strudel pattern generator skill file"
+  ],
+  "automatedTests": [
+    {
+      "id": "TC-001-001",
+      "description": "Verify that `backend/llm-skills/strudel-pattern-generator/SKILL.md` exists on the file system",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-1"
+      ]
+    },
+    {
+      "id": "TC-001-002",
+      "description": "Verify that `SKILL.md` begins with a YAML frontmatter block delimited by `---` markers and that the YAML is parseable without errors",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-2"
+      ]
+    },
+    {
+      "id": "TC-001-003",
+      "description": "Verify that the parsed YAML frontmatter contains `name: strudel-pattern-generator`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-2"
+      ]
+    },
+    {
+      "id": "TC-001-004",
+      "description": "Verify that the parsed YAML frontmatter contains a non-empty `description` field",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-2"
+      ]
+    },
+    {
+      "id": "TC-001-005",
+      "description": "Verify that the parsed YAML frontmatter contains `disable-model-invocation: true`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-2"
+      ]
+    },
+    {
+      "id": "TC-001-006",
+      "description": "Verify that the SKILL.md body documents core Strudel mini-notation symbols: sound names (`bd`, `sd`, `hh`, `cp`), rest (`~`), repeat (`*N`), and grouping (`[]`)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-3"
+      ]
+    },
+    {
+      "id": "TC-001-007",
+      "description": "Verify that the SKILL.md body documents the chaining methods `.stack()`, `.slow()`, `.gain()`, and `.cpm()`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-3"
+      ]
+    },
+    {
+      "id": "TC-001-008",
+      "description": "Verify that the SKILL.md body contains a parameter mapping section that references all three `Mood` values: `chill`, `melancholic`, `upbeat`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-4"
+      ]
+    },
+    {
+      "id": "TC-001-009",
+      "description": "Verify that the SKILL.md body contains a parameter mapping section that references all three `Style` values: `jazz`, `hip-hop`, `ambient`",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-4"
+      ]
+    },
+    {
+      "id": "TC-001-010",
+      "description": "Verify that the SKILL.md body includes an output contract section specifying that the LLM must return a single-line Strudel pattern string with no prose and no markdown code fences",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-5"
+      ]
+    },
+    {
+      "id": "TC-001-011",
+      "description": "Verify that the SKILL.md body contains at least 3 complete example patterns — one for each style (`jazz`, `hip-hop`, `ambient`)",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-001",
+        "FR-6"
+      ]
+    },
+    {
+      "id": "TC-002-001",
+      "description": "Verify that `backend/llm-skills/strudel-pattern-generator/examples/valid-patterns.md` exists on the file system",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-7"
+      ]
+    },
+    {
+      "id": "TC-002-002",
+      "description": "Verify that `valid-patterns.md` contains at least 3 pattern strings",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-7"
+      ]
+    },
+    {
+      "id": "TC-002-003",
+      "description": "Verify that each pattern in `valid-patterns.md` matches the expected structure: `stack([...]).slow(N).gain(N).cpm(N)` using a regex",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002",
+        "FR-6",
+        "FR-7"
+      ]
+    }
+  ],
+  "exploratoryManualTests": [
+    {
+      "id": "TC-002-004",
+      "description": "Manually paste the `jazz`-style example pattern from `valid-patterns.md` into the Strudel browser REPL and start playback",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "TC-002-005",
+      "description": "Manually paste the `hip-hop`-style example pattern from `valid-patterns.md` into the Strudel browser REPL and start playback",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002"
+      ]
+    },
+    {
+      "id": "TC-002-006",
+      "description": "Manually paste the `ambient`-style example pattern from `valid-patterns.md` into the Strudel browser REPL and start playback",
+      "status": "pending",
+      "correlatedRequirements": [
+        "US-002"
+      ]
+    }
+  ]
+}
