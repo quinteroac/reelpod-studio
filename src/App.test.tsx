@@ -1,5 +1,25 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type VisualSceneProps = {
+  imageUrl: string | null;
+  waveformProgress: number;
+  isPlaying: boolean;
+};
+
+const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
+  <div
+    data-testid="visual-scene"
+    data-image-url={props.imageUrl ?? ''}
+    data-waveform-progress={props.waveformProgress.toFixed(2)}
+    data-is-playing={props.isPlaying ? 'true' : 'false'}
+  />
+));
+
+vi.mock('./components/visual-scene', () => ({
+  VisualScene: (props: VisualSceneProps) => visualSceneSpy(props)
+}));
+
 import { App } from './App';
 
 function createMockAudio(): HTMLAudioElement {
@@ -41,6 +61,7 @@ describe('App generation flow', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
     mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockGenerateFetch());
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-audio-url');
@@ -97,7 +118,7 @@ describe('App generation flow', () => {
     expect(uploadInput.accept).toBe('image/jpeg,image/png,image/webp');
   });
 
-  it('creates an object URL for a selected image and renders it fit-to-canvas', () => {
+  it('creates an object URL for a selected image and renders it in the visual scene', () => {
     const objectUrl = 'blob:http://localhost/uploaded-visual-url';
     vi.spyOn(URL, 'createObjectURL').mockReturnValue(objectUrl);
 
@@ -108,14 +129,11 @@ describe('App generation flow', () => {
     fireEvent.change(uploadInput, { target: { files: [imageFile] } });
 
     expect(URL.createObjectURL).toHaveBeenCalledWith(imageFile);
-
-    const preview = screen.getByAltText('Selected visual preview') as HTMLImageElement;
-    expect(preview.src).toBe(objectUrl);
-    expect(preview.className).toContain('object-contain');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', objectUrl);
     expect(screen.getByTestId('visual-canvas').className).toContain('h-[min(60vh,420px)]');
   });
 
-  it('shows a clear error for non-image uploads and does not render a preview', () => {
+  it('shows a clear error for non-image uploads and keeps visual scene fallback state', () => {
     render(<App />);
 
     const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
@@ -125,7 +143,15 @@ describe('App generation flow', () => {
     expect(
       screen.getByText('Please select a valid image file (JPEG, PNG, or WebP).')
     ).toBeInTheDocument();
-    expect(screen.queryByAltText('Selected visual preview')).not.toBeInTheDocument();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
+  });
+
+  it('renders the visual scene with fallback state before any upload', () => {
+    render(<App />);
+
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-waveform-progress', '0.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
   });
 
   it('keeps player hidden until a track is generated successfully', async () => {
@@ -239,11 +265,13 @@ describe('App generation flow', () => {
     fireEvent.change(seek, { target: { value: '50' } });
     expect(seek.value).toBe('50');
     expect(mockAudio.currentTime).toBe(15);
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-waveform-progress', '0.50');
 
     // Seek to 100%
     fireEvent.change(seek, { target: { value: '100' } });
     expect(seek.value).toBe('100');
     expect(mockAudio.currentTime).toBe(30);
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-waveform-progress', '1.00');
   });
 
   it('clamps manual seek values to the supported range', async () => {

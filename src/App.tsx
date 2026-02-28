@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { GenerationParams, Mood, Style } from './lib/pattern-generator';
 import { GENERATE_ENDPOINT_PATH } from './api/constants';
+import { VisualScene } from './components/visual-scene';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -70,6 +71,7 @@ export function App() {
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
   const seekPollRef = useRef<number | null>(null);
+  const waveformProgress = seekPosition / SEEK_MAX;
 
   function startSeekPolling(): void {
     stopSeekPolling();
@@ -326,17 +328,7 @@ export function App() {
             data-testid="visual-canvas"
             className="flex h-[min(60vh,420px)] w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
           >
-            {visualImageUrl ? (
-              <img
-                src={visualImageUrl}
-                alt="Selected visual preview"
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <p className="px-4 text-center text-sm text-lofi-accentMuted">
-                Select an image to use it as the track visual.
-              </p>
-            )}
+            <VisualScene imageUrl={visualImageUrl} waveformProgress={waveformProgress} isPlaying={isPlaying} />
           </div>
 
           {visualErrorMessage && (
