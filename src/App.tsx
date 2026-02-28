@@ -70,14 +70,17 @@ export function App() {
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   const seekPollRef = useRef<number | null>(null);
-  const waveformProgress = seekPosition / SEEK_MAX;
 
   function startSeekPolling(): void {
     stopSeekPolling();
     seekPollRef.current = window.setInterval(() => {
       const audio = audioRef.current;
       if (audio && audio.duration && isFinite(audio.duration)) {
+        setAudioCurrentTime(audio.currentTime);
+        setAudioDuration(audio.duration);
         const pct = (audio.currentTime / audio.duration) * SEEK_MAX;
         setSeekPosition(clampSeekPosition(Math.round(pct)));
       }
@@ -118,8 +121,17 @@ export function App() {
 
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
+      setAudioDuration(0);
+      if (audio.duration && isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+      }
+      setAudioCurrentTime(0);
 
       audio.addEventListener('ended', () => {
+        const endedDuration = audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+        setAudioDuration(endedDuration);
+        setAudioCurrentTime(endedDuration);
+        setSeekPosition(SEEK_MAX);
         setIsPlaying(false);
         stopSeekPolling();
       });
@@ -166,6 +178,8 @@ export function App() {
     const audio = audioRef.current;
     if (audio && audio.duration && isFinite(audio.duration)) {
       audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
+      setAudioCurrentTime(audio.currentTime);
+      setAudioDuration(audio.duration);
     }
   }
 
@@ -328,7 +342,12 @@ export function App() {
             data-testid="visual-canvas"
             className="flex h-[min(60vh,420px)] w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
           >
-            <VisualScene imageUrl={visualImageUrl} waveformProgress={waveformProgress} isPlaying={isPlaying} />
+            <VisualScene
+              imageUrl={visualImageUrl}
+              audioCurrentTime={audioCurrentTime}
+              audioDuration={audioDuration}
+              isPlaying={isPlaying}
+            />
           </div>
 
           {visualErrorMessage && (

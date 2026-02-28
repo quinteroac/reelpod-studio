@@ -7,13 +7,11 @@ describe('visual scene utilities', () => {
     expect(computeContainScale(8, 4, 800, 1600)).toEqual([2, 4]);
   });
 
-  it('derives waveform phase from both playback progress and animation time', () => {
-    const syncedPhase = computeWaveformPhase(0.5, 0);
-    const animatedPhase = computeWaveformPhase(0.5, 1.25);
-
-    expect(syncedPhase).toBeCloseTo(Math.PI * 4);
-    expect(animatedPhase).toBeGreaterThan(syncedPhase);
-    expect(computeWaveformPhase(10, -2)).toBeCloseTo(Math.PI * 8);
+  it('derives waveform phase from audio currentTime and duration', () => {
+    expect(computeWaveformPhase(15, 30)).toBeCloseTo(Math.PI * 4);
+    expect(computeWaveformPhase(30, 30)).toBeCloseTo(Math.PI * 8);
+    expect(computeWaveformPhase(999, 30)).toBeCloseTo(Math.PI * 8);
+    expect(computeWaveformPhase(4, 0)).toBe(0);
   });
 
   it('builds waveform coordinates as xyz triples across the scene width', () => {

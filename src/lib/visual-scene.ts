@@ -1,5 +1,4 @@
 const PHASE_SYNC_MULTIPLIER = Math.PI * 8;
-const PHASE_ANIMATION_SPEED = 2;
 
 export function computeContainScale(
   viewportWidth: number,
@@ -21,10 +20,13 @@ export function computeContainScale(
   return [viewportHeight * imageAspect, viewportHeight];
 }
 
-export function computeWaveformPhase(playbackProgress: number, animationSeconds: number): number {
-  const normalizedProgress = Math.min(Math.max(playbackProgress, 0), 1);
-  const safeAnimationSeconds = Math.max(animationSeconds, 0);
-  return normalizedProgress * PHASE_SYNC_MULTIPLIER + safeAnimationSeconds * PHASE_ANIMATION_SPEED;
+export function computeWaveformPhase(audioCurrentTime: number, audioDuration: number): number {
+  if (!isFinite(audioCurrentTime) || !isFinite(audioDuration) || audioDuration <= 0) {
+    return 0;
+  }
+
+  const normalizedProgress = Math.min(Math.max(audioCurrentTime / audioDuration, 0), 1);
+  return normalizedProgress * PHASE_SYNC_MULTIPLIER;
 }
 
 export function buildWaveformPositions(

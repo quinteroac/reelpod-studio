@@ -1,5 +1,5 @@
 /* eslint-disable react/no-unknown-property */
-import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
+import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { buildWaveformPositions, computeContainScale, computeWaveformPhase } from '../lib/visual-scene';
@@ -11,15 +11,15 @@ const WAVEFORM_SAMPLE_COUNT = 96;
 
 type VisualSceneProps = {
   imageUrl: string | null;
-  waveformProgress: number;
+  audioCurrentTime: number;
+  audioDuration: number;
   isPlaying: boolean;
 };
 
-function SceneContent({ imageUrl, waveformProgress, isPlaying }: VisualSceneProps) {
+function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying }: VisualSceneProps) {
   const texture = useLoader(THREE.TextureLoader, imageUrl ?? FALLBACK_VISUAL_DATA_URI);
   const { viewport } = useThree();
   const waveformRef = useRef<THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial> | null>(null);
-  const animationSecondsRef = useRef(0);
 
   const [planeWidth, planeHeight] = useMemo(() => {
     const image = texture.image as { width?: number; height?: number } | undefined;
@@ -44,23 +44,9 @@ function SceneContent({ imageUrl, waveformProgress, isPlaying }: VisualSceneProp
   );
 
   useEffect(() => {
-    if (!isPlaying) {
-      animationSecondsRef.current = 0;
-    }
-
-    const phase = computeWaveformPhase(waveformProgress, animationSecondsRef.current);
+    const phase = computeWaveformPhase(audioCurrentTime, audioDuration);
     updateWaveformGeometry(phase);
-  }, [isPlaying, updateWaveformGeometry, waveformProgress]);
-
-  useFrame((_state, delta) => {
-    if (!isPlaying) {
-      return;
-    }
-
-    animationSecondsRef.current += delta;
-    const phase = computeWaveformPhase(waveformProgress, animationSecondsRef.current);
-    updateWaveformGeometry(phase);
-  });
+  }, [audioCurrentTime, audioDuration, updateWaveformGeometry]);
 
   return (
     <>
@@ -77,18 +63,23 @@ function SceneContent({ imageUrl, waveformProgress, isPlaying }: VisualSceneProp
 
       <lineSegments ref={waveformRef} data-testid="waveform-overlay" position={[0, 0, 0.1]}>
         <bufferGeometry />
-        <lineBasicMaterial color={imageUrl ? '#f4d8b7' : '#d6c8bc'} />
+        <lineBasicMaterial color={isPlaying ? '#f4d8b7' : '#d6c8bc'} />
       </lineSegments>
     </>
   );
 }
 
-export function VisualScene({ imageUrl, waveformProgress, isPlaying }: VisualSceneProps) {
+export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlaying }: VisualSceneProps) {
   return (
     <div data-testid="visual-scene" className="relative h-full w-full">
       <Canvas orthographic camera={{ position: [0, 0, 4], zoom: 120 }}>
         <color attach="background" args={['#18120f']} />
-        <SceneContent imageUrl={imageUrl} waveformProgress={waveformProgress} isPlaying={isPlaying} />
+        <SceneContent
+          imageUrl={imageUrl}
+          audioCurrentTime={audioCurrentTime}
+          audioDuration={audioDuration}
+          isPlaying={isPlaying}
+        />
       </Canvas>
 
       {!imageUrl && (

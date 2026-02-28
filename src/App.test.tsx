@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type VisualSceneProps = {
   imageUrl: string | null;
-  waveformProgress: number;
+  audioCurrentTime: number;
+  audioDuration: number;
   isPlaying: boolean;
 };
 
@@ -11,7 +12,8 @@ const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
   <div
     data-testid="visual-scene"
     data-image-url={props.imageUrl ?? ''}
-    data-waveform-progress={props.waveformProgress.toFixed(2)}
+    data-audio-current-time={props.audioCurrentTime.toFixed(2)}
+    data-audio-duration={props.audioDuration.toFixed(2)}
     data-is-playing={props.isPlaying ? 'true' : 'false'}
   />
 ));
@@ -150,7 +152,8 @@ describe('App generation flow', () => {
     render(<App />);
 
     expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-waveform-progress', '0.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '0.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '0.00');
     expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
   });
 
@@ -265,13 +268,13 @@ describe('App generation flow', () => {
     fireEvent.change(seek, { target: { value: '50' } });
     expect(seek.value).toBe('50');
     expect(mockAudio.currentTime).toBe(15);
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-waveform-progress', '0.50');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '15.00');
 
     // Seek to 100%
     fireEvent.change(seek, { target: { value: '100' } });
     expect(seek.value).toBe('100');
     expect(mockAudio.currentTime).toBe(30);
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-waveform-progress', '1.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '30.00');
   });
 
   it('clamps manual seek values to the supported range', async () => {
@@ -418,5 +421,55 @@ describe('App generation flow', () => {
     const blobArg = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0][0] as Blob;
     expect(blobArg.size).toBeGreaterThan(0);
     expect(blobArg.type).toBe('audio/wav');
+  });
+
+  it('drives animation duration from the generated audio duration', async () => {
+    Object.defineProperty(mockAudio, 'duration', { value: 42, configurable: true });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '42.00');
+    });
+  });
+
+  it('keeps animation playback state synchronized with play and pause actions', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+    });
+  });
+
+  it('moves animation to the end when the audio track ends', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    });
+
+    const endedListener = (mockAudio.addEventListener as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === 'ended'
+    )?.[1] as (() => void) | undefined;
+
+    expect(endedListener).toBeDefined();
+    endedListener?.();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '30.00');
+      expect(screen.getByLabelText('Seek')).toHaveValue('100');
+    });
   });
 });
