@@ -152,15 +152,15 @@ class LoadFewShotExamplesTests(unittest.TestCase):
 
         self.assertEqual(
             examples[0]["assistant"],
-            'stack([s("bd ~ [~ bd] ~"), s("~ ~ sd ~"), s("hh*2")]).slow(2).gain(0.7).cpm(90)',
+            'stack([s("bd ~ [~ bd] ~"), s("~ ~ sd ~"), s("hh*2"), note("c3 eb3 f3 ~ g3 ~ bb3 ~").sound("piano")]).slow(2).gain(0.7).cpm(90)',
         )
         self.assertEqual(
             examples[1]["assistant"],
-            'stack([s("bd ~ bd ~"), s("~ sd ~ sd"), s("hh ~ hh ~")]).slow(2).gain(0.85).cpm(85)',
+            'stack([s("bd ~ bd ~"), s("~ sd ~ sd"), s("hh ~ hh ~"), note("c3 ~ eb3 ~ g3 ~ bb3 ~").sound("piano")]).slow(2).gain(0.85).cpm(85)',
         )
         self.assertEqual(
             examples[2]["assistant"],
-            'stack([s("bd ~ ~ ~"), s("~ ~ sd ~"), s("~ hh ~ hh")]).slow(4).gain(0.5).cpm(70)',
+            'stack([s("bd ~ ~ ~"), s("~ ~ sd ~"), s("~ hh ~ hh"), note("c3 ~ ~ e3 ~ ~ g3 ~").sound("piano")]).slow(4).gain(0.5).cpm(70)',
         )
         for example in examples:
             self.assertFalse(example["assistant"].startswith("```"))
