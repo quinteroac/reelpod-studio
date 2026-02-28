@@ -19,6 +19,7 @@ interface QueueEntry {
   params: GenerationParams;
   status: QueueEntryStatus;
   errorMessage: string | null;
+  audioUrl: string | null;
 }
 
 const defaultParams: GenerationParams = {
@@ -110,6 +111,7 @@ async function requestGeneratedImage(prompt: string): Promise<string> {
 
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const generatedAudioUrlsRef = useRef<string[]>([]);
   const visualUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
@@ -152,9 +154,43 @@ export function App() {
       if (visualUrlRef.current) {
         URL.revokeObjectURL(visualUrlRef.current);
       }
+      generatedAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      generatedAudioUrlsRef.current = [];
       stopSeekPolling();
     };
   }, [stopSeekPolling]);
+
+  const playAudioFromUrl = useCallback(async (audioUrl: string): Promise<void> => {
+    audioRef.current?.pause();
+    stopSeekPolling();
+
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+
+    setAudioDuration(0);
+    if (audio.duration && isFinite(audio.duration)) {
+      setAudioDuration(audio.duration);
+    }
+    setAudioCurrentTime(0);
+    setSeekPosition(SEEK_MIN);
+
+    audio.addEventListener('ended', () => {
+      const endedDuration = audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+      setAudioDuration(endedDuration);
+      setAudioCurrentTime(endedDuration);
+      setSeekPosition(SEEK_MAX);
+      setIsPlaying(false);
+      stopSeekPolling();
+    });
+
+    await audio.play();
+
+    setHasGeneratedTrack(true);
+    setIsPlaying(true);
+    setStatus('success');
+    setErrorMessage(null);
+    startSeekPolling();
+  }, [startSeekPolling, stopSeekPolling]);
 
   const processQueueEntry = useCallback(async (entry: QueueEntry): Promise<void> => {
     setStatus('loading');
@@ -164,49 +200,25 @@ export function App() {
 
     try {
       const audioUrl = await requestGeneratedAudio(entry.params);
+      generatedAudioUrlsRef.current.push(audioUrl);
 
-      // Revoke previous object URL if any
-      if (audioRef.current?.src) {
-        URL.revokeObjectURL(audioRef.current.src);
-      }
-
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      setAudioDuration(0);
-      if (audio.duration && isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
-      }
-      setAudioCurrentTime(0);
-
-      audio.addEventListener('ended', () => {
-        const endedDuration = audio.duration && isFinite(audio.duration) ? audio.duration : 0;
-        setAudioDuration(endedDuration);
-        setAudioCurrentTime(endedDuration);
-        setSeekPosition(SEEK_MAX);
-        setIsPlaying(false);
-        stopSeekPolling();
-      });
-
-      await audio.play();
-
-      setStatus('success');
-      setHasGeneratedTrack(true);
-      setSeekPosition(SEEK_MIN);
-      setIsPlaying(true);
-      setErrorMessage(null);
-      startSeekPolling();
+      await playAudioFromUrl(audioUrl);
       setQueueEntries((prev) =>
-        prev.map((item) => (item.id === entry.id ? { ...item, status: 'completed', errorMessage: null } : item))
+        prev.map((item) =>
+          item.id === entry.id ? { ...item, status: 'completed', errorMessage: null, audioUrl } : item
+        )
       );
     } catch (error) {
       const message = getErrorMessage(error);
       setStatus('error');
       setErrorMessage(message);
       setQueueEntries((prev) =>
-        prev.map((item) => (item.id === entry.id ? { ...item, status: 'failed', errorMessage: message } : item))
+        prev.map((item) =>
+          item.id === entry.id ? { ...item, status: 'failed', errorMessage: message, audioUrl: null } : item
+        )
       );
     }
-  }, [startSeekPolling, stopSeekPolling]);
+  }, [playAudioFromUrl]);
 
   useEffect(() => {
     if (status === 'loading') {
@@ -227,9 +239,23 @@ export function App() {
       id: queueIdRef.current++,
       params: { ...params },
       status: 'queued',
-      errorMessage: null
+      errorMessage: null,
+      audioUrl: null
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
+  }
+
+  async function handlePlayQueueEntry(entry: QueueEntry): Promise<void> {
+    if (entry.status !== 'completed' || !entry.audioUrl) {
+      return;
+    }
+
+    try {
+      await playAudioFromUrl(entry.audioUrl);
+    } catch (error) {
+      setStatus('error');
+      setErrorMessage(getErrorMessage(error));
+    }
   }
 
   async function handlePlay(): Promise<void> {
@@ -468,6 +494,18 @@ export function App() {
                         {statusLabel}
                       </span>
                     </div>
+                    {isCompleted && entry.audioUrl && (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          aria-label={`Play generation ${entry.id}`}
+                          className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200"
+                          onClick={() => void handlePlayQueueEntry(entry)}
+                        >
+                          Play
+                        </button>
+                      </div>
+                    )}
                     {entry.errorMessage && <p className="mt-2 text-xs text-red-100">{entry.errorMessage}</p>}
                   </li>
                 );

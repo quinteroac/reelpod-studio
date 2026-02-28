@@ -595,6 +595,91 @@ describe('App generation flow', () => {
     });
   });
 
+  it('shows a play action for completed queue entries', async () => {
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/queue-track-1')
+      .mockReturnValueOnce('blob:http://localhost/queue-track-2');
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByRole('button', { name: 'Play generation 1' })).toBeInTheDocument();
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByRole('button', { name: 'Play generation 2' })).toBeInTheDocument();
+    });
+  });
+
+  it('loads and starts playback for the selected completed queue entry', async () => {
+    const firstTrackUrl = 'blob:http://localhost/queue-track-1';
+    const secondTrackUrl = 'blob:http://localhost/queue-track-2';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce(firstTrackUrl).mockReturnValueOnce(secondTrackUrl);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const audioCtor = globalThis.Audio as ReturnType<typeof vi.fn>;
+    const audioCallCountBeforeReplay = audioCtor.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
+
+    await waitFor(() => {
+      expect(audioCtor.mock.calls.length).toBe(audioCallCountBeforeReplay + 1);
+      expect(audioCtor.mock.calls.at(-1)?.[0]).toBe(firstTrackUrl);
+      expect(mockAudio.play).toHaveBeenCalledTimes(audioCallCountBeforeReplay + 1);
+    });
+  });
+
+  it('drives visual scene timing from the selected queue track during replay', async () => {
+    const firstTrackUrl = 'blob:http://localhost/queue-track-1';
+    const secondTrackUrl = 'blob:http://localhost/queue-track-2';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce(firstTrackUrl).mockReturnValueOnce(secondTrackUrl);
+
+    const firstAudio = createMockAudio();
+    Object.defineProperty(firstAudio, 'duration', { value: 40, configurable: true });
+    const secondAudio = createMockAudio();
+    Object.defineProperty(secondAudio, 'duration', { value: 20, configurable: true });
+    const replayAudio = createMockAudio();
+    Object.defineProperty(replayAudio, 'duration', { value: 40, configurable: true });
+    const audioInstances = [firstAudio, secondAudio, replayAudio];
+
+    vi.spyOn(globalThis, 'Audio').mockImplementation(
+      () => (audioInstances.shift() ?? createMockAudio()) as HTMLAudioElement
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '20.00');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '40.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+    });
+
+    fireEvent.change(screen.getByLabelText('Seek'), { target: { value: '50' } });
+    expect(replayAudio.currentTime).toBe(20);
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '20.00');
+  });
+
   it('marks failed queue entries with an error indicator and message', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(createErrorResponse('Audio generation failed'));
 
