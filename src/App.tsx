@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import type { GenerationParams, Mood, Style } from './lib/pattern-generator';
+
+type Mood = 'chill' | 'melancholic' | 'upbeat';
+type Style = 'jazz' | 'hip-hop' | 'ambient';
+
+interface GenerationParams {
+  mood: Mood;
+  tempo: number;
+  style: Style;
+}
 import { GENERATE_ENDPOINT_PATH } from './api/constants';
 import { VisualScene } from './components/visual-scene';
 

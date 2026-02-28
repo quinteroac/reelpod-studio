@@ -1,6 +1,43 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Test coverage
 coverage/
+
+# Vite cache
 .vite/
-.DS_Store
+
+# Environment variables
 .env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.*
+
+# Logs
+*.log
+logs/
+
+# Python backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# Generated audio
+*.wav
+*.mp3
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
