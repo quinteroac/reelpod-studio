@@ -1,0 +1,156 @@
+{
+  "goals": [
+    "Replace the hardcoded system prompt in `build_messages()` with the markdown body of `SKILL.md`, read from disk at runtime.",
+    "Inject the three verified example patterns from `valid-patterns.md` as few-shot user/assistant message pairs.",
+    "Ensure the wiring is covered by unit tests (frontmatter stripping, example extraction, full message structure)."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Load SKILL.md from disk and use as system prompt",
+      "description": "As the `/api/generate` endpoint, I want to read `backend/llm-skills/strudel-pattern-generator/SKILL.md` from disk and strip its YAML frontmatter, so that the markdown body becomes the system prompt sent to the OpenAI API instead of the current 2-line hardcoded string.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A pure function `load_skill_body(path: Path) -> str` exists in `backend/main.py` (or a new `backend/llm_skill.py` module)"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "`load_skill_body` reads the file at the given path and returns everything after the closing `---` of the YAML frontmatter block"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "If the file has no frontmatter (no `---` delimiters), the full file content is returned as-is"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "`build_messages()` uses the return value of `load_skill_body` as the `system` message content"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "The path to `SKILL.md` is resolved relative to `main.py`'s directory (no hardcoded absolute paths)"
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "No new Python packages are added to install"
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Inject few-shot examples from valid-patterns.md",
+      "description": "As the `/api/generate` endpoint, I want to parse `backend/llm-skills/strudel-pattern-generator/examples/valid-patterns.md` and include the three verified patterns as few-shot user/assistant message pairs, so that the LLM receives concrete correct examples before seeing the real user request.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A pure function `load_few_shot_examples(path: Path) -> list[dict[str, str]]` exists"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The function parses `valid-patterns.md` and returns exactly 3 dicts, each with keys `\"user\"` and `\"assistant\"`"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Each `\"user\"` value is constructed from the `**Parameters:**` line of each section, formatted as: `Generate one lo-fi Strudel pattern using mood \"{mood}\", style \"{style}\", and tempo {tempo}. Return only the pattern.`"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Each `\"assistant\"` value is the raw pattern string extracted from the fenced code block (` ``` `) in that section — no surrounding whitespace, no code fence markers"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "`build_messages()` inserts these pairs between the system message and the final user request, in the order: system → few-shot pairs (user/assistant × 3) → user request"
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "If `valid-patterns.md` cannot be read or parsed, `build_messages()` falls back to zero few-shot examples (logs a warning) without crashing"
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "No new Python packages are added to install"
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Unit tests for skill loading and message building",
+      "description": "As a developer, I want unit tests covering the new loading and message-building logic, so that regressions in prompt construction are caught automatically.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Test file exists at `backend/test_llm_skill.py` (co-located with `main.py`)"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "`test_load_skill_body_strips_frontmatter`: given a file with YAML frontmatter, asserts the returned string starts after the closing `---` and does not contain `---`"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "`test_load_skill_body_no_frontmatter`: given a file with no `---` delimiters, asserts full content is returned unchanged"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "`test_load_few_shot_examples_count`: given the real `valid-patterns.md`, asserts exactly 3 examples are returned"
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "`test_load_few_shot_examples_structure`: asserts each returned dict has keys `\"user\"` and `\"assistant\"` with non-empty string values"
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "`test_build_messages_structure`: given mocked skill body and 3 few-shot examples, asserts the returned list has length 6 (1 system + 3×2 few-shot + 1 user) — wait, few-shot pairs are 3 user + 3 assistant = 6, plus 1 system + 1 user = 8 total messages"
+        },
+        {
+          "id": "US-003-AC07",
+          "text": "`test_build_messages_system_content`: asserts the first message has `role == \"system\"` and its content equals the provided skill body string"
+        },
+        {
+          "id": "US-003-AC08",
+          "text": "`test_build_messages_last_message`: asserts the last message has `role == \"user\"` and includes the actual mood, style, and tempo values"
+        },
+        {
+          "id": "US-003-AC09",
+          "text": "All tests pass with `pytest backend/test_llm_skill.py`"
+        },
+        {
+          "id": "US-003-AC10",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "** `load_skill_body(path: Path) -> str` reads `SKILL.md` from disk and returns the content after stripping the YAML frontmatter block (content between the first and second `---` line, inclusive)."
+    },
+    {
+      "id": "FR-2",
+      "description": "** `load_few_shot_examples(path: Path) -> list[dict[str, str]]` reads `valid-patterns.md` and extracts one `{user, assistant}` pair per style section by parsing the `**Parameters:**` line and the fenced code block within each `---`-delimited section."
+    },
+    {
+      "id": "FR-3",
+      "description": "** `build_messages(body: GenerateRequestBody, skill_body: str, few_shot: list[dict[str, str]]) -> list[dict[str, str]]` constructs the full message list: system (skill_body) + interleaved few-shot user/assistant pairs + final user request."
+    },
+    {
+      "id": "FR-4",
+      "description": "** The skill file paths are resolved at module level or inside the route handler using `Path(__file__).parent / \"llm-skills/strudel-pattern-generator/SKILL.md\"` (and analogously for `valid-patterns.md`). No hardcoded absolute paths."
+    },
+    {
+      "id": "FR-5",
+      "description": "** If `load_skill_body` raises `FileNotFoundError`, the endpoint raises `HTTPException(500)` with a clear message. If `load_few_shot_examples` fails, the endpoint logs a warning and proceeds with zero few-shot examples."
+    },
+    {
+      "id": "FR-6",
+      "description": "** No new third-party Python packages are introduced. Standard library only (`pathlib`, `re`) for parsing."
+    }
+  ]
+}
