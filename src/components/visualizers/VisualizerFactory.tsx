@@ -1,3 +1,4 @@
+import { RainVisualizer } from './RainVisualizer';
 import { WaveformVisualizer } from './WaveformVisualizer';
 import type { VisualizerProps, VisualizerType } from './types';
 
@@ -9,6 +10,8 @@ export function VisualizerFactory({ type, ...props }: VisualizerFactoryProps) {
     switch (type) {
         case 'waveform':
             return <WaveformVisualizer {...props} />;
+        case 'rain':
+            return <RainVisualizer {...props} />;
         case 'none':
             return null;
         default:

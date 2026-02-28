@@ -42,17 +42,22 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
 
   return (
     <>
-      {/* Image plane — no data-* props allowed here (Three.js object, not DOM) */}
-      <mesh scale={[planeWidth, planeHeight, 1]}>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
+      {/* Conditionally hide the default image plane if a visualizer handles its own background (like rain) */}
+      {visualizerType !== 'rain' && (
+        <>
+          {/* Image plane — no data-* props allowed here (Three.js object, not DOM) */}
+          <mesh scale={[planeWidth, planeHeight, 1]}>
+            <planeGeometry args={[1, 1]} />
+            <meshBasicMaterial map={texture} toneMapped={false} />
+          </mesh>
 
-      {/* Dark overlay dims the image so the waveforms read clearly */}
-      <mesh scale={[planeWidth, planeHeight, 1]} position={[0, 0, 0.05]}>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.45} />
-      </mesh>
+          {/* Dark overlay dims the image so the waveforms read clearly */}
+          <mesh scale={[planeWidth, planeHeight, 1]} position={[0, 0, 0.05]}>
+            <planeGeometry args={[1, 1]} />
+            <meshBasicMaterial color="#000000" transparent opacity={0.45} />
+          </mesh>
+        </>
+      )}
 
       <VisualizerFactory
         type={visualizerType}
@@ -61,14 +66,15 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
         isPlaying={isPlaying}
         planeWidth={planeWidth}
         planeHeight={planeHeight}
+        texture={texture}
       />
     </>
   );
 }
 
 export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlaying }: VisualSceneProps) {
-  // In the future this could be a prop passed down or selected from UI. For now defaulting to waveform.
-  const currentVisualizerType: VisualizerType = 'waveform';
+  // Fixed to 'rain' as requested by the user for now
+  const currentVisualizerType: VisualizerType = 'rain';
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
 
