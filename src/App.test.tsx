@@ -496,19 +496,24 @@ describe('App generation flow', () => {
     expect(mockAudio.currentTime).toBe(30);
   });
 
-  it('shows loading while generation is in progress and ignores duplicate Generate clicks', async () => {
+  it('shows loading while generation is in progress and queues additional generate clicks', async () => {
     let resolveFetch: ((value: Response) => void) | undefined;
-    const fetchMock = vi.fn().mockImplementation(
-      () =>
-        new Promise<Response>((resolve) => {
-          resolveFetch = resolve;
-        })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          })
+      )
+      .mockImplementationOnce(async () => createWavBlobResponse())
+      .mockImplementation(async () => createWavBlobResponse());
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
     const generate = screen.getByRole('button', { name: 'Generate' });
+    fireEvent.click(generate);
     fireEvent.click(generate);
 
     const status = screen.getByText('Generating track...').closest('[role="status"]');
@@ -517,15 +522,92 @@ describe('App generation flow', () => {
     expect(statusElement).toHaveTextContent('Generating track...');
     expect(statusElement.className).toContain('border-lofi-accent/60');
     expect(statusElement.querySelector('.animate-spin')).not.toBeNull();
-    expect(generate).toBeDisabled();
-
-    fireEvent.click(generate);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      const entries = screen.getAllByTestId(/queue-entry-/);
+      expect(entries.length).toBe(2);
+      expect(entries[0]).toHaveAttribute('data-status', 'generating');
+      expect(entries[1]).toHaveAttribute('data-status', 'queued');
+    });
 
     resolveFetch?.(createWavBlobResponse());
 
     await waitFor(() => {
-      expect(screen.queryByText('Generating track...')).not.toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const entries = screen.getAllByTestId(/queue-entry-/);
+      expect(entries[0]).toHaveAttribute('data-status', 'completed');
+      expect(entries[1]).toHaveAttribute('data-status', 'completed');
+    });
+  });
+
+  it('renders a queue panel and updates statuses in real time with summary and status indicators', async () => {
+    let resolveFirstFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirstFetch = resolve;
+          })
+      )
+      .mockImplementationOnce(async () => createWavBlobResponse())
+      .mockResolvedValue(createWavBlobResponse());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    expect(screen.getByRole('region', { name: 'Generation queue' })).toBeInTheDocument();
+    expect(screen.getByText('No generations yet.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'upbeat' } });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '110' } });
+    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'hip-hop' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const firstEntry = screen.getByTestId('queue-entry-1');
+      expect(firstEntry).toHaveTextContent('Mood: upbeat · Tempo: 110 BPM · Style: hip-hop');
+      expect(firstEntry).toHaveAttribute('data-status', 'generating');
+      expect(firstEntry).toHaveTextContent('Generating');
+      expect(firstEntry.querySelector('.animate-spin')).not.toBeNull();
+    });
+
+    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'chill' } });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'jazz' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const secondEntry = screen.getByTestId('queue-entry-2');
+      expect(secondEntry).toHaveTextContent('Mood: chill · Tempo: 80 BPM · Style: jazz');
+      expect(secondEntry).toHaveAttribute('data-status', 'queued');
+      expect(secondEntry).toHaveTextContent('Queued');
+    });
+
+    resolveFirstFetch?.(createWavBlobResponse());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-1')).toHaveTextContent('✓');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveTextContent('Completed');
+    });
+  });
+
+  it('marks failed queue entries with an error indicator and message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(createErrorResponse('Audio generation failed'));
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const entry = screen.getByTestId('queue-entry-1');
+      expect(entry).toHaveAttribute('data-status', 'failed');
+      expect(entry).toHaveTextContent('Failed');
+      expect(entry).toHaveTextContent('!');
+      expect(entry).toHaveTextContent('Audio generation failed');
     });
   });
 

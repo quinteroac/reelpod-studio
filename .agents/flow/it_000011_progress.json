@@ -11,12 +11,12 @@
     },
     {
       "use_case_id": "US-002",
-      "status": "pending",
-      "attempt_count": 0,
-      "last_agent_exit_code": null,
+      "status": "completed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 0,
       "quality_checks": [],
       "last_error_summary": "",
-      "updated_at": "2026-02-28T19:35:10.291Z"
+      "updated_at": "2026-02-28T19:38:53.564Z"
     },
     {
       "use_case_id": "US-003",

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
@@ -12,6 +12,14 @@ import { GENERATE_ENDPOINT_PATH, GENERATE_IMAGE_ENDPOINT_PATH } from './api/cons
 import { VisualScene } from './components/visual-scene';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
+type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
+
+interface QueueEntry {
+  id: number;
+  params: GenerationParams;
+  status: QueueEntryStatus;
+  errorMessage: string | null;
+}
 
 const defaultParams: GenerationParams = {
   mood: 'chill',
@@ -32,6 +40,10 @@ function getErrorMessage(error: unknown): string {
 
 function clampSeekPosition(position: number): number {
   return Math.min(Math.max(position, SEEK_MIN), SEEK_MAX);
+}
+
+function buildQueueSummary(params: GenerationParams): string {
+  return `Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
 }
 
 async function requestGeneratedAudio(params: GenerationParams): Promise<string> {
@@ -99,8 +111,10 @@ async function requestGeneratedImage(prompt: string): Promise<string> {
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const visualUrlRef = useRef<string | null>(null);
+  const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [status, setStatus] = useState<GenerationStatus>('idle');
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(null);
   const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
@@ -113,7 +127,14 @@ export function App() {
   const [audioDuration, setAudioDuration] = useState(0);
   const seekPollRef = useRef<number | null>(null);
 
-  function startSeekPolling(): void {
+  const stopSeekPolling = useCallback((): void => {
+    if (seekPollRef.current !== null) {
+      window.clearInterval(seekPollRef.current);
+      seekPollRef.current = null;
+    }
+  }, []);
+
+  const startSeekPolling = useCallback((): void => {
     stopSeekPolling();
     seekPollRef.current = window.setInterval(() => {
       const audio = audioRef.current;
@@ -124,14 +145,7 @@ export function App() {
         setSeekPosition(clampSeekPosition(Math.round(pct)));
       }
     }, SEEK_POLL_INTERVAL_MS);
-  }
-
-  function stopSeekPolling(): void {
-    if (seekPollRef.current !== null) {
-      window.clearInterval(seekPollRef.current);
-      seekPollRef.current = null;
-    }
-  }
+  }, [stopSeekPolling]);
 
   useEffect(() => {
     return () => {
@@ -140,18 +154,16 @@ export function App() {
       }
       stopSeekPolling();
     };
-  }, []);
+  }, [stopSeekPolling]);
 
-  async function handleGenerate(): Promise<void> {
-    if (status === 'loading') {
-      return;
-    }
-
+  const processQueueEntry = useCallback(async (entry: QueueEntry): Promise<void> => {
     setStatus('loading');
-    setErrorMessage(null);
+    setQueueEntries((prev) =>
+      prev.map((item) => (item.id === entry.id ? { ...item, status: 'generating', errorMessage: null } : item))
+    );
 
     try {
-      const audioUrl = await requestGeneratedAudio(params);
+      const audioUrl = await requestGeneratedAudio(entry.params);
 
       // Revoke previous object URL if any
       if (audioRef.current?.src) {
@@ -183,10 +195,41 @@ export function App() {
       setIsPlaying(true);
       setErrorMessage(null);
       startSeekPolling();
+      setQueueEntries((prev) =>
+        prev.map((item) => (item.id === entry.id ? { ...item, status: 'completed', errorMessage: null } : item))
+      );
     } catch (error) {
+      const message = getErrorMessage(error);
       setStatus('error');
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(message);
+      setQueueEntries((prev) =>
+        prev.map((item) => (item.id === entry.id ? { ...item, status: 'failed', errorMessage: message } : item))
+      );
     }
+  }, [startSeekPolling, stopSeekPolling]);
+
+  useEffect(() => {
+    if (status === 'loading') {
+      return;
+    }
+
+    const nextQueued = queueEntries.find((entry) => entry.status === 'queued');
+    if (!nextQueued) {
+      return;
+    }
+
+    void processQueueEntry(nextQueued);
+  }, [queueEntries, status, processQueueEntry]);
+
+  function handleGenerate(): void {
+    setErrorMessage(null);
+    const nextEntry: QueueEntry = {
+      id: queueIdRef.current++,
+      params: { ...params },
+      status: 'queued',
+      errorMessage: null
+    };
+    setQueueEntries((prev) => [...prev, nextEntry]);
   }
 
   async function handlePlay(): Promise<void> {
@@ -340,7 +383,6 @@ export function App() {
             type="button"
             className="w-full rounded-md bg-lofi-accent px-6 py-3 text-lg font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             onClick={() => void handleGenerate()}
-            disabled={status === 'loading'}
           >
             Generate
           </button>
@@ -372,6 +414,65 @@ export function App() {
                 Retry
               </button>
             </div>
+          )}
+        </section>
+
+        <section aria-label="Generation queue" className="space-y-3 rounded-lg bg-lofi-panel p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">Queue</h2>
+          {queueEntries.length === 0 ? (
+            <p className="text-sm text-stone-300">No generations yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {queueEntries.map((entry) => {
+                const statusLabel = entry.status[0].toUpperCase() + entry.status.slice(1);
+                const isGenerating = entry.status === 'generating';
+                const isCompleted = entry.status === 'completed';
+                const isFailed = entry.status === 'failed';
+
+                return (
+                  <li
+                    key={entry.id}
+                    data-testid={`queue-entry-${entry.id}`}
+                    data-status={entry.status}
+                    className={`rounded-md border p-3 text-sm ${
+                      isGenerating
+                        ? 'border-lofi-accent/70 bg-stone-900/80'
+                        : isCompleted
+                          ? 'border-emerald-300/60 bg-emerald-500/10'
+                          : isFailed
+                            ? 'border-red-400/60 bg-red-950/30'
+                            : 'border-stone-600 bg-stone-900/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-lofi-text">{buildQueueSummary(entry.params)}</p>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
+                          isGenerating
+                            ? 'bg-lofi-accent/20 text-lofi-accent'
+                            : isCompleted
+                              ? 'bg-emerald-500/20 text-emerald-100'
+                              : isFailed
+                                ? 'bg-red-500/20 text-red-100'
+                                : 'bg-stone-700 text-stone-200'
+                        }`}
+                      >
+                        {isGenerating && (
+                          <span
+                            aria-hidden="true"
+                            className="h-3 w-3 animate-spin rounded-full border border-lofi-accent border-t-transparent"
+                          />
+                        )}
+                        {isCompleted && <span aria-hidden="true">✓</span>}
+                        {isFailed && <span aria-hidden="true">!</span>}
+                        {statusLabel}
+                      </span>
+                    </div>
+                    {entry.errorMessage && <p className="mt-2 text-xs text-red-100">{entry.errorMessage}</p>}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
 
