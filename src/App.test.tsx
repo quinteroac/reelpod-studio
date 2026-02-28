@@ -160,6 +160,68 @@ describe('App generation flow', () => {
     expect(screen.getByTestId('visual-canvas').className).toContain('h-[min(60vh,420px)]');
   });
 
+  it('shows loading while image generation is in progress and ignores duplicate Generate Image clicks', async () => {
+    let resolveImageFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/api/generate-image')) {
+        return new Promise<Response>((resolve) => {
+          resolveImageFetch = resolve;
+        });
+      }
+      return createWavBlobResponse();
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    const generateImageButton = screen.getByRole('button', { name: 'Generate Image' });
+    fireEvent.click(generateImageButton);
+
+    const status = screen.getByText('Generating image...').closest('[role="status"]');
+    expect(status).not.toBeNull();
+    expect(generateImageButton).toBeDisabled();
+
+    fireEvent.click(generateImageButton);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveImageFetch?.(createImageBlobResponse());
+
+    await waitFor(() => {
+      expect(screen.queryByText('Generating image...')).not.toBeInTheDocument();
+    });
+    expect(generateImageButton).toBeEnabled();
+  });
+
+  it('hides image loading indicator after an image generation error', async () => {
+    let resolveImageFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/api/generate-image')) {
+        return new Promise<Response>((resolve) => {
+          resolveImageFetch = resolve;
+        });
+      }
+      return createWavBlobResponse();
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    const generateImageButton = screen.getByRole('button', { name: 'Generate Image' });
+    fireEvent.click(generateImageButton);
+    expect(screen.getByText('Generating image...')).toBeInTheDocument();
+    expect(generateImageButton).toBeDisabled();
+
+    resolveImageFetch?.(createErrorResponse('image generation failed'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('image generation failed');
+    });
+    expect(screen.queryByText('Generating image...')).not.toBeInTheDocument();
+    expect(generateImageButton).toBeEnabled();
+  });
+
   it('shows a clear error when generating image with an empty prompt and keeps fallback state', () => {
     render(<App />);
 

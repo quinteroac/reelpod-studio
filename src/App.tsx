@@ -104,6 +104,7 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(null);
   const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePrompt, setImagePrompt] = useState('lofi cafe at night, cinematic lighting');
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
@@ -222,6 +223,10 @@ export function App() {
   }
 
   async function handleGenerateImage(): Promise<void> {
+    if (isGeneratingImage) {
+      return;
+    }
+
     const trimmedPrompt = imagePrompt.trim();
     if (!trimmedPrompt) {
       setVisualErrorMessage('Please enter an image prompt.');
@@ -229,6 +234,7 @@ export function App() {
     }
 
     setVisualErrorMessage(null);
+    setIsGeneratingImage(true);
     try {
       const nextVisualUrl = await requestGeneratedImage(trimmedPrompt);
 
@@ -242,6 +248,8 @@ export function App() {
       setVisualErrorMessage(
         error instanceof Error ? error.message : 'Could not generate image: Unknown error'
       );
+    } finally {
+      setIsGeneratingImage(false);
     }
   }
 
@@ -383,11 +391,26 @@ export function App() {
             <button
               type="button"
               onClick={() => void handleGenerateImage()}
-              className="rounded-md bg-lofi-accent px-4 py-2 text-sm font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text"
+              disabled={isGeneratingImage}
+              className="rounded-md bg-lofi-accent px-4 py-2 text-sm font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60"
             >
               Generate Image
             </button>
           </div>
+
+          {isGeneratingImage && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
+            >
+              <span
+                aria-hidden="true"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-lofi-accent border-t-transparent"
+              />
+              <span>Generating image...</span>
+            </div>
+          )}
 
           <div
             data-testid="visual-canvas"
