@@ -19,7 +19,11 @@ uniform sampler2D uTexture;
 
 varying vec2 vUv;
 
-#define S(a, b, t) smoothstep(a, b, t)
+float S(float a, float b, float t) {
+    if (a == b) return step(a, t);
+    float x = clamp((t - a) / (b - a), 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+}
 //#define CHEAP_NORMALS
 #define HAS_HEART
 //#define USE_POST_PROCESSING // Disable post processing like lightning to keep it calm, or keep if wanted
@@ -110,11 +114,10 @@ vec2 Drops(vec2 uv, float t, float l0, float l1, float l2) {
 }
 
 void main() {
-    vec2 fragCoord = vUv * uResolution;
-    vec2 iResolution = uResolution;
     float iTime = uTime;
     vec3 iMouse = uMouse;
-    sampler2D iChannel0 = uTexture;
+    vec3 iResolution = vec3(uResolution, 1.0);
+    vec2 fragCoord = vUv * iResolution.xy;
 
 	vec2 uv = (fragCoord.xy-.5*iResolution.xy) / iResolution.y;
     vec2 UV = vUv;
@@ -156,12 +159,11 @@ void main() {
     // For blur, WebGL needs texture2DLodEXT or multiple samples.
     // As a compatible alternative, we will sample around.
     
-    vec4 tex = texture2D(iChannel0, UV+n);
+    vec4 tex = texture2D(uTexture, UV+n);
     vec3 col = tex.rgb;
     
     // To fake blur we mix it or simply darken the focused areas.
     // For standard webgl without textureLod, we will just use normal offset.
-    // If standard GLSL WebGL1:
     
     gl_FragColor = vec4(col, 1.0);
 }
