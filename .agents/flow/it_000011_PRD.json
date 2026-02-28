@@ -1,0 +1,163 @@
+{
+  "goals": [
+    "Allow users to submit multiple generation requests without waiting for each to finish",
+    "Provide clear visibility into the status of every queued generation",
+    "Let users play back any completed generation directly from the queue"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add generation to queue",
+      "description": "As a creator, I want to submit a generation request that gets added to a queue so that I can keep configuring and submitting more requests without waiting.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A \"Add to Queue\" button (or equivalent) is available alongside or replacing the current \"Generate\" button"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Clicking it captures the current parameter values and adds an entry to the queue"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The user receives visual confirmation that the request was queued (e.g. item appears in the queue list)"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The user can immediately change parameters and queue another generation"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Display queue list with status",
+      "description": "As a creator, I want to see a list of all my queued, in-progress, and completed generations so that I know what's happening at a glance.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A queue panel/section is visible in the UI showing all generation entries"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Each entry displays: a label or summary of its parameters, and its current status (queued / generating / completed / failed)"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The currently-processing item is visually distinct (e.g. spinner or progress indicator)"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Completed items are visually distinct (e.g. checkmark or different color)"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Failed items show an error indicator"
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "The list updates in real time as status changes (no manual refresh needed)"
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Sequential backend queue processing",
+      "description": "As a creator, I want the backend to process my queued generations one at a time so that ACEStep is not overloaded and each generation completes reliably.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Backend accepts generation requests and stores them in a queue (in-memory is acceptable for MVP)"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Backend processes one generation at a time via the existing ACEStep submit/poll flow"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "When a generation completes (success or failure), the next queued item starts automatically"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Each queue item's status is queryable by the frontend (e.g. via a polling or SSE endpoint)"
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Play back completed generation from queue",
+      "description": "As a creator, I want to click on a completed generation in the queue and hear it so that I can compare results and pick my favorite.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "Completed queue entries have a play button or are clickable"
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "Clicking a completed entry loads its audio into the existing player and begins playback"
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "The visual scene responds to the selected track's audio (existing audio-reactive behavior)"
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-004-AC05",
+          "text": "Visually verified in browser"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Frontend maintains a local queue state (array of generation entries with id, parameters, status, and audio URL when completed)"
+    },
+    {
+      "id": "FR-2",
+      "description": "Backend exposes an endpoint to submit a generation to the queue (e.g. `POST /api/queue`)"
+    },
+    {
+      "id": "FR-3",
+      "description": "Backend exposes an endpoint to retrieve queue status (e.g. `GET /api/queue`)"
+    },
+    {
+      "id": "FR-4",
+      "description": "Backend processes queue items sequentially — only one ACEStep generation runs at a time"
+    },
+    {
+      "id": "FR-5",
+      "description": "Backend stores completed audio files and serves them via URL so the frontend can play any completed track"
+    },
+    {
+      "id": "FR-6",
+      "description": "Frontend polls the queue status endpoint at a reasonable interval (e.g. every 2–3 seconds) to update the UI"
+    },
+    {
+      "id": "FR-7",
+      "description": "Queue entries persist in memory for the lifetime of the backend process (no database required for MVP)"
+    }
+  ]
+}
