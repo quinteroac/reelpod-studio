@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 logging.basicConfig(level=logging.DEBUG)
@@ -23,6 +24,7 @@ MAX_GENERATION_ATTEMPTS = 2
 INVALID_PAYLOAD_ERROR = (
     f"Invalid payload. Expected {{ mood: string, tempo: number ({MIN_TEMPO}-{MAX_TEMPO}), style: string }}"
 )
+SKILL_MARKDOWN_PATH = Path(__file__).resolve().parent / "llm-skills" / "strudel-pattern-generator" / "SKILL.md"
 
 load_dotenv()
 
@@ -49,13 +51,11 @@ async def handle_validation_error(_request: Any, _exc: RequestValidationError) -
 
 
 def build_messages(body: GenerateRequestBody) -> list[dict[str, str]]:
+    system_prompt = load_skill_body(SKILL_MARKDOWN_PATH)
     return [
         {
             "role": "system",
-            "content": (
-                "You are a Strudel pattern generator. Return only a valid Strudel pattern string. "
-                "No markdown. No explanation."
-            ),
+            "content": system_prompt,
         },
         {
             "role": "user",
@@ -65,6 +65,19 @@ def build_messages(body: GenerateRequestBody) -> list[dict[str, str]]:
             ),
         },
     ]
+
+
+def load_skill_body(path: Path) -> str:
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return content
+
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "".join(lines[index + 1 :])
+
+    return content
 
 
 def is_malformed_pattern(pattern: str) -> bool:
