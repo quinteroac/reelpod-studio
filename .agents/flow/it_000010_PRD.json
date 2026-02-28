@@ -1,0 +1,212 @@
+{
+  "goals": [
+    "Replace the existing image upload UI with a text prompt input and \"Generate\" button",
+    "Add a `/api/generate-image` endpoint to the FastAPI backend that runs inference with the Anima model via `diffusers`",
+    "Display the generated image as the visual background (same role the uploaded image currently fills)",
+    "Provide loading feedback while the model generates the image",
+    "Allow re-generation with a different prompt without reloading the page"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Generate background image from text prompt",
+      "description": "As a lofi-maker user, I want to type an image prompt and click a generate button so that an AI-generated image appears as my visual background.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "The image upload file input is removed from the UI"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "A text input field for the image prompt is displayed in its place"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "A \"Generate Image\" button triggers image generation"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The generated image is displayed as the visual background (same plane/texture used by visualizers)"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "All existing visualizer animations and post-processing effects work with the generated image exactly as they do with an uploaded image"
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "The image is rendered correctly with proper aspect-ratio scaling (existing `computeContainScale` logic)"
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Loading indicator during image generation",
+      "description": "As a user, I want to see a loading indicator while the image is being generated so that I know the system is working and haven't encountered an error.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A loading/spinner indicator is shown while the `/api/generate-image` request is in progress"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The generate button is disabled during generation to prevent duplicate requests"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The loading indicator disappears once the image is ready or an error occurs"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Re-generate image with new prompt",
+      "description": "As a user, I want to change my prompt and generate a new image without reloading the page so that I can experiment with different visual styles.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "After an image is generated, the prompt input remains editable"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Clicking \"Generate Image\" again with a new prompt replaces the current background with the newly generated image"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The previous image blob URL is properly cleaned up (no memory leaks)"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Backend image generation endpoint",
+      "description": "As a frontend client, I want a `POST /api/generate-image` endpoint so that I can send a text prompt and receive a generated image.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "`POST /api/generate-image` accepts a JSON body with a `prompt` field (string)"
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "The endpoint loads the `circlestone-labs/Anima` model using the `diffusers` library"
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "The model is loaded once at application startup (same pattern as ACEStep)"
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "The generated image resolution is 1024×1024"
+        },
+        {
+          "id": "US-004-AC05",
+          "text": "The endpoint returns the generated image as a binary response with appropriate content type (e.g., `image/png`)"
+        },
+        {
+          "id": "US-004-AC06",
+          "text": "If the model is not available or inference fails, the endpoint returns a meaningful error response (HTTP 500 with error message)"
+        },
+        {
+          "id": "US-004-AC07",
+          "text": "The Vite dev proxy forwards `/api/generate-image` to the backend (port 8000)"
+        }
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Error handling for image generation",
+      "description": "As a user, I want to see a clear error message if image generation fails so that I understand what went wrong.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-005-AC01",
+          "text": "If the backend returns an error, an error message is displayed in the UI near the prompt input"
+        },
+        {
+          "id": "US-005-AC02",
+          "text": "The error message is cleared when the user submits a new generation request"
+        },
+        {
+          "id": "US-005-AC03",
+          "text": "The generate button is re-enabled after an error so the user can retry"
+        },
+        {
+          "id": "US-005-AC04",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-005-AC05",
+          "text": "Visually verified in browser"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Remove the image upload file input (`<input type=\"file\">`) and related validation logic (`SUPPORTED_IMAGE_TYPES`, `handleVisualUpload`) from `App.tsx`"
+    },
+    {
+      "id": "FR-2",
+      "description": "Add a text input field for the image prompt and a \"Generate Image\" button to the UI in `App.tsx`"
+    },
+    {
+      "id": "FR-3",
+      "description": "Add a `POST /api/generate-image` endpoint in `backend/main.py` that accepts `{ \"prompt\": string }` and returns a generated image as binary (`image/png`)"
+    },
+    {
+      "id": "FR-4",
+      "description": "Load the `circlestone-labs/Anima` model at FastAPI startup using `diffusers`, following the same startup-loading pattern used for ACEStep"
+    },
+    {
+      "id": "FR-5",
+      "description": "Add `diffusers`, `torch`, `transformers`, and `accelerate` to `pyproject.toml`"
+    },
+    {
+      "id": "FR-6",
+      "description": "The frontend sends a `POST` request to `/api/generate-image` with the prompt, receives the image blob, creates a blob URL via `URL.createObjectURL()`, and passes it to `VisualScene` as `imageUrl`"
+    },
+    {
+      "id": "FR-7",
+      "description": "Show a loading indicator and disable the generate button while the request is in flight"
+    },
+    {
+      "id": "FR-8",
+      "description": "Display user-visible error messages for generation failures (network errors, non-OK responses, inference errors)"
+    },
+    {
+      "id": "FR-9",
+      "description": "Clean up previous blob URLs via `URL.revokeObjectURL()` before setting a new one (existing pattern)"
+    },
+    {
+      "id": "FR-10",
+      "description": "Ensure the Vite dev proxy configuration forwards `/api/generate-image` to the backend"
+    },
+    {
+      "id": "FR-11",
+      "description": "The generated image must be passed through the same rendering pipeline as uploaded images, so all visualizer animations and post-processing effects (e.g., rain, glitch, bloom) apply identically"
+    }
+  ]
+}
