@@ -33,19 +33,23 @@ export function buildWaveformPositions(
   sampleCount: number,
   width: number,
   amplitude: number,
-  phase: number
+  phase: number,
+  freqA = 10,
+  freqB = 24
 ): Float32Array {
   const clampedSamples = Math.max(sampleCount, 2);
   const clampedWidth = Math.max(width, 0.1);
-  const clampedAmplitude = Math.max(amplitude, 0.01);
+  const clampedAmplitude = Math.max(amplitude, 0);
   const positions = new Float32Array(clampedSamples * 3);
 
   for (let index = 0; index < clampedSamples; index += 1) {
     const ratio = index / (clampedSamples - 1);
     const x = ratio * clampedWidth - clampedWidth / 2;
-    const primary = Math.sin(ratio * Math.PI * 10 + phase);
-    const secondary = Math.sin(ratio * Math.PI * 24 + phase * 1.4);
-    const y = (primary * 0.65 + secondary * 0.35) * clampedAmplitude;
+    const primary = Math.sin(ratio * Math.PI * freqA + phase);
+    const secondary = Math.sin(ratio * Math.PI * freqB + phase * 1.4);
+    // Taper edges to 0 using a sine window over the 0..1 ratio
+    const windowMul = Math.sin(ratio * Math.PI);
+    const y = (primary * 0.65 + secondary * 0.35) * clampedAmplitude * windowMul;
 
     const positionOffset = index * 3;
     positions[positionOffset] = x;
