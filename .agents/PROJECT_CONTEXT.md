@@ -58,7 +58,7 @@
 
 ## Implemented Capabilities
 <!-- Updated at the end of each iteration by bun nvst create project-context -->
-- Lofi theme
+- ReelPod Studio branding; warm lofi theme
 - Parameter controls
 - Audio generation (ACEStep external REST API inference)
 - Playback controls (HTML5 audio element — play, pause, seek)

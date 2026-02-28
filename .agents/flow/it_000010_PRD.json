@@ -10,7 +10,7 @@
     {
       "id": "US-001",
       "title": "Generate background image from text prompt",
-      "description": "As a lofi-maker user, I want to type an image prompt and click a generate button so that an AI-generated image appears as my visual background.",
+      "description": "As a ReelPod Studio user, I want to type an image prompt and click a generate button so that an AI-generated image appears as my visual background.",
       "acceptanceCriteria": [
         {
           "id": "US-001-AC01",

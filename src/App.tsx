@@ -257,8 +257,8 @@ export function App() {
     <main className="min-h-screen bg-lofi-bg px-6 py-10 text-lofi-text">
       <div className="mx-auto max-w-3xl space-y-6">
         <header className="space-y-2">
-          <h1 className="font-serif text-4xl font-bold text-lofi-text">Lofi Maker</h1>
-          <p className="text-sm text-lofi-accentMuted">Generate warm, mellow loops in your browser.</p>
+          <h1 className="font-serif text-4xl font-bold text-lofi-text">ReelPod Studio</h1>
+          <p className="text-sm text-lofi-accentMuted">Create music and visuals for YouTube, TikTok & Reels.</p>
         </header>
 
         <section aria-label="Generation parameters" className="space-y-4 rounded-lg bg-lofi-panel p-5">

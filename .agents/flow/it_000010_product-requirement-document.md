@@ -1,7 +1,7 @@
 # Requirement: Replace Image Upload with AI Image Generation (Anima Model)
 
 ## Context
-The lofi-maker currently allows users to upload an image (JPEG, PNG, WebP) that is displayed as the visual background behind audio visualizers. This requires users to find and provide their own images. By replacing the upload flow with AI image generation using the [Anima model](https://huggingface.co/circlestone-labs/Anima) via the `diffusers` library, users can type a text prompt and generate a custom background image on-demand, creating a more seamless and creative experience.
+ReelPod Studio currently allows users to upload an image (JPEG, PNG, WebP) that is displayed as the visual background behind audio visualizers. This requires users to find and provide their own images. By replacing the upload flow with AI image generation using the [Anima model](https://huggingface.co/circlestone-labs/Anima) via the `diffusers` library, users can type a text prompt and generate a custom background image on-demand, creating a more seamless and creative experience.
 
 ## Goals
 - Replace the existing image upload UI with a text prompt input and "Generate" button
@@ -13,7 +13,7 @@ The lofi-maker currently allows users to upload an image (JPEG, PNG, WebP) that 
 ## User Stories
 
 ### US-001: Generate background image from text prompt
-**As a** lofi-maker user, **I want** to type an image prompt and click a generate button **so that** an AI-generated image appears as my visual background.
+**As a** ReelPod Studio user, **I want** to type an image prompt and click a generate button **so that** an AI-generated image appears as my visual background.
 
 **Acceptance Criteria:**
 - [ ] The image upload file input is removed from the UI

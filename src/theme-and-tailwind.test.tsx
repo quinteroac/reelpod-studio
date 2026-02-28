@@ -19,7 +19,7 @@ describe('Lofi theme', () => {
     render(<App />);
 
     const main = screen.getByRole('main');
-    const heading = screen.getByRole('heading', { name: 'Lofi Maker' });
+    const heading = screen.getByRole('heading', { name: 'ReelPod Studio' });
 
     expect(main.className).toContain('bg-lofi-bg');
     expect(main.className).toContain('text-lofi-text');
