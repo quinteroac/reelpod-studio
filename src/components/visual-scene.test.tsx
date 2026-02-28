@@ -2,13 +2,24 @@ import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@react-three/drei', () => ({
+  Line: ({ children }: any) => <div data-testid="drei-line">{children}</div>,
+}));
+
+vi.mock('@react-three/postprocessing', () => ({
+  EffectComposer: ({ children }: any) => <div data-testid="effect-composer">{children}</div>,
+  Bloom: () => <div data-testid="bloom" />,
+}));
+
 const useLoaderMock = vi.fn();
 const useThreeMock = vi.fn();
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: ReactNode }) => <div data-testid="r3f-canvas">{children}</div>,
   useLoader: (...args: unknown[]) => useLoaderMock(...args),
-  useThree: () => useThreeMock()
+  useThree: () => useThreeMock(),
+  // useFrame runs inside the R3F renderer loop which doesn't exist in JSDOM — no-op is correct.
+  useFrame: () => { }
 }));
 
 import { VisualScene } from './visual-scene';
