@@ -135,4 +135,43 @@ describe('backend/llm-skills/strudel-pattern-generator/SKILL.md', () => {
     expect(frontmatter).toHaveProperty('description');
     expect(frontmatter).toHaveProperty('disable-model-invocation');
   });
+
+  // US-001 AC01: note() function for pitch sequences
+  it('body documents the note() function for pitch sequences', () => {
+    expect(body).toContain('note(');
+  });
+
+  it('body includes a pitch sequence example like note("c3 eb3 g3 bb3")', () => {
+    expect(body).toMatch(/note\(["'][\w\s#b]+["']\)/);
+  });
+
+  // US-001 AC02: at least two melodic/harmonic sound names
+  it('body documents at least two melodic sound names (piano, rhodes)', () => {
+    expect(body).toContain('piano');
+    expect(body).toContain('rhodes');
+  });
+
+  // US-001 AC03: how to combine a note pattern with a sound
+  it('body documents .sound() to combine a note pattern with a sound', () => {
+    expect(body).toContain('.sound(');
+    expect(body).toMatch(/note\(.*\)\.sound\(/);
+  });
+
+  // US-001 AC04: how to stack melodic voices with the existing drum stack
+  it('body documents stacking melodic voices with drum patterns', () => {
+    expect(body).toMatch(/stack\(\[.*note\(.*\)\.sound\(/s);
+  });
+
+  // US-001 AC05: mood and style to recommended melodic characteristics
+  it('body maps mood values to melodic characteristics (scale)', () => {
+    const lower = body.toLowerCase();
+    expect(lower).toContain('scale');
+    expect(lower).toContain('pentatonic');
+  });
+
+  it('body maps style values to melodic characteristics', () => {
+    const lower = body.toLowerCase();
+    expect(lower).toContain('dorian');
+    expect(lower).toContain('lydian');
+  });
 });

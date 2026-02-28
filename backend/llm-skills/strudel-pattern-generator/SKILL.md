@@ -37,6 +37,42 @@ This skill instructs an LLM to generate a single, valid Strudel pattern string f
 | `.slow(N)`        | Slow down the cycle by factor N      | `.slow(2)`                    |
 | `.gain(N)`        | Set volume (0.0 to 1.0)              | `.gain(0.7)`                  |
 | `.cpm(N)`         | Set cycles per minute (tempo)        | `.cpm(90)`                    |
+| `.sound(name)`    | Set sound/instrument for a note pattern | `.sound("piano")`          |
+
+## Melodic and Harmonic Notation
+
+### note() Function
+
+Use `note()` to specify pitch sequences in scientific pitch notation:
+
+```
+note("c3 eb3 g3 bb3")
+```
+
+Pitch format: letter (`c`, `d`, `e`, `f`, `g`, `a`, `b`) + optional accidental (`b` = flat, `#` = sharp) + octave number (0–7).
+
+### Melodic Sound Names
+
+| Name     | Instrument              |
+|----------|-------------------------|
+| `piano`  | Acoustic piano          |
+| `rhodes` | Electric Rhodes piano   |
+
+### Combining note() with sound()
+
+Chain `.sound()` after `note()` to select the instrument:
+
+```
+note("c3 eb3 g3 bb3").sound("piano")
+```
+
+### Stacking Melodic Voices with Drums
+
+Include `note(...).sound(...)` as an element inside the `stack([...])` array alongside drum voices:
+
+```
+stack([s("bd ~ bd ~"), s("~ sd ~ sd"), s("hh ~ hh ~"), note("c3 ~ eb3 ~").sound("piano")]).slow(2).gain(0.7).cpm(85)
+```
 
 ## Parameter Mappings
 
@@ -59,6 +95,22 @@ Map the `tempo` value directly to `.cpm(tempo)`. Valid range: 60–120.
 | `jazz`      | Swing-influenced rhythms; use `[bd sd]` subdivisions; ride-cymbal feel       |
 | `hip-hop`   | Boom-bap kick on beats 1 and 3, snare on 2 and 4; off-beat hi-hats          |
 | `ambient`   | Minimal percussion; long cycles with `.slow(2)` or `.slow(4)`; very low gain |
+
+### Mood → Melodic Characteristics
+
+| Mood          | Scale                | Note Density           | Characteristics                                           |
+|---------------|----------------------|------------------------|-----------------------------------------------------------|
+| `calm`        | Minor pentatonic     | Sparse (2–3 per cycle) | Slow, spacious; long held notes; use `~` rests liberally  |
+| `melancholic` | Natural minor        | Medium (3–4 per cycle) | Minor chord tones (e.g. `c3 eb3 g3 bb3`); chromatic hints |
+| `energetic`   | Minor pentatonic     | Dense (4–6 per cycle)  | Faster riff-like melody; syncopated note placement        |
+
+### Style → Melodic Characteristics
+
+| Style     | Recommended Scale   | Example Notes (C minor)  | Character                                           |
+|-----------|---------------------|--------------------------|-----------------------------------------------------|
+| `jazz`    | Dorian / jazz minor | `c3 eb3 f3 g3 bb3`       | Chromatic passing tones; off-beat phrasing          |
+| `hip-hop` | Minor pentatonic    | `c3 eb3 g3 bb3`          | Simple repeating hook; sparse, looping melody       |
+| `ambient` | Major / Lydian      | `c3 e3 g3 a3 d4`         | Slow evolving tones; very long cycles               |
 
 ## Example Patterns
 
