@@ -167,5 +167,56 @@ class LoadFewShotExamplesTests(unittest.TestCase):
             self.assertFalse(example["assistant"].endswith("```"))
 
 
+class ValidatePatternTests(unittest.TestCase):
+    # US-003-AC04: validate_pattern enforces the 500-character limit
+    def test_validate_pattern_rejects_pattern_exceeding_500_chars(self) -> None:
+        long_pattern = "s(\"bd\").cpm(90)" + "x" * 490
+        self.assertGreater(len(long_pattern), 500)
+        self.assertIsNone(main.validate_pattern(long_pattern))
+
+    def test_validate_pattern_accepts_pattern_at_exactly_500_chars(self) -> None:
+        base = 's("bd ~ sd ~").gain(0.7).cpm(90)'
+        pattern = base + "x" * (500 - len(base))
+        self.assertEqual(len(pattern), 500)
+        result = main.validate_pattern(pattern)
+        self.assertIsNotNone(result)
+
+    def test_validate_pattern_accepts_valid_melodic_pattern(self) -> None:
+        # AC01: a multi-layer melodic pattern is accepted by validate_pattern
+        melodic = 'stack([s("bd ~ sd ~"), note("c3 eb3 g3 bb3").sound("piano")]).slow(2).gain(0.7).cpm(90)'
+        self.assertIsNotNone(main.validate_pattern(melodic))
+
+    def test_validate_pattern_rejects_response_with_code_fences(self) -> None:
+        fenced = '```\nstack([s("bd")]).cpm(90)\n```'
+        self.assertIsNone(main.validate_pattern(fenced))
+
+    def test_validate_pattern_rejects_empty_string(self) -> None:
+        self.assertIsNone(main.validate_pattern(""))
+        self.assertIsNone(main.validate_pattern("   "))
+
+    def test_validate_pattern_rejects_non_string(self) -> None:
+        self.assertIsNone(main.validate_pattern(None))
+        self.assertIsNone(main.validate_pattern(42))
+
+
+class ValidPatternExamplesTests(unittest.TestCase):
+    # US-003-AC01: few-shot example patterns include melodic layers
+    def test_all_few_shot_examples_contain_melodic_note_layer(self) -> None:
+        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
+        for example in examples:
+            self.assertIn("note(", example["assistant"])
+
+    # US-003-AC04: few-shot example patterns are within the 500-character guard
+    def test_all_few_shot_examples_are_within_500_chars(self) -> None:
+        examples = main.load_few_shot_examples(main.VALID_PATTERNS_MARKDOWN_PATH)
+        for example in examples:
+            pattern = example["assistant"]
+            self.assertLessEqual(
+                len(pattern),
+                main.MAX_PATTERN_LENGTH,
+                f"Pattern length {len(pattern)} exceeds {main.MAX_PATTERN_LENGTH}: {pattern!r}",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

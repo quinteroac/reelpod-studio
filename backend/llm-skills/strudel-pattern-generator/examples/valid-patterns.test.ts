@@ -84,4 +84,20 @@ describe('backend/llm-skills/strudel-pattern-generator/examples/valid-patterns.m
     const lower = content.toLowerCase();
     expect(lower).toMatch(/verified|verification/);
   });
+
+  // US-003-AC01: each example pattern includes at least one melodic or harmonic layer
+  it('every code-block pattern contains a note() melodic layer', () => {
+    expect(codeBlocks.length).toBeGreaterThanOrEqual(3);
+    for (const block of codeBlocks) {
+      expect(block).toContain('note(');
+    }
+  });
+
+  // US-003-AC04: each example pattern does not exceed 500 characters
+  it('every code-block pattern is at most 500 characters long', () => {
+    expect(codeBlocks.length).toBeGreaterThanOrEqual(3);
+    for (const block of codeBlocks) {
+      expect(block.length).toBeLessThanOrEqual(500);
+    }
+  });
 });
