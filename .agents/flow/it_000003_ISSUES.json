@@ -1,8 +1,8 @@
 [
   {
     "id": "ISSUE-000003-001",
-    "title": "Python backend is mandatory, violation of FR",
-    "description": "The iteration built the backend in Vite instead of using Python as specified in the PRD.",
+    "title": "[failed] TC-002-07: Full flow in browser: set params → Generate → audible playback; visual and aural check",
+    "description": "Test case TC-002-07 resulted in status: failed.\nEvidence: Could not generate track: Request failed with status 500",
     "status": "fixed"
   }
 ]

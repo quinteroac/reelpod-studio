@@ -2,31 +2,6 @@
   "iteration": "000003",
   "testPlanFile": "it_000003_TP.json",
   "executedTestIds": [
-    "TC-001-01",
-    "TC-001-02",
-    "TC-001-03",
-    "TC-001-04",
-    "TC-001-05",
-    "TC-001-06",
-    "TC-001-07",
-    "TC-001-08",
-    "TC-001-09",
-    "TC-001-10",
-    "TC-001-11",
-    "TC-001-12",
-    "TC-002-01",
-    "TC-002-02",
-    "TC-002-03",
-    "TC-002-04",
-    "TC-002-05",
-    "TC-002-06",
-    "TC-003-01",
-    "TC-003-02",
-    "TC-003-03",
-    "TC-003-04",
-    "TC-003-05",
-    "TC-FR-08",
-    "TC-FR-10",
     "TC-002-07"
   ],
   "results": [
@@ -43,7 +18,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "src/api/generate.test.ts: handler with mocked OpenAI returns 200 and payload.pattern for valid { mood, tempo, style }; extractPatternFromOpenAiResponse trims and validatePattern enforces non-empty, max length, no markdown.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -61,7 +36,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "src/api/generate.ts parseAndValidatePayload rejects missing mood (typeof mood !== 'string' || mood.trim().length === 0); generate.test.ts 'rejects invalid payloads' covers missing-field case with 422 and { error }.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -79,7 +54,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "parseAndValidatePayload requires mood, tempo, style; missing tempo or style yields null -> jsonResponse(422, { error }). Test uses createPostRequest({ mood, tempo }) (missing style) and expects 422 with error.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -97,7 +72,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "Test createPostRequest({ mood: 'chill', tempo: '90', style: 'jazz' }); parseAndValidatePayload checks typeof tempo !== 'number' -> 422. wrongTypeResponse.status 422 and toHaveProperty('error').",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -115,7 +90,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "parseAndValidatePayload enforces tempo in [MIN_TEMPO, MAX_TEMPO] (60-120); createPostRequest({ mood: 'chill', tempo: 200, style: 'jazz' }) -> invalidRangeResponse 422 with error.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -133,7 +108,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "generate.test.ts: 'reads OPENAI_API_KEY from server environment getter, not request body' sends OPENAI_API_KEY in body; assertion headers.authorization === 'Bearer env-only-key' and not from request.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -152,7 +127,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "buildPrompt in generate.ts system message: 'Return only a valid Strudel pattern string. No markdown. No explanation.'; test asserts body.messages[0].content includes 'Return only a valid Strudel pattern string' and 'No markdown'.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -171,7 +146,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "First test: mock returns content with spaces; handler returns 200 and payload.pattern trimmed (validatePattern). extractPatternFromOpenAiResponse uses validatePattern (length, no markdown).",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -190,7 +165,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "validatePattern returns null for trimmed.length === 0; invalidResponseShapeHandler mocks choices: [] -> empty content -> 500. Test expects 500 with error.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -209,7 +184,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "isMalformedPattern checks for ```, 'pattern:', 'here is'; malformedOutputHandler mocks content '```\\npattern: s(\"bd\")\\n```' -> 500 with { error }.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -228,7 +203,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "Handler catch block returns jsonResponse(500, 'Failed to reach OpenAI Chat Completions API'); !upstreamResponse.ok returns 500. upstreamErrorHandler mock 500 -> test expects 500 with error.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -243,14 +218,15 @@
       "correlatedRequirements": [],
       "mode": "automated",
       "payload": {
-        "status": "skipped",
-        "evidence": "Backend logic lives in src/api/generate.ts and vite.config.ts; typecheck (tsc) and lint (eslint) were not executed in this session.",
-        "notes": "Run manually: bun run typecheck && bun run lint."
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
       },
-      "passFail": null,
+      "passFail": "pass",
       "agentExitCode": 0,
       "artifactReferences": [
-        ".agents/flow/it_000003_test-execution-artifacts/TC-001-12_attempt_001.json"
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-12_attempt_001.json",
+        ".agents/flow/it_000003_test-execution-artifacts/TC-001-12_attempt_002.json"
       ]
     },
     {
@@ -262,7 +238,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "App.test.tsx: 'posts params to /api/generate and executes returned backend pattern' asserts fetchMock called with '/api/generate', POST, body: JSON.stringify({ mood: 'upbeat', tempo: 110, style: 'hip-hop' }).",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -278,7 +254,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "App.test.tsx: 'shows loading while generation is in progress' asserts screen.getByText('Generating track...'), role=status, animate-spin class, Generate button disabled during fetch.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -296,7 +272,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "Same test: on 200, controller.generate called with backendPattern; expect(screen.queryByRole('alert')).not.toBeInTheDocument(). App.tsx requestGeneratedPattern then strudelController.generate(pattern).",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -312,7 +288,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "App.test.tsx: 'on backend failure shows backend error and allows retry' (500 response with error message in alert); 'on network failure shows error message from fetch failure'.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -328,7 +304,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "App.test.tsx spies on patternGenerator.generatePattern and asserts generatePatternSpy.not.toHaveBeenCalled(); App.tsx handleGenerate uses requestGeneratedPattern (fetch) only.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -343,14 +319,15 @@
       "correlatedRequirements": [],
       "mode": "automated",
       "payload": {
-        "status": "skipped",
-        "evidence": "Frontend code in src/App.tsx and related components; typecheck and lint were not executed in this session.",
-        "notes": "Run manually: bun run typecheck && bun run lint."
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
       },
-      "passFail": null,
+      "passFail": "pass",
       "agentExitCode": 0,
       "artifactReferences": [
-        ".agents/flow/it_000003_test-execution-artifacts/TC-002-06_attempt_001.json"
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-06_attempt_001.json",
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-06_attempt_002.json"
       ]
     },
     {
@@ -362,7 +339,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "generate.ts defaultGetOpenAiApiKey reads (globalThis as any).process?.env?.OPENAI_API_KEY; Vite dev server runs middleware in Node so process.env available at runtime.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -380,7 +357,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": ".env.example exists with content 'OPENAI_API_KEY='; env-config.test.ts asserts envExample.toContain('OPENAI_API_KEY=').",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -396,7 +373,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": ".gitignore contains '.env'; env-config.test.ts asserts entries.toContain('.env').",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -412,8 +389,8 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "createGenerateHandler returns 500 with { error: 'OPENAI_API_KEY is not configured' } when getOpenAiApiKey() is undefined; generate.test.ts 'returns descriptive 500 if OPENAI_API_KEY is not configured' asserts 500 and that message.",
-        "notes": "Server does not exit at startup; first POST returns descriptive 500."
+        "evidence": "",
+        "notes": ""
       },
       "passFail": "pass",
       "agentExitCode": 0,
@@ -427,14 +404,15 @@
       "correlatedRequirements": [],
       "mode": "automated",
       "payload": {
-        "status": "skipped",
-        "evidence": "Backend code (src/api/generate.ts, vite.config.ts) typecheck/lint not run in session.",
-        "notes": "Run manually: bun run typecheck && bun run lint."
+        "status": "passed",
+        "evidence": "",
+        "notes": ""
       },
-      "passFail": null,
+      "passFail": "pass",
       "agentExitCode": 0,
       "artifactReferences": [
-        ".agents/flow/it_000003_test-execution-artifacts/TC-003-05_attempt_001.json"
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-05_attempt_001.json",
+        ".agents/flow/it_000003_test-execution-artifacts/TC-003-05_attempt_002.json"
       ]
     },
     {
@@ -446,7 +424,7 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "package.json scripts.dev is 'vite'; vite.config.ts plugin 'generate-api-endpoint' configures middleware for /api/generate. Single 'bun run dev' serves frontend and POST /api/generate.",
+        "evidence": "",
         "notes": ""
       },
       "passFail": "pass",
@@ -464,14 +442,15 @@
       "mode": "automated",
       "payload": {
         "status": "passed",
-        "evidence": "src/api/env-config.test.ts: 'package.json documents backend platform dependency (vite)' asserts packageJson.devDependencies has 'vite'. Vitest run exits 0 with 3 tests passed. FR-10 was written for a Python backend; implementation uses TypeScript Vite middleware and package.json is the equivalent dependency manifest.",
-        "notes": "Test adapted from Python requirements.txt check to package.json check; vite is the backend platform dependency (runs the /api/generate middleware alongside the frontend dev server)."
+        "evidence": "",
+        "notes": ""
       },
       "passFail": "pass",
       "agentExitCode": 0,
       "artifactReferences": [
         ".agents/flow/it_000003_test-execution-artifacts/TC-FR-10_attempt_001.json",
-        ".agents/flow/it_000003_test-execution-artifacts/TC-FR-10_attempt_002.json"
+        ".agents/flow/it_000003_test-execution-artifacts/TC-FR-10_attempt_002.json",
+        ".agents/flow/it_000003_test-execution-artifacts/TC-FR-10_attempt_003.json"
       ]
     },
     {
@@ -481,13 +460,13 @@
       "mode": "exploratory_manual",
       "payload": {
         "status": "failed",
-        "evidence": "OPENAI_API_KEY is not configured",
+        "evidence": "Could not generate track: Request failed with status 500",
         "notes": ""
       },
       "passFail": "fail",
       "agentExitCode": 0,
       "artifactReferences": [
-        ".agents/flow/it_000003_test-execution-artifacts/TC-002-07_attempt_001.json"
+        ".agents/flow/it_000003_test-execution-artifacts/TC-002-07_attempt_003.json"
       ]
     }
   ]

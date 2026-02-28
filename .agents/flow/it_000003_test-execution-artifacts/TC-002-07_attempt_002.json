@@ -1,0 +1,13 @@
+{
+  "testCaseId": "TC-002-07",
+  "attemptNumber": 2,
+  "prompt": "manual-user-input",
+  "agentExitCode": 0,
+  "stdout": "{\"status\":\"failed\",\"evidence\":\"Could not generate track: Request failed with status 500\",\"notes\":\"\"}",
+  "stderr": "",
+  "payload": {
+    "status": "failed",
+    "evidence": "Could not generate track: Request failed with status 500",
+    "notes": ""
+  }
+}

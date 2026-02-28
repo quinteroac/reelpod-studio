@@ -27,13 +27,18 @@ function getApiErrorMessage(value: unknown): string | null {
     return null;
   }
 
-  const message = value.error;
-  if (typeof message !== 'string') {
-    return null;
-  }
+  const candidates = [value.error, value.detail];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') {
+      continue;
+    }
 
-  const trimmedMessage = message.trim();
-  return trimmedMessage.length > 0 ? trimmedMessage : null;
+    const trimmedMessage = candidate.trim();
+    if (trimmedMessage.length > 0) {
+      return trimmedMessage;
+    }
+  }
+  return null;
 }
 
 function getApiPattern(value: unknown): string | null {

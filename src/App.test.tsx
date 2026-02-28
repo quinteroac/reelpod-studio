@@ -256,6 +256,27 @@ describe('App generation flow', () => {
     });
   });
 
+  it('surfaces backend detail field for non-standard 500 payloads', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Internal server error while generating pattern' }), {
+        status: 500,
+        headers: {
+          'content-type': 'application/json'
+        }
+      })
+    );
+    const controller = createController();
+
+    render(<App controller={controller} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Internal server error while generating pattern');
+    });
+    expect(controller.generate).not.toHaveBeenCalled();
+  });
+
   it('on network failure shows error message from fetch failure', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Failed to reach backend'));
     const controller = createController();

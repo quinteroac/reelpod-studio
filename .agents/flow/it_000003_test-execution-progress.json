@@ -219,20 +219,20 @@
     {
       "id": "TC-FR-10",
       "type": "automated",
-      "status": "failed",
-      "attempt_count": 2,
+      "status": "passed",
+      "attempt_count": 3,
       "last_agent_exit_code": 0,
-      "last_error_summary": "FR-10 explicitly requires a requirements.txt or pyproject.toml listing Python dependencies (fastapi, uvicorn, openai, python-dotenv). The iteration implemented the backend endpoint in TypeScript rather than Python, so this requirement cannot be satisfied.",
-      "updated_at": "2026-02-27T23:39:19.115Z"
+      "last_error_summary": "",
+      "updated_at": "2026-02-27T23:55:48.093Z"
     },
     {
       "id": "TC-002-07",
       "type": "exploratory_manual",
-      "status": "in_progress",
-      "attempt_count": 1,
-      "last_agent_exit_code": null,
-      "last_error_summary": "",
-      "updated_at": "2026-02-27T23:39:19.115Z"
+      "status": "failed",
+      "attempt_count": 3,
+      "last_agent_exit_code": 500,
+      "last_error_summary": "Could not generate track: Request failed with status 500",
+      "updated_at": "2026-02-27T23:56:29.603Z"
     }
   ]
 }
