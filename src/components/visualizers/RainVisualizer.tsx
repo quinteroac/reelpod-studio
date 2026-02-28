@@ -202,6 +202,7 @@ export function RainVisualizer({ isPlaying, planeWidth, planeHeight, texture }: 
         <mesh scale={[planeWidth, planeHeight, 1]}>
             <planeGeometry args={[1, 1]} />
             <shaderMaterial
+                key={texture?.uuid || 'default-rain-mat'}
                 ref={materialRef}
                 vertexShader={vertexShader}
                 fragmentShader={fragmentShader}

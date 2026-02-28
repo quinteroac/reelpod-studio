@@ -1,8 +1,9 @@
 /* eslint-disable react/no-unknown-property */
-import { Canvas, useLoader, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { computeContainScale } from '../lib/visual-scene';
+import { EffectComposer, type EffectType } from './effects';
 import { VisualizerFactory, type VisualizerType } from './visualizers';
 
 const FALLBACK_VISUAL_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
@@ -20,10 +21,11 @@ type VisualSceneProps = {
 
 type SceneContentProps = VisualSceneProps & {
   visualizerType: VisualizerType;
+  effects: EffectType[];
   onDerived: (planeWidth: number, planeHeight: number) => void;
 };
 
-function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, visualizerType, onDerived }: SceneContentProps) {
+function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, visualizerType, effects, onDerived }: SceneContentProps) {
   const texture = useLoader(THREE.TextureLoader, imageUrl ?? FALLBACK_VISUAL_DATA_URI);
   const { viewport } = useThree();
 
@@ -38,12 +40,17 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
     onDerived(planeWidth, planeHeight);
   }, [onDerived, planeWidth, planeHeight]);
 
-
-
   return (
     <>
+      <EffectComposer
+        effects={effects}
+        audioCurrentTime={audioCurrentTime}
+        audioDuration={audioDuration}
+        isPlaying={isPlaying}
+        texture={texture}
+      />
       {/* Conditionally hide the default image plane if a visualizer handles its own background (like rain) */}
-      {visualizerType !== 'rain' && (
+      {visualizerType !== 'rain' && visualizerType !== 'scene-rain' && visualizerType !== 'glitch' && (
         <>
           {/* Image plane — no data-* props allowed here (Three.js object, not DOM) */}
           <mesh scale={[planeWidth, planeHeight, 1]}>
@@ -54,12 +61,13 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
           {/* Dark overlay dims the image so the waveforms read clearly */}
           <mesh scale={[planeWidth, planeHeight, 1]} position={[0, 0, 0.05]}>
             <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial color="#000000" transparent opacity={0.45} />
+            <meshBasicMaterial color="#000000" />
           </mesh>
         </>
       )}
 
       <VisualizerFactory
+        key={imageUrl ?? 'fallback-texture'}
         type={visualizerType}
         audioCurrentTime={audioCurrentTime}
         audioDuration={audioDuration}
@@ -73,8 +81,10 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
 }
 
 export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlaying }: VisualSceneProps) {
-  // Fixed to 'rain' as requested by the user for now
-  const currentVisualizerType: VisualizerType = 'rain';
+  // Available visualizers: 'waveform' | 'rain' | 'scene-rain' | 'starfield' | 'aurora' | 'circle-spectrum' | 'glitch' | 'smoke' | 'contour' | 'none'
+  const currentVisualizerType: VisualizerType = 'glitch';
+  // Available effects: 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'none'
+  const currentEffects: EffectType[] = ['colorDrift'];
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -113,6 +123,7 @@ export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlayi
           audioDuration={audioDuration}
           isPlaying={isPlaying}
           visualizerType={currentVisualizerType}
+          effects={currentEffects}
           onDerived={handleDerived}
         />
       </Canvas>

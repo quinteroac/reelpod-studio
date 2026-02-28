@@ -1,4 +1,4 @@
-export type VisualizerType = 'waveform' | 'rain' | 'none'; // easily extensible later
+export type VisualizerType = 'waveform' | 'rain' | 'scene-rain' | 'starfield' | 'aurora' | 'circle-spectrum' | 'glitch' | 'smoke' | 'contour' | 'none';
 
 export type VisualizerProps = {
     audioCurrentTime: number;
