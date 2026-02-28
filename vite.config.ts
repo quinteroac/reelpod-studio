@@ -6,11 +6,13 @@ export default defineConfig({
     proxy: {
       '/api/generate-image': {
         target: 'http://127.0.0.1:8000',
-        changeOrigin: true
+        changeOrigin: true,
+        proxyTimeout: 300_000 // 5 min — SDXL inference can take 60–120+ seconds
       },
       '/api': {
         target: 'http://127.0.0.1:8000',
-        changeOrigin: true
+        changeOrigin: true,
+        proxyTimeout: 300_000
       }
     }
   },

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import tomllib
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -42,6 +43,15 @@ class FakeImageResult:
 def client() -> TestClient:
     with TestClient(app=main.app, raise_server_exceptions=False) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def reset_queue_state() -> None:
+    main.stop_queue_worker()
+    main.reset_generation_queue_for_tests()
+    yield
+    main.stop_queue_worker()
+    main.reset_generation_queue_for_tests()
 
 
 class TestGenerateRequestBody:
@@ -184,9 +194,11 @@ class TestGenerateEndpoint:
             {
                 "prompt": "warm lofi hip-hop, 95 BPM",
                 "lyrics": "",
+                "bpm": 95,
                 "audio_duration": 30,
                 "inference_steps": 20,
                 "audio_format": "wav",
+                "thinking": True,
             }
         ]
 
@@ -235,6 +247,102 @@ class TestGenerateEndpoint:
         }
 
 
+class TestGenerationQueue:
+    def test_generation_request_is_queued_in_memory(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
+        item = main.enqueue_generation_request(
+            main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        )
+
+        snapshot = main.get_queue_item_snapshot(item.id)
+        assert snapshot is not None
+        assert snapshot.status == "queued"
+        assert list(main.queue_order) == [item.id]
+
+    def test_queue_worker_processes_one_item_at_a_time_and_uses_submit_poll_flow(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        order: list[str] = []
+        active_count = 0
+        max_active_count = 0
+        lock = main.threading.Lock()
+
+        def fake_submit_task(prompt: str, tempo: int = 80) -> str:
+            order.append(f"submit:{prompt}")
+            return f"task-{prompt}"
+
+        def fake_poll_until_complete(task_id: str) -> dict[str, str]:
+            nonlocal active_count, max_active_count
+            order.append(f"poll:{task_id}")
+            with lock:
+                active_count += 1
+                max_active_count = max(max_active_count, active_count)
+            time.sleep(0.03)
+            with lock:
+                active_count -= 1
+            return {"result": json.dumps({"file": f"/audio/{task_id}.wav"})}
+
+        def fake_get_bytes(url: str) -> bytes:
+            order.append(f"get:{url}")
+            return WAV_HEADER
+
+        monkeypatch.setattr(main, "submit_task", fake_submit_task)
+        monkeypatch.setattr(main, "poll_until_complete", fake_poll_until_complete)
+        monkeypatch.setattr(main, "get_bytes", fake_get_bytes)
+
+        first = main.enqueue_generation_request(main.GenerateRequestBody(mood="mellow", tempo=70, style="jazz"))
+        second = main.enqueue_generation_request(main.GenerateRequestBody(mood="warm", tempo=90, style="ambient"))
+
+        main.ensure_queue_worker_running()
+        first_result = main.wait_for_terminal_status(first.id, timeout_seconds=2.0)
+        second_result = main.wait_for_terminal_status(second.id, timeout_seconds=2.0)
+
+        assert first_result is not None and first_result.status == "completed"
+        assert second_result is not None and second_result.status == "completed"
+        assert max_active_count == 1
+        assert order == [
+            "submit:mellow lofi jazz, 70 BPM",
+            "poll:task-mellow lofi jazz, 70 BPM",
+            "get:http://localhost:8001/audio/task-mellow lofi jazz, 70 BPM.wav",
+            "submit:warm lofi ambient, 90 BPM",
+            "poll:task-warm lofi ambient, 90 BPM",
+            "get:http://localhost:8001/audio/task-warm lofi ambient, 90 BPM.wav",
+        ]
+
+    def test_next_item_starts_after_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        prompts_seen: list[str] = []
+
+        def fake_generate_audio_bytes_for_prompt(prompt: str, tempo: int = 80) -> bytes:
+            prompts_seen.append(prompt)
+            if prompt.startswith("fail"):
+                raise RuntimeError("inference failed")
+            return WAV_HEADER
+
+        monkeypatch.setattr(main, "generate_audio_bytes_for_prompt", fake_generate_audio_bytes_for_prompt)
+
+        failed = main.enqueue_generation_request(main.GenerateRequestBody(mood="fail", tempo=80, style="jazz"))
+        succeeded = main.enqueue_generation_request(main.GenerateRequestBody(mood="calm", tempo=88, style="ambient"))
+
+        main.ensure_queue_worker_running()
+        failed_result = main.wait_for_terminal_status(failed.id, timeout_seconds=2.0)
+        succeeded_result = main.wait_for_terminal_status(succeeded.id, timeout_seconds=2.0)
+
+        assert failed_result is not None and failed_result.status == "failed"
+        assert succeeded_result is not None and succeeded_result.status == "completed"
+        assert prompts_seen == ["fail lofi jazz, 80 BPM", "calm lofi ambient, 88 BPM"]
+
+    def test_queue_status_endpoint_returns_item_status(self, client: TestClient) -> None:
+        created = client.post("/api/generate-requests", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert created.status_code == 200
+        item_id = created.json()["id"]
+
+        status_response = client.get(f"/api/generate-requests/{item_id}")
+        assert status_response.status_code == 200
+        payload = status_response.json()
+        assert payload["id"] == item_id
+        assert payload["status"] in ("queued", "generating", "completed", "failed")
+
+
 class TestGenerateImageEndpoint:
     def test_model_is_loaded_once_at_startup_with_expected_model_id(
         self, monkeypatch: pytest.MonkeyPatch
@@ -257,7 +365,7 @@ class TestGenerateImageEndpoint:
         seen_calls: list[dict[str, object]] = []
 
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int) -> FakeImageResult:
+            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
                 seen_calls.append({"prompt": prompt, "width": width, "height": height})
                 return FakeImageResult([FakeImage()])
 
@@ -293,7 +401,7 @@ class TestGenerateImageEndpoint:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int) -> FakeImageResult:
+            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
                 raise RuntimeError("inference error")
 
         monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())

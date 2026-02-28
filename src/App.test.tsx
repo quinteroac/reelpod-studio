@@ -84,7 +84,7 @@ describe('App generation flow', () => {
     mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockGenerateFetch());
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-audio-url');
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
   });
 
@@ -496,19 +496,24 @@ describe('App generation flow', () => {
     expect(mockAudio.currentTime).toBe(30);
   });
 
-  it('shows loading while generation is in progress and ignores duplicate Generate clicks', async () => {
+  it('shows loading while generation is in progress and queues additional generate clicks', async () => {
     let resolveFetch: ((value: Response) => void) | undefined;
-    const fetchMock = vi.fn().mockImplementation(
-      () =>
-        new Promise<Response>((resolve) => {
-          resolveFetch = resolve;
-        })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          })
+      )
+      .mockImplementationOnce(async () => createWavBlobResponse())
+      .mockImplementation(async () => createWavBlobResponse());
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
     const generate = screen.getByRole('button', { name: 'Generate' });
+    fireEvent.click(generate);
     fireEvent.click(generate);
 
     const status = screen.getByText('Generating track...').closest('[role="status"]');
@@ -517,15 +522,195 @@ describe('App generation flow', () => {
     expect(statusElement).toHaveTextContent('Generating track...');
     expect(statusElement.className).toContain('border-lofi-accent/60');
     expect(statusElement.querySelector('.animate-spin')).not.toBeNull();
-    expect(generate).toBeDisabled();
-
-    fireEvent.click(generate);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      const entries = screen.getAllByTestId(/queue-entry-/);
+      expect(entries.length).toBe(2);
+      expect(entries[0]).toHaveAttribute('data-status', 'generating');
+      expect(entries[1]).toHaveAttribute('data-status', 'queued');
+    });
 
     resolveFetch?.(createWavBlobResponse());
 
     await waitFor(() => {
-      expect(screen.queryByText('Generating track...')).not.toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const entries = screen.getAllByTestId(/queue-entry-/);
+      expect(entries[0]).toHaveAttribute('data-status', 'completed');
+      expect(entries[1]).toHaveAttribute('data-status', 'completed');
+    });
+  });
+
+  it('renders a queue panel and updates statuses in real time with summary and status indicators', async () => {
+    let resolveFirstFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirstFetch = resolve;
+          })
+      )
+      .mockImplementationOnce(async () => createWavBlobResponse())
+      .mockResolvedValue(createWavBlobResponse());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    expect(screen.getByRole('region', { name: 'Generation queue' })).toBeInTheDocument();
+    expect(screen.getByText('No generations yet.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'upbeat' } });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '110' } });
+    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'hip-hop' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const firstEntry = screen.getByTestId('queue-entry-1');
+      expect(firstEntry).toHaveTextContent('Mood: upbeat · Tempo: 110 BPM · Style: hip-hop');
+      expect(firstEntry).toHaveAttribute('data-status', 'generating');
+      expect(firstEntry).toHaveTextContent('Generating');
+      expect(firstEntry.querySelector('.animate-spin')).not.toBeNull();
+    });
+
+    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'chill' } });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'jazz' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const secondEntry = screen.getByTestId('queue-entry-2');
+      expect(secondEntry).toHaveTextContent('Mood: chill · Tempo: 80 BPM · Style: jazz');
+      expect(secondEntry).toHaveAttribute('data-status', 'queued');
+      expect(secondEntry).toHaveTextContent('Queued');
+    });
+
+    resolveFirstFetch?.(createWavBlobResponse());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-1')).toHaveTextContent('✓');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveTextContent('Completed');
+    });
+  });
+
+  it('shows a play action for completed queue entries', async () => {
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/queue-track-1')
+      .mockReturnValueOnce('blob:http://localhost/queue-track-2');
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByRole('button', { name: 'Play generation 1' })).toBeInTheDocument();
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByRole('button', { name: 'Play generation 2' })).toBeInTheDocument();
+    });
+  });
+
+  it('loads and starts playback for the selected completed queue entry', async () => {
+    const firstTrackUrl = 'blob:http://localhost/queue-track-1';
+    const secondTrackUrl = 'blob:http://localhost/queue-track-2';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce(firstTrackUrl).mockReturnValueOnce(secondTrackUrl);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const audioCtor = globalThis.Audio as ReturnType<typeof vi.fn>;
+    const audioCallCountBeforeReplay = audioCtor.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
+
+    await waitFor(() => {
+      expect(audioCtor.mock.calls.length).toBe(audioCallCountBeforeReplay + 1);
+      expect(audioCtor.mock.calls.at(-1)?.[0]).toBe(firstTrackUrl);
+      expect(mockAudio.play).toHaveBeenCalledTimes(audioCallCountBeforeReplay + 1);
+    });
+  });
+
+  it('drives visual scene timing from the selected queue track during replay', async () => {
+    const firstTrackUrl = 'blob:http://localhost/queue-track-1';
+    const secondTrackUrl = 'blob:http://localhost/queue-track-2';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce(firstTrackUrl).mockReturnValueOnce(secondTrackUrl);
+
+    const firstAudio = createMockAudio();
+    Object.defineProperty(firstAudio, 'duration', { value: 40, configurable: true });
+    const secondAudio = createMockAudio();
+    Object.defineProperty(secondAudio, 'duration', { value: 20, configurable: true });
+    const replayAudio = createMockAudio();
+    Object.defineProperty(replayAudio, 'duration', { value: 40, configurable: true });
+    const audioInstances = [firstAudio, secondAudio, replayAudio];
+
+    vi.spyOn(globalThis, 'Audio').mockImplementation(
+      () => (audioInstances.shift() ?? createMockAudio()) as HTMLAudioElement
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      // The visual scene still reflects the first played track (duration 40)
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '40.00');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    // Wait for the pause to be processed
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+
+    // Manually play the second track to ensure visual scene updates correctly.
+    // This shifts 'secondAudio' (duration 20) from the mock array.
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '20.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+    });
+
+    // Pause the second track
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+
+    // Now replay the first track
+    // This shifts 'replayAudio' (duration 40) from the mock array.
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '40.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+    });
+
+    fireEvent.change(screen.getByLabelText('Seek'), { target: { value: '50' } });
+    expect(replayAudio.currentTime).toBe(20);
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '20.00');
+  });
+
+  it('marks failed queue entries with an error indicator and message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(createErrorResponse('Audio generation failed'));
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const entry = screen.getByTestId('queue-entry-1');
+      expect(entry).toHaveAttribute('data-status', 'failed');
+      expect(entry).toHaveTextContent('Failed');
+      expect(entry).toHaveTextContent('!');
+      expect(entry).toHaveTextContent('Audio generation failed');
     });
   });
 

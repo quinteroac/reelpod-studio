@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
@@ -12,6 +12,15 @@ import { GENERATE_ENDPOINT_PATH, GENERATE_IMAGE_ENDPOINT_PATH } from './api/cons
 import { VisualScene } from './components/visual-scene';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
+type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
+
+interface QueueEntry {
+  id: number;
+  params: GenerationParams;
+  status: QueueEntryStatus;
+  errorMessage: string | null;
+  audioUrl: string | null;
+}
 
 const defaultParams: GenerationParams = {
   mood: 'chill',
@@ -32,6 +41,10 @@ function getErrorMessage(error: unknown): string {
 
 function clampSeekPosition(position: number): number {
   return Math.min(Math.max(position, SEEK_MIN), SEEK_MAX);
+}
+
+function buildQueueSummary(params: GenerationParams): string {
+  return `Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
 }
 
 async function requestGeneratedAudio(params: GenerationParams): Promise<string> {
@@ -98,9 +111,12 @@ async function requestGeneratedImage(prompt: string): Promise<string> {
 
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const generatedAudioUrlsRef = useRef<string[]>([]);
   const visualUrlRef = useRef<string | null>(null);
+  const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [status, setStatus] = useState<GenerationStatus>('idle');
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(null);
   const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
@@ -111,9 +127,18 @@ export function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
   const seekPollRef = useRef<number | null>(null);
+  const queueEntriesRef = useRef<QueueEntry[]>([]);
 
-  function startSeekPolling(): void {
+  const stopSeekPolling = useCallback((): void => {
+    if (seekPollRef.current !== null) {
+      window.clearInterval(seekPollRef.current);
+      seekPollRef.current = null;
+    }
+  }, []);
+
+  const startSeekPolling = useCallback((): void => {
     stopSeekPolling();
     seekPollRef.current = window.setInterval(() => {
       const audio = audioRef.current;
@@ -124,66 +149,141 @@ export function App() {
         setSeekPosition(clampSeekPosition(Math.round(pct)));
       }
     }, SEEK_POLL_INTERVAL_MS);
-  }
+  }, [stopSeekPolling]);
 
-  function stopSeekPolling(): void {
-    if (seekPollRef.current !== null) {
-      window.clearInterval(seekPollRef.current);
-      seekPollRef.current = null;
-    }
-  }
+  useEffect(() => {
+    queueEntriesRef.current = queueEntries;
+  }, [queueEntries]);
 
   useEffect(() => {
     return () => {
       if (visualUrlRef.current) {
         URL.revokeObjectURL(visualUrlRef.current);
       }
+      generatedAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      generatedAudioUrlsRef.current = [];
       stopSeekPolling();
     };
-  }, []);
+  }, [stopSeekPolling]);
 
-  async function handleGenerate(): Promise<void> {
+  const playAudioFromUrl = useCallback(
+    async (audioUrl: string, options?: { entryId?: number; onEnded?: () => void }): Promise<void> => {
+    audioRef.current?.pause();
+    stopSeekPolling();
+
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+
+    setAudioDuration(0);
+    if (audio.duration && isFinite(audio.duration)) {
+      setAudioDuration(audio.duration);
+    }
+    setAudioCurrentTime(0);
+    setSeekPosition(SEEK_MIN);
+
+    audio.addEventListener('ended', () => {
+      const endedDuration = audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+      setAudioDuration(endedDuration);
+      setAudioCurrentTime(endedDuration);
+      setSeekPosition(SEEK_MAX);
+      setIsPlaying(false);
+      stopSeekPolling();
+      options?.onEnded?.();
+    });
+
+    await audio.play();
+
+    setHasGeneratedTrack(true);
+    setIsPlaying(true);
+    setStatus('success');
+    setErrorMessage(null);
+    startSeekPolling();
+  }, [startSeekPolling, stopSeekPolling]);
+
+  const createQueueOnEnded = useCallback((entry: QueueEntry): (() => void) => {
+    return () => {
+      const entries = queueEntriesRef.current;
+      const idx = entries.findIndex((e) => e.id === entry.id);
+      const next = entries.slice(idx + 1).find((e) => e.status === 'completed' && e.audioUrl);
+      if (next?.audioUrl) {
+        setPlayingEntryId(next.id);
+        void playAudioFromUrl(next.audioUrl, { entryId: next.id, onEnded: createQueueOnEnded(next) });
+      } else {
+        setPlayingEntryId(null);
+      }
+    };
+  }, [playAudioFromUrl]);
+
+  const processQueueEntry = useCallback(async (entry: QueueEntry): Promise<void> => {
+    setStatus('loading');
+    setQueueEntries((prev) =>
+      prev.map((item) => (item.id === entry.id ? { ...item, status: 'generating', errorMessage: null } : item))
+    );
+
+    try {
+      const audioUrl = await requestGeneratedAudio(entry.params);
+      generatedAudioUrlsRef.current.push(audioUrl);
+
+      setQueueEntries((prev) =>
+        prev.map((item) =>
+          item.id === entry.id ? { ...item, status: 'completed', errorMessage: null, audioUrl } : item
+        )
+      );
+
+      const isPlayingAudio = audioRef.current && !audioRef.current.paused;
+      if (!isPlayingAudio) {
+        setPlayingEntryId(entry.id);
+        await playAudioFromUrl(audioUrl, { entryId: entry.id, onEnded: createQueueOnEnded(entry) });
+      } else {
+        setStatus('success');
+      }
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setStatus('error');
+      setErrorMessage(message);
+      setQueueEntries((prev) =>
+        prev.map((item) =>
+          item.id === entry.id ? { ...item, status: 'failed', errorMessage: message, audioUrl: null } : item
+        )
+      );
+    }
+  }, [playAudioFromUrl, createQueueOnEnded]);
+
+  useEffect(() => {
     if (status === 'loading') {
       return;
     }
 
-    setStatus('loading');
+    const nextQueued = queueEntries.find((entry) => entry.status === 'queued');
+    if (!nextQueued) {
+      return;
+    }
+
+    void processQueueEntry(nextQueued);
+  }, [queueEntries, status, processQueueEntry]);
+
+  function handleGenerate(): void {
     setErrorMessage(null);
+    const nextEntry: QueueEntry = {
+      id: queueIdRef.current++,
+      params: { ...params },
+      status: 'queued',
+      errorMessage: null,
+      audioUrl: null
+    };
+    setQueueEntries((prev) => [...prev, nextEntry]);
+  }
 
+  async function handlePlayQueueEntry(entry: QueueEntry): Promise<void> {
+    if (entry.status !== 'completed' || !entry.audioUrl) {
+      return;
+    }
+
+    setPlayingEntryId(entry.id);
     try {
-      const audioUrl = await requestGeneratedAudio(params);
-
-      // Revoke previous object URL if any
-      if (audioRef.current?.src) {
-        URL.revokeObjectURL(audioRef.current.src);
-      }
-
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      setAudioDuration(0);
-      if (audio.duration && isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
-      }
-      setAudioCurrentTime(0);
-
-      audio.addEventListener('ended', () => {
-        const endedDuration = audio.duration && isFinite(audio.duration) ? audio.duration : 0;
-        setAudioDuration(endedDuration);
-        setAudioCurrentTime(endedDuration);
-        setSeekPosition(SEEK_MAX);
-        setIsPlaying(false);
-        stopSeekPolling();
-      });
-
-      await audio.play();
-
-      setStatus('success');
-      setHasGeneratedTrack(true);
-      setSeekPosition(SEEK_MIN);
-      setIsPlaying(true);
-      setErrorMessage(null);
-      startSeekPolling();
+      await playAudioFromUrl(entry.audioUrl, { entryId: entry.id, onEnded: createQueueOnEnded(entry) });
     } catch (error) {
+      setPlayingEntryId(null);
       setStatus('error');
       setErrorMessage(getErrorMessage(error));
     }
@@ -204,6 +304,7 @@ export function App() {
     try {
       audioRef.current?.pause();
       setIsPlaying(false);
+      setPlayingEntryId(null);
       setErrorMessage(null);
       stopSeekPolling();
     } catch (error) {
@@ -340,7 +441,6 @@ export function App() {
             type="button"
             className="w-full rounded-md bg-lofi-accent px-6 py-3 text-lg font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             onClick={() => void handleGenerate()}
-            disabled={status === 'loading'}
           >
             Generate
           </button>
@@ -372,6 +472,101 @@ export function App() {
                 Retry
               </button>
             </div>
+          )}
+        </section>
+
+        <section aria-label="Generation queue" className="space-y-3 rounded-lg bg-lofi-panel p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">Queue</h2>
+            {playingEntryId !== null && (() => {
+              const idx = queueEntries.findIndex((e) => e.id === playingEntryId);
+              const position = idx >= 0 ? idx + 1 : 0;
+              const total = queueEntries.length;
+              return (
+                <span
+                  aria-live="polite"
+                  className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-xs font-semibold text-lofi-accent"
+                >
+                  Track {position} of {total}
+                </span>
+              );
+            })()}
+          </div>
+          {queueEntries.length === 0 ? (
+            <p className="text-sm text-stone-300">No generations yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {queueEntries.map((entry) => {
+                const statusLabel = entry.status[0].toUpperCase() + entry.status.slice(1);
+                const isGenerating = entry.status === 'generating';
+                const isCompleted = entry.status === 'completed';
+                const isFailed = entry.status === 'failed';
+                const isCurrentlyPlaying = entry.id === playingEntryId;
+
+                return (
+                  <li
+                    key={entry.id}
+                    data-testid={`queue-entry-${entry.id}`}
+                    data-status={entry.status}
+                    data-playing={isCurrentlyPlaying ? 'true' : undefined}
+                    className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
+                        ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
+                        : ''} ${isGenerating
+                        ? 'border-lofi-accent/70 bg-stone-900/80'
+                        : isCompleted
+                          ? 'border-emerald-300/60 bg-emerald-500/10'
+                          : isFailed
+                            ? 'border-red-400/60 bg-red-950/30'
+                            : 'border-stone-600 bg-stone-900/40'
+                      }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-lofi-text">
+                        {isCurrentlyPlaying && (
+                          <span className="mr-2 inline-flex items-center gap-1 text-lofi-accent" aria-hidden="true">
+                            ▶ Now playing
+                          </span>
+                        )}
+                        {buildQueueSummary(entry.params)}
+                      </p>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${isGenerating
+                            ? 'bg-lofi-accent/20 text-lofi-accent'
+                            : isCompleted
+                              ? 'bg-emerald-500/20 text-emerald-100'
+                              : isFailed
+                                ? 'bg-red-500/20 text-red-100'
+                                : 'bg-stone-700 text-stone-200'
+                          }`}
+                      >
+                        {isGenerating && (
+                          <span
+                            aria-hidden="true"
+                            className="h-3 w-3 animate-spin rounded-full border border-lofi-accent border-t-transparent"
+                          />
+                        )}
+                        {isCompleted && <span aria-hidden="true">✓</span>}
+                        {isFailed && <span aria-hidden="true">!</span>}
+                        {statusLabel}
+                      </span>
+                    </div>
+                    {isCompleted && entry.audioUrl && (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          aria-label={`Play generation ${entry.id}`}
+                          className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200"
+                          onClick={() => void handlePlayQueueEntry(entry)}
+                        >
+                          Play
+                        </button>
+                      </div>
+                    )}
+                    {entry.errorMessage && <p className="mt-2 text-xs text-red-100">{entry.errorMessage}</p>}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
 
