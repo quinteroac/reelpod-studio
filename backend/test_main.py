@@ -226,6 +226,33 @@ class TestGenerateEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# US-003: End-to-end smoke test for POST /api/generate
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateEndpointSmokeTest:
+    """US-003: Automated smoke tests verifying the generate endpoint returns valid WAV audio."""
+
+    # US-003-AC01, AC02, AC03: mock ACEStep infer(), assert 200 + audio/wav + non-empty body
+    def test_success_returns_200_wav_with_body(self, client) -> None:
+        response = client.post(
+            "/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"}
+        )
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "audio/wav"
+        assert len(response.content) > 0
+
+    # US-003-AC04: when ACEStep infer() raises, endpoint returns 500 with error JSON
+    def test_infer_exception_returns_500_error_json(self, client, mock_ace_model) -> None:
+        mock_ace_model.side_effect = RuntimeError("Unexpected failure")
+        response = client.post(
+            "/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"}
+        )
+        assert response.status_code == 500
+        assert response.json() == {"error": "Audio generation failed"}
+
+
+# ---------------------------------------------------------------------------
 # US-001-AC02: Model loaded once at startup (lifespan test)
 # ---------------------------------------------------------------------------
 
