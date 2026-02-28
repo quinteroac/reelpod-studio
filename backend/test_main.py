@@ -194,9 +194,11 @@ class TestGenerateEndpoint:
             {
                 "prompt": "warm lofi hip-hop, 95 BPM",
                 "lyrics": "",
+                "bpm": 95,
                 "audio_duration": 30,
                 "inference_steps": 20,
                 "audio_format": "wav",
+                "thinking": True,
             }
         ]
 
@@ -265,7 +267,7 @@ class TestGenerationQueue:
         max_active_count = 0
         lock = main.threading.Lock()
 
-        def fake_submit_task(prompt: str) -> str:
+        def fake_submit_task(prompt: str, tempo: int = 80) -> str:
             order.append(f"submit:{prompt}")
             return f"task-{prompt}"
 
@@ -310,7 +312,7 @@ class TestGenerationQueue:
     def test_next_item_starts_after_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         prompts_seen: list[str] = []
 
-        def fake_generate_audio_bytes_for_prompt(prompt: str) -> bytes:
+        def fake_generate_audio_bytes_for_prompt(prompt: str, tempo: int = 80) -> bytes:
             prompts_seen.append(prompt)
             if prompt.startswith("fail"):
                 raise RuntimeError("inference failed")
@@ -363,7 +365,7 @@ class TestGenerateImageEndpoint:
         seen_calls: list[dict[str, object]] = []
 
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int) -> FakeImageResult:
+            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
                 seen_calls.append({"prompt": prompt, "width": width, "height": height})
                 return FakeImageResult([FakeImage()])
 
@@ -399,7 +401,7 @@ class TestGenerateImageEndpoint:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int) -> FakeImageResult:
+            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
                 raise RuntimeError("inference error")
 
         monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())

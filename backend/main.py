@@ -37,6 +37,7 @@ POLL_INTERVAL_SECONDS = 0.25
 MAX_POLL_ATTEMPTS = 120
 IMAGE_MODEL_ID = "Ine007/waiIllustriousSDXL_v160"
 IMAGE_SIZE = 1024
+IMAGE_NUM_INFERENCE_STEPS = 25  # 25 vs default 50 — faster, acceptable quality
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
 
 QueueItemStatus = Literal["queued", "generating", "completed", "failed"]
@@ -51,6 +52,7 @@ class GenerationQueueItem:
     id: str
     prompt: str
     status: QueueItemStatus
+    tempo: int = 80
     wav_bytes: bytes | None = None
     error_message: str | None = None
 
@@ -146,23 +148,29 @@ def load_image_pipeline() -> Any:
     pipeline = DiffusionPipeline.from_pretrained(IMAGE_MODEL_ID, torch_dtype=dtype)
     
     if device == "cuda":
-        # Memory optimizations to allow running alongside ACE-Step
-        pipeline.enable_model_cpu_offload()
+        # Sequential offload uses minimal GPU at a time (one submodel at a time), allowing
+        # image generation to run when ACE-Step holds GPU memory. Slower than model_cpu_offload
+        # but necessary for shared GPU with ACE-Step.
+        pipeline.enable_sequential_cpu_offload()
         if hasattr(pipeline, "enable_vae_slicing"):
             pipeline.enable_vae_slicing()
-            
-        return pipeline  # model_cpu_offload handles the to(device) implicitly
+        if hasattr(pipeline, "enable_vae_tiling"):
+            pipeline.enable_vae_tiling()
+
+        return pipeline
         
     return pipeline.to(device)
 
 
-def submit_task(prompt: str) -> str:
+def submit_task(prompt: str, tempo: int = 80) -> str:
     payload = {
         "prompt": prompt,
         "lyrics": "",
+        "bpm": tempo,
         "audio_duration": 30,
         "inference_steps": 20,
         "audio_format": "wav",
+        "thinking": True,
     }
     response = post_json(make_absolute_url(RELEASE_TASK_PATH), payload)
     # API wraps response: { "code": 200, "data": { "task_id": "..." } }
@@ -207,8 +215,8 @@ def extract_file_path(response: dict[str, Any]) -> str:
     raise RuntimeError(f"Missing file path in result: {parsed_result}")
 
 
-def generate_audio_bytes_for_prompt(prompt: str) -> bytes:
-    task_id = submit_task(prompt)
+def generate_audio_bytes_for_prompt(prompt: str, tempo: int = 80) -> bytes:
+    task_id = submit_task(prompt, tempo=tempo)
     completed_task = poll_until_complete(task_id)
     file_path = extract_file_path(completed_task)
     return get_bytes(make_absolute_url(file_path))
@@ -223,6 +231,7 @@ def get_queue_item_snapshot(item_id: str) -> GenerationQueueItem | None:
             id=item.id,
             prompt=item.prompt,
             status=item.status,
+            tempo=item.tempo,
             wav_bytes=item.wav_bytes,
             error_message=item.error_message,
         )
@@ -233,6 +242,7 @@ def enqueue_generation_request(body: GenerateRequestBody) -> GenerationQueueItem
         id=str(uuid4()),
         prompt=build_prompt(body),
         status="queued",
+        tempo=body.tempo,
     )
     with queue_condition:
         queue_items[item.id] = item
@@ -256,6 +266,7 @@ def wait_for_terminal_status(
                     id=item.id,
                     prompt=item.prompt,
                     status=item.status,
+                    tempo=item.tempo,
                     wav_bytes=item.wav_bytes,
                     error_message=item.error_message,
                 )
@@ -289,7 +300,7 @@ def queue_worker() -> None:
             queue_condition.notify_all()
 
         try:
-            wav_bytes = generate_audio_bytes_for_prompt(item.prompt)
+            wav_bytes = generate_audio_bytes_for_prompt(item.prompt, tempo=item.tempo)
         except (RuntimeError, URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
             logger.error("ACE-Step API error: %s: %s", type(exc).__name__, exc)
             with queue_condition:
@@ -415,7 +426,12 @@ def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
         raise HTTPException(status_code=500, detail=f"Image generation failed: {reason}")
 
     try:
-        result = image_pipeline(prompt=body.prompt, width=IMAGE_SIZE, height=IMAGE_SIZE)
+        result = image_pipeline(
+            prompt=body.prompt,
+            width=IMAGE_SIZE,
+            height=IMAGE_SIZE,
+            num_inference_steps=IMAGE_NUM_INFERENCE_STEPS,
+        )
         images = getattr(result, "images", None)
         if not isinstance(images, list) or not images:
             raise RuntimeError("No generated image returned by model")
@@ -423,13 +439,12 @@ def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
         output = io.BytesIO()
         images[0].save(output, format="PNG")
         output.seek(0)
+        return StreamingResponse(output, media_type="image/png")
     except HTTPException:
         raise
     except Exception as exc:
         logger.error("Image inference error: %s: %s", type(exc).__name__, exc)
         raise HTTPException(status_code=500, detail=f"Image generation failed: {exc}") from exc
-
-    return StreamingResponse(output, media_type="image/png")
 
 
 @app.exception_handler(HTTPException)

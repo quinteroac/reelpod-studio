@@ -84,7 +84,7 @@ describe('App generation flow', () => {
     mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockGenerateFetch());
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-audio-url');
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
   });
 
@@ -664,10 +664,28 @@ describe('App generation flow', () => {
     await waitFor(() => {
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
       expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '20.00');
+      // The visual scene still reflects the first played track (duration 40)
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '40.00');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    // Wait for the pause to be processed
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+
+    // Manually play the second track to ensure visual scene updates correctly.
+    // This shifts 'secondAudio' (duration 20) from the mock array.
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '20.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+    });
+
+    // Pause the second track
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+
+    // Now replay the first track
+    // This shifts 'replayAudio' (duration 40) from the mock array.
     fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
 
     await waitFor(() => {

@@ -127,7 +127,9 @@ export function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
   const seekPollRef = useRef<number | null>(null);
+  const queueEntriesRef = useRef<QueueEntry[]>([]);
 
   const stopSeekPolling = useCallback((): void => {
     if (seekPollRef.current !== null) {
@@ -150,6 +152,10 @@ export function App() {
   }, [stopSeekPolling]);
 
   useEffect(() => {
+    queueEntriesRef.current = queueEntries;
+  }, [queueEntries]);
+
+  useEffect(() => {
     return () => {
       if (visualUrlRef.current) {
         URL.revokeObjectURL(visualUrlRef.current);
@@ -160,7 +166,8 @@ export function App() {
     };
   }, [stopSeekPolling]);
 
-  const playAudioFromUrl = useCallback(async (audioUrl: string): Promise<void> => {
+  const playAudioFromUrl = useCallback(
+    async (audioUrl: string, options?: { entryId?: number; onEnded?: () => void }): Promise<void> => {
     audioRef.current?.pause();
     stopSeekPolling();
 
@@ -181,6 +188,7 @@ export function App() {
       setSeekPosition(SEEK_MAX);
       setIsPlaying(false);
       stopSeekPolling();
+      options?.onEnded?.();
     });
 
     await audio.play();
@@ -192,6 +200,20 @@ export function App() {
     startSeekPolling();
   }, [startSeekPolling, stopSeekPolling]);
 
+  const createQueueOnEnded = useCallback((entry: QueueEntry): (() => void) => {
+    return () => {
+      const entries = queueEntriesRef.current;
+      const idx = entries.findIndex((e) => e.id === entry.id);
+      const next = entries.slice(idx + 1).find((e) => e.status === 'completed' && e.audioUrl);
+      if (next?.audioUrl) {
+        setPlayingEntryId(next.id);
+        void playAudioFromUrl(next.audioUrl, { entryId: next.id, onEnded: createQueueOnEnded(next) });
+      } else {
+        setPlayingEntryId(null);
+      }
+    };
+  }, [playAudioFromUrl]);
+
   const processQueueEntry = useCallback(async (entry: QueueEntry): Promise<void> => {
     setStatus('loading');
     setQueueEntries((prev) =>
@@ -202,12 +224,19 @@ export function App() {
       const audioUrl = await requestGeneratedAudio(entry.params);
       generatedAudioUrlsRef.current.push(audioUrl);
 
-      await playAudioFromUrl(audioUrl);
       setQueueEntries((prev) =>
         prev.map((item) =>
           item.id === entry.id ? { ...item, status: 'completed', errorMessage: null, audioUrl } : item
         )
       );
+
+      const isPlayingAudio = audioRef.current && !audioRef.current.paused;
+      if (!isPlayingAudio) {
+        setPlayingEntryId(entry.id);
+        await playAudioFromUrl(audioUrl, { entryId: entry.id, onEnded: createQueueOnEnded(entry) });
+      } else {
+        setStatus('success');
+      }
     } catch (error) {
       const message = getErrorMessage(error);
       setStatus('error');
@@ -218,7 +247,7 @@ export function App() {
         )
       );
     }
-  }, [playAudioFromUrl]);
+  }, [playAudioFromUrl, createQueueOnEnded]);
 
   useEffect(() => {
     if (status === 'loading') {
@@ -250,9 +279,11 @@ export function App() {
       return;
     }
 
+    setPlayingEntryId(entry.id);
     try {
-      await playAudioFromUrl(entry.audioUrl);
+      await playAudioFromUrl(entry.audioUrl, { entryId: entry.id, onEnded: createQueueOnEnded(entry) });
     } catch (error) {
+      setPlayingEntryId(null);
       setStatus('error');
       setErrorMessage(getErrorMessage(error));
     }
@@ -273,6 +304,7 @@ export function App() {
     try {
       audioRef.current?.pause();
       setIsPlaying(false);
+      setPlayingEntryId(null);
       setErrorMessage(null);
       stopSeekPolling();
     } catch (error) {
@@ -444,7 +476,22 @@ export function App() {
         </section>
 
         <section aria-label="Generation queue" className="space-y-3 rounded-lg bg-lofi-panel p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">Queue</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">Queue</h2>
+            {playingEntryId !== null && (() => {
+              const idx = queueEntries.findIndex((e) => e.id === playingEntryId);
+              const position = idx >= 0 ? idx + 1 : 0;
+              const total = queueEntries.length;
+              return (
+                <span
+                  aria-live="polite"
+                  className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-xs font-semibold text-lofi-accent"
+                >
+                  Track {position} of {total}
+                </span>
+              );
+            })()}
+          </div>
           {queueEntries.length === 0 ? (
             <p className="text-sm text-stone-300">No generations yet.</p>
           ) : (
@@ -454,34 +501,43 @@ export function App() {
                 const isGenerating = entry.status === 'generating';
                 const isCompleted = entry.status === 'completed';
                 const isFailed = entry.status === 'failed';
+                const isCurrentlyPlaying = entry.id === playingEntryId;
 
                 return (
                   <li
                     key={entry.id}
                     data-testid={`queue-entry-${entry.id}`}
                     data-status={entry.status}
-                    className={`rounded-md border p-3 text-sm ${
-                      isGenerating
+                    data-playing={isCurrentlyPlaying ? 'true' : undefined}
+                    className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
+                        ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
+                        : ''} ${isGenerating
                         ? 'border-lofi-accent/70 bg-stone-900/80'
                         : isCompleted
                           ? 'border-emerald-300/60 bg-emerald-500/10'
                           : isFailed
                             ? 'border-red-400/60 bg-red-950/30'
                             : 'border-stone-600 bg-stone-900/40'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-lofi-text">{buildQueueSummary(entry.params)}</p>
+                      <p className="text-lofi-text">
+                        {isCurrentlyPlaying && (
+                          <span className="mr-2 inline-flex items-center gap-1 text-lofi-accent" aria-hidden="true">
+                            ▶ Now playing
+                          </span>
+                        )}
+                        {buildQueueSummary(entry.params)}
+                      </p>
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
-                          isGenerating
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${isGenerating
                             ? 'bg-lofi-accent/20 text-lofi-accent'
                             : isCompleted
                               ? 'bg-emerald-500/20 text-emerald-100'
                               : isFailed
                                 ? 'bg-red-500/20 text-red-100'
                                 : 'bg-stone-700 text-stone-200'
-                        }`}
+                          }`}
                       >
                         {isGenerating && (
                           <span
