@@ -398,19 +398,27 @@ export function App() {
             </button>
           </div>
 
-          {isGeneratingImage && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
-            >
-              <span
-                aria-hidden="true"
-                className="h-4 w-4 animate-spin rounded-full border-2 border-lofi-accent border-t-transparent"
-              />
-              <span>Generating image...</span>
-            </div>
-          )}
+          <div data-testid="visual-prompt-feedback" className="space-y-2">
+            {isGeneratingImage && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-lofi-accent border-t-transparent"
+                />
+                <span>Generating image...</span>
+              </div>
+            )}
+
+            {visualErrorMessage && (
+              <p role="alert" className="text-sm font-semibold text-red-100">
+                {visualErrorMessage}
+              </p>
+            )}
+          </div>
 
           <div
             data-testid="visual-canvas"
@@ -423,12 +431,6 @@ export function App() {
               isPlaying={isPlaying}
             />
           </div>
-
-          {visualErrorMessage && (
-            <p role="alert" className="text-sm font-semibold text-red-100">
-              {visualErrorMessage}
-            </p>
-          )}
         </section>
 
         {hasGeneratedTrack && (

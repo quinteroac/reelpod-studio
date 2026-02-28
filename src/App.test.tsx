@@ -294,8 +294,52 @@ describe('App generation flow', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('image generation failed');
     });
+    expect(screen.getByTestId('visual-prompt-feedback')).toContainElement(screen.getByRole('alert'));
     expect(screen.queryByText('Generating image...')).not.toBeInTheDocument();
     expect(generateImageButton).toBeEnabled();
+
+    fireEvent.click(generateImageButton);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the image error message when a new generation request is submitted', async () => {
+    let secondRequestResolver: ((value: Response) => void) | undefined;
+    let imageRequestCount = 0;
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/api/generate-image')) {
+        imageRequestCount += 1;
+        if (imageRequestCount === 1) {
+          return createErrorResponse('image generation failed');
+        }
+        return new Promise<Response>((resolve) => {
+          secondRequestResolver = resolve;
+        });
+      }
+      return createWavBlobResponse();
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    const generateImageButton = screen.getByRole('button', { name: 'Generate Image' });
+    fireEvent.click(generateImageButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('image generation failed');
+    });
+
+    fireEvent.click(generateImageButton);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Generating image...')).toBeInTheDocument();
+
+    secondRequestResolver?.(createImageBlobResponse());
+
+    await waitFor(() => {
+      expect(screen.queryByText('Generating image...')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows a clear error when generating image with an empty prompt and keeps fallback state', () => {
