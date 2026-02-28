@@ -47,6 +47,17 @@ function createWavBlobResponse(status = 200): Response {
   });
 }
 
+function createImageBlobResponse(status = 200): Response {
+  if (status >= 200 && status < 300) {
+    const blob = new Blob(['fake-image-bytes'], { type: 'image/png' });
+    return new Response(blob, { status, headers: { 'content-type': 'image/png' } });
+  }
+  return new Response(JSON.stringify({ error: 'image generation failed' }), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  });
+}
+
 function createErrorResponse(message: string, status = 500, field = 'error'): Response {
   return new Response(JSON.stringify({ [field]: message }), {
     status,
@@ -55,7 +66,13 @@ function createErrorResponse(message: string, status = 500, field = 'error'): Re
 }
 
 function mockGenerateFetch(): ReturnType<typeof vi.fn> {
-  return vi.fn().mockImplementation(async () => createWavBlobResponse());
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.endsWith('/api/generate-image')) {
+      return createImageBlobResponse();
+    }
+    return createWavBlobResponse();
+  });
 }
 
 describe('App generation flow', () => {
@@ -111,44 +128,49 @@ describe('App generation flow', () => {
     expect(styleSelect.className).toContain('focus-visible:ring-2');
   });
 
-  it('renders an image upload control that accepts JPEG, PNG, and WebP files', () => {
+  it('removes the image upload input and shows an image prompt input in its place', () => {
     render(<App />);
 
-    const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
-    expect(uploadInput).toBeInTheDocument();
-    expect(uploadInput.type).toBe('file');
-    expect(uploadInput.accept).toBe('image/jpeg,image/png,image/webp');
+    expect(screen.queryByLabelText('Upload visual image')).not.toBeInTheDocument();
+    const promptInput = screen.getByLabelText('Image prompt') as HTMLInputElement;
+    expect(promptInput).toBeInTheDocument();
+    expect(promptInput.type).toBe('text');
   });
 
-  it('creates an object URL for a selected image and renders it in the visual scene', () => {
-    const objectUrl = 'blob:http://localhost/uploaded-visual-url';
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue(objectUrl);
+  it('uses Generate Image to request an image from the prompt and render it in the visual scene', async () => {
+    const imageUrl = 'blob:http://localhost/generated-visual-url';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue(imageUrl);
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
-    const imageFile = new File(['image-bytes'], 'cover.png', { type: 'image/png' });
-    fireEvent.change(uploadInput, { target: { files: [imageFile] } });
+    fireEvent.change(screen.getByLabelText('Image prompt'), { target: { value: 'anime city in rain at dusk' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
-    expect(URL.createObjectURL).toHaveBeenCalledWith(imageFile);
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', objectUrl);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: 'anime city in rain at dusk' })
+      });
+    });
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', imageUrl);
     expect(screen.getByTestId('visual-canvas').className).toContain('h-[min(60vh,420px)]');
   });
 
-  it('shows a clear error for non-image uploads and keeps visual scene fallback state', () => {
+  it('shows a clear error when generating image with an empty prompt and keeps fallback state', () => {
     render(<App />);
 
-    const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
-    const invalidFile = new File(['plain-text'], 'notes.txt', { type: 'text/plain' });
-    fireEvent.change(uploadInput, { target: { files: [invalidFile] } });
+    fireEvent.change(screen.getByLabelText('Image prompt'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
-    expect(
-      screen.getByText('Please select a valid image file (JPEG, PNG, or WebP).')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Please enter an image prompt.')).toBeInTheDocument();
     expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
   });
 
-  it('renders the visual scene with fallback state before any upload', () => {
+  it('renders the visual scene with fallback state before any image generation', () => {
     render(<App />);
 
     expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');

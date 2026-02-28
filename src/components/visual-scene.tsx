@@ -1,5 +1,5 @@
 /* eslint-disable react/no-unknown-property */
-import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
+import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { computeContainScale } from '../lib/visual-scene';
@@ -133,7 +133,7 @@ export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlayi
           data-testid="visual-placeholder-copy"
           className="pointer-events-none absolute inset-x-0 bottom-4 px-4 text-center text-sm text-lofi-accentMuted"
         >
-          Upload an image to personalize the scene.
+          Generate an image to personalize the scene.
         </p>
       )}
     </div>

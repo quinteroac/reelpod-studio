@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
@@ -9,7 +8,7 @@ interface GenerationParams {
   tempo: number;
   style: Style;
 }
-import { GENERATE_ENDPOINT_PATH } from './api/constants';
+import { GENERATE_ENDPOINT_PATH, GENERATE_IMAGE_ENDPOINT_PATH } from './api/constants';
 import { VisualScene } from './components/visual-scene';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -22,7 +21,6 @@ const defaultParams: GenerationParams = {
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
-const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -67,6 +65,37 @@ async function requestGeneratedAudio(params: GenerationParams): Promise<string> 
   return URL.createObjectURL(blob);
 }
 
+async function requestGeneratedImage(prompt: string): Promise<string> {
+  const response = await fetch(GENERATE_IMAGE_ENDPOINT_PATH, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ prompt })
+  });
+
+  if (!response.ok) {
+    let errorText: string | null = null;
+    try {
+      const payload: unknown = await response.json();
+      if (typeof payload === 'object' && payload !== null) {
+        const record = payload as Record<string, unknown>;
+        const candidate = record.error ?? record.detail;
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+          errorText = candidate.trim();
+        }
+      }
+    } catch {
+      // ignore JSON parse errors for non-JSON error responses
+    }
+
+    throw new Error(errorText ?? `Could not generate image: Request failed with status ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const visualUrlRef = useRef<string | null>(null);
@@ -75,6 +104,7 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(null);
   const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
+  const [imagePrompt, setImagePrompt] = useState('lofi cafe at night, cinematic lighting');
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -191,25 +221,28 @@ export function App() {
     }
   }
 
-  function handleVisualUpload(event: ChangeEvent<HTMLInputElement>): void {
-    const selectedFile = event.target.files?.[0];
-    if (!selectedFile) {
+  async function handleGenerateImage(): Promise<void> {
+    const trimmedPrompt = imagePrompt.trim();
+    if (!trimmedPrompt) {
+      setVisualErrorMessage('Please enter an image prompt.');
       return;
     }
 
-    if (!SUPPORTED_IMAGE_TYPES.includes(selectedFile.type)) {
-      setVisualErrorMessage('Please select a valid image file (JPEG, PNG, or WebP).');
-      return;
-    }
-
-    if (visualUrlRef.current) {
-      URL.revokeObjectURL(visualUrlRef.current);
-    }
-
-    const nextVisualUrl = URL.createObjectURL(selectedFile);
-    visualUrlRef.current = nextVisualUrl;
-    setVisualImageUrl(nextVisualUrl);
     setVisualErrorMessage(null);
+    try {
+      const nextVisualUrl = await requestGeneratedImage(trimmedPrompt);
+
+      if (visualUrlRef.current) {
+        URL.revokeObjectURL(visualUrlRef.current);
+      }
+
+      visualUrlRef.current = nextVisualUrl;
+      setVisualImageUrl(nextVisualUrl);
+    } catch (error) {
+      setVisualErrorMessage(
+        error instanceof Error ? error.message : 'Could not generate image: Unknown error'
+      );
+    }
   }
 
   return (
@@ -334,17 +367,27 @@ export function App() {
           )}
         </section>
 
-        <section aria-label="Visual upload" className="space-y-3 rounded-lg bg-lofi-panel p-4">
-          <label htmlFor="visual-upload" className="block text-sm font-semibold text-lofi-text">
-            Upload visual image
+        <section aria-label="Visual prompt" className="space-y-3 rounded-lg bg-lofi-panel p-4">
+          <label htmlFor="visual-prompt" className="block text-sm font-semibold text-lofi-text">
+            Image prompt
           </label>
-          <input
-            id="visual-upload"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-sm text-lofi-text file:mr-3 file:rounded-md file:border-0 file:bg-lofi-accent file:px-3 file:py-1 file:font-semibold file:text-stone-950 hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-            onChange={handleVisualUpload}
-          />
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              id="visual-prompt"
+              type="text"
+              value={imagePrompt}
+              onChange={(event) => setImagePrompt(event.target.value)}
+              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+              placeholder="Describe your lofi scene..."
+            />
+            <button
+              type="button"
+              onClick={() => void handleGenerateImage()}
+              className="rounded-md bg-lofi-accent px-4 py-2 text-sm font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text"
+            >
+              Generate Image
+            </button>
+          </div>
 
           <div
             data-testid="visual-canvas"
