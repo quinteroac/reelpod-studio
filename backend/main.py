@@ -25,6 +25,13 @@ INVALID_PAYLOAD_ERROR = (
     f"Invalid payload. Expected {{ mood: string, tempo: number ({MIN_TEMPO}-{MAX_TEMPO}), style: string }}"
 )
 SKILL_MARKDOWN_PATH = Path(__file__).resolve().parent / "llm-skills" / "strudel-pattern-generator" / "SKILL.md"
+VALID_PATTERNS_MARKDOWN_PATH = (
+    Path(__file__).resolve().parent
+    / "llm-skills"
+    / "strudel-pattern-generator"
+    / "examples"
+    / "valid-patterns.md"
+)
 
 load_dotenv()
 
@@ -52,19 +59,73 @@ async def handle_validation_error(_request: Any, _exc: RequestValidationError) -
 
 def build_messages(body: GenerateRequestBody) -> list[dict[str, str]]:
     system_prompt = load_skill_body(SKILL_MARKDOWN_PATH)
-    return [
+    user_request = (
+        f'Generate one lo-fi Strudel pattern using mood "{body.mood}", '
+        f'style "{body.style}", and tempo {body.tempo}. Return only the pattern.'
+    )
+    messages: list[dict[str, str]] = [
         {
             "role": "system",
             "content": system_prompt,
         },
-        {
-            "role": "user",
-            "content": (
-                f'Generate one lo-fi Strudel pattern using mood "{body.mood}", '
-                f'style "{body.style}", and tempo {body.tempo}. Return only the pattern.'
-            ),
-        },
     ]
+    try:
+        for example in load_few_shot_examples(VALID_PATTERNS_MARKDOWN_PATH):
+            messages.append({"role": "user", "content": example["user"]})
+            messages.append({"role": "assistant", "content": example["assistant"]})
+    except Exception as exc:
+        logger.warning("Failed to load few-shot examples from %s: %s", VALID_PATTERNS_MARKDOWN_PATH, exc)
+
+    messages.append({"role": "user", "content": user_request})
+    return messages
+
+
+def load_few_shot_examples(path: Path) -> list[dict[str, str]]:
+    content = path.read_text(encoding="utf-8")
+    examples: list[dict[str, str]] = []
+    sections = re.findall(r"^##\s+(.+?)\n(.*?)(?=^##\s+|\Z)", content, flags=re.MULTILINE | re.DOTALL)
+    for raw_style, section_body in sections:
+        style = raw_style.strip().lower()
+        parameters_match = re.search(r"\*\*Parameters:\*\*\s*(.+)", section_body)
+        code_match = re.search(r"```(?:[^\n]*)\n(.*?)```", section_body, flags=re.DOTALL)
+        if parameters_match is None and code_match is None:
+            continue
+        if parameters_match is None:
+            raise ValueError(f'Missing "**Parameters:**" line for style "{style}"')
+        parameters: dict[str, str] = {}
+        for segment in parameters_match.group(1).split(","):
+            key, separator, value = segment.partition(":")
+            if separator != ":":
+                continue
+            parameters[key.strip().lower()] = value.strip()
+
+        mood = parameters.get("mood")
+        tempo_text = parameters.get("tempo")
+        if mood is None or tempo_text is None:
+            raise ValueError(f'Missing mood/tempo parameters for style "{style}"')
+        if not tempo_text.isdigit():
+            raise ValueError(f'Invalid tempo parameter "{tempo_text}" for style "{style}"')
+
+        if code_match is None:
+            raise ValueError(f'Missing fenced code block for style "{style}"')
+        assistant = code_match.group(1).strip()
+        if not assistant:
+            raise ValueError(f'Empty pattern for style "{style}"')
+
+        examples.append(
+            {
+                "user": (
+                    f'Generate one lo-fi Strudel pattern using mood "{mood}", '
+                    f'style "{style}", and tempo {int(tempo_text)}. Return only the pattern.'
+                ),
+                "assistant": assistant,
+            }
+        )
+
+    if len(examples) != 3:
+        raise ValueError(f"Expected 3 examples, found {len(examples)}")
+
+    return examples
 
 
 def load_skill_body(path: Path) -> str:
