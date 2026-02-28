@@ -88,6 +88,46 @@ describe('App generation flow', () => {
     expect(styleSelect.className).toContain('focus-visible:ring-2');
   });
 
+  it('renders an image upload control that accepts JPEG, PNG, and WebP files', () => {
+    render(<App />);
+
+    const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
+    expect(uploadInput).toBeInTheDocument();
+    expect(uploadInput.type).toBe('file');
+    expect(uploadInput.accept).toBe('image/jpeg,image/png,image/webp');
+  });
+
+  it('creates an object URL for a selected image and renders it fit-to-canvas', () => {
+    const objectUrl = 'blob:http://localhost/uploaded-visual-url';
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue(objectUrl);
+
+    render(<App />);
+
+    const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
+    const imageFile = new File(['image-bytes'], 'cover.png', { type: 'image/png' });
+    fireEvent.change(uploadInput, { target: { files: [imageFile] } });
+
+    expect(URL.createObjectURL).toHaveBeenCalledWith(imageFile);
+
+    const preview = screen.getByAltText('Selected visual preview') as HTMLImageElement;
+    expect(preview.src).toBe(objectUrl);
+    expect(preview.className).toContain('object-contain');
+    expect(screen.getByTestId('visual-canvas').className).toContain('h-[min(60vh,420px)]');
+  });
+
+  it('shows a clear error for non-image uploads and does not render a preview', () => {
+    render(<App />);
+
+    const uploadInput = screen.getByLabelText('Upload visual image') as HTMLInputElement;
+    const invalidFile = new File(['plain-text'], 'notes.txt', { type: 'text/plain' });
+    fireEvent.change(uploadInput, { target: { files: [invalidFile] } });
+
+    expect(
+      screen.getByText('Please select a valid image file (JPEG, PNG, or WebP).')
+    ).toBeInTheDocument();
+    expect(screen.queryByAltText('Selected visual preview')).not.toBeInTheDocument();
+  });
+
   it('keeps player hidden until a track is generated successfully', async () => {
     render(<App />);
 

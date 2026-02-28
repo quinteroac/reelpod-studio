@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import type { GenerationParams, Mood, Style } from './lib/pattern-generator';
 import { GENERATE_ENDPOINT_PATH } from './api/constants';
 
@@ -12,6 +13,7 @@ const defaultParams: GenerationParams = {
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
+const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -58,9 +60,12 @@ async function requestGeneratedAudio(params: GenerationParams): Promise<string> 
 
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const visualUrlRef = useRef<string | null>(null);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(null);
+  const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -83,6 +88,15 @@ export function App() {
       seekPollRef.current = null;
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (visualUrlRef.current) {
+        URL.revokeObjectURL(visualUrlRef.current);
+      }
+      stopSeekPolling();
+    };
+  }, []);
 
   async function handleGenerate(): Promise<void> {
     if (status === 'loading') {
@@ -151,6 +165,27 @@ export function App() {
     if (audio && audio.duration && isFinite(audio.duration)) {
       audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
     }
+  }
+
+  function handleVisualUpload(event: ChangeEvent<HTMLInputElement>): void {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) {
+      return;
+    }
+
+    if (!SUPPORTED_IMAGE_TYPES.includes(selectedFile.type)) {
+      setVisualErrorMessage('Please select a valid image file (JPEG, PNG, or WebP).');
+      return;
+    }
+
+    if (visualUrlRef.current) {
+      URL.revokeObjectURL(visualUrlRef.current);
+    }
+
+    const nextVisualUrl = URL.createObjectURL(selectedFile);
+    visualUrlRef.current = nextVisualUrl;
+    setVisualImageUrl(nextVisualUrl);
+    setVisualErrorMessage(null);
   }
 
   return (
@@ -272,6 +307,42 @@ export function App() {
                 Retry
               </button>
             </div>
+          )}
+        </section>
+
+        <section aria-label="Visual upload" className="space-y-3 rounded-lg bg-lofi-panel p-4">
+          <label htmlFor="visual-upload" className="block text-sm font-semibold text-lofi-text">
+            Upload visual image
+          </label>
+          <input
+            id="visual-upload"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-sm text-lofi-text file:mr-3 file:rounded-md file:border-0 file:bg-lofi-accent file:px-3 file:py-1 file:font-semibold file:text-stone-950 hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+            onChange={handleVisualUpload}
+          />
+
+          <div
+            data-testid="visual-canvas"
+            className="flex h-[min(60vh,420px)] w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
+          >
+            {visualImageUrl ? (
+              <img
+                src={visualImageUrl}
+                alt="Selected visual preview"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <p className="px-4 text-center text-sm text-lofi-accentMuted">
+                Select an image to use it as the track visual.
+              </p>
+            )}
+          </div>
+
+          {visualErrorMessage && (
+            <p role="alert" className="text-sm font-semibold text-red-100">
+              {visualErrorMessage}
+            </p>
           )}
         </section>
 
