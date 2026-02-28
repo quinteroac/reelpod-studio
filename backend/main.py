@@ -98,18 +98,23 @@ def submit_task(prompt: str) -> str:
         "audio_format": "wav",
     }
     response = post_json(make_absolute_url(RELEASE_TASK_PATH), payload)
-    task_id = response.get("task_id")
+    # API wraps response: { "code": 200, "data": { "task_id": "..." } }
+    data = response.get("data") or response
+    task_id = data.get("task_id") if isinstance(data, dict) else None
     if not isinstance(task_id, str) or not task_id:
-        raise RuntimeError("Missing task_id in response")
+        raise RuntimeError(f"Missing task_id in response: {response}")
     return task_id
 
 
 def poll_until_complete(task_id: str) -> dict[str, Any]:
     for _ in range(MAX_POLL_ATTEMPTS):
-        response = post_json(make_absolute_url(QUERY_RESULT_PATH), {"task_id": task_id})
-        status = response.get("status")
+        # API expects task_id_list and wraps response in { "code": 200, "data": [...] }
+        response = post_json(make_absolute_url(QUERY_RESULT_PATH), {"task_id_list": [task_id]})
+        data = response.get("data") or []
+        item = data[0] if isinstance(data, list) and data else data if isinstance(data, dict) else {}
+        status = item.get("status")
         if status == 1:
-            return response
+            return item
         if status == 2:
             raise RuntimeError("ACE-Step task failed")
         time.sleep(POLL_INTERVAL_SECONDS)
@@ -121,12 +126,18 @@ def extract_file_path(response: dict[str, Any]) -> str:
     if not isinstance(result_json, str):
         raise RuntimeError("Missing result JSON")
     parsed_result = json.loads(result_json)
-    if not isinstance(parsed_result, dict):
-        raise RuntimeError("Invalid result JSON")
-    file_path = parsed_result.get("file")
-    if not isinstance(file_path, str) or not file_path:
-        raise RuntimeError("Missing file path")
-    return file_path
+    # API returns a list of {file, wave, status} dicts — take the first with a valid path
+    if isinstance(parsed_result, list):
+        for item in parsed_result:
+            file_path = item.get("file") if isinstance(item, dict) else None
+            if isinstance(file_path, str) and file_path:
+                return file_path
+        raise RuntimeError("No valid file path in result list")
+    if isinstance(parsed_result, dict):
+        file_path = parsed_result.get("file")
+        if isinstance(file_path, str) and file_path:
+            return file_path
+    raise RuntimeError(f"Missing file path in result: {parsed_result}")
 
 
 @app.post("/api/generate")
