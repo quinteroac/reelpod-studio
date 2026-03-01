@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
+type GenerationMode = 'text' | 'text-and-parameters' | 'parameters';
 
 interface GenerationParams {
   mood: Mood;
@@ -27,6 +28,11 @@ const defaultParams: GenerationParams = {
   tempo: 80,
   style: 'jazz'
 };
+const generationModeOptions: ReadonlyArray<{ value: GenerationMode; label: string }> = [
+  { value: 'text', label: 'Text' },
+  { value: 'text-and-parameters', label: 'Text + Parameters' },
+  { value: 'parameters', label: 'Parameters' }
+];
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
@@ -115,6 +121,7 @@ export function App() {
   const visualUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('text-and-parameters');
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -363,6 +370,39 @@ export function App() {
         </header>
 
         <section aria-label="Generation parameters" className="space-y-4 rounded-lg bg-lofi-panel p-5">
+          <fieldset
+            role="radiogroup"
+            aria-label="Generation mode"
+            className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+          >
+            <legend className="text-sm font-semibold text-lofi-text">Generation mode</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {generationModeOptions.map((option) => {
+                const isSelected = generationMode === option.value;
+                return (
+                  <label
+                    key={option.value}
+                    className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
+                        ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                        : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                      } ${status === 'loading' ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="generation-mode"
+                      value={option.value}
+                      checked={isSelected}
+                      onChange={() => setGenerationMode(option.value)}
+                      disabled={status === 'loading'}
+                      className="sr-only"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
           <div className="grid gap-4 md:grid-cols-3">
             <fieldset
               data-testid="mood-control-card"

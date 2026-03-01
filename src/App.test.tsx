@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type VisualSceneProps = {
@@ -103,6 +103,70 @@ describe('App generation flow', () => {
     expect(layoutGrid?.className).toContain('grid');
     expect(layoutGrid?.className).toContain('gap-4');
     expect(layoutGrid?.className).toContain('md:grid-cols-3');
+  });
+
+  it('renders a generation mode selector with Text, Text + Parameters, and Parameters options inside generation parameters', () => {
+    render(<App />);
+
+    const parametersSection = screen.getByRole('region', { name: 'Generation parameters' });
+    const modeGroup = within(parametersSection).getByRole('radiogroup', { name: 'Generation mode' });
+
+    expect(within(modeGroup).getByRole('radio', { name: 'Text' })).toBeVisible();
+    expect(within(modeGroup).getByRole('radio', { name: 'Text + Parameters' })).toBeVisible();
+    expect(within(modeGroup).getByRole('radio', { name: 'Parameters' })).toBeVisible();
+  });
+
+  it('updates generation mode selection immediately when a mode is clicked', () => {
+    render(<App />);
+
+    const textMode = screen.getByRole('radio', { name: 'Text' }) as HTMLInputElement;
+    const textAndParamsMode = screen.getByRole('radio', { name: 'Text + Parameters' }) as HTMLInputElement;
+    const paramsMode = screen.getByRole('radio', { name: 'Parameters' }) as HTMLInputElement;
+
+    expect(textAndParamsMode.checked).toBe(true);
+    expect(textMode.checked).toBe(false);
+    expect(paramsMode.checked).toBe(false);
+
+    fireEvent.click(textMode);
+    expect(textMode.checked).toBe(true);
+    expect(textAndParamsMode.checked).toBe(false);
+    expect(paramsMode.checked).toBe(false);
+
+    fireEvent.click(paramsMode);
+    expect(paramsMode.checked).toBe(true);
+    expect(textMode.checked).toBe(false);
+    expect(textAndParamsMode.checked).toBe(false);
+  });
+
+  it('disables the generation mode selector while track generation is in progress', async () => {
+    let resolveFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generating track...')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Text' })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: 'Text + Parameters' })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: 'Parameters' })).toBeDisabled();
+    });
+
+    resolveFetch?.(createWavBlobResponse());
+
+    await waitFor(() => {
+      expect(screen.queryByText('Generating track...')).not.toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Text' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Text + Parameters' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Parameters' })).toBeEnabled();
+    });
   });
 
   it('uses prominent generate button and visible hover/focus states for interactive controls', () => {
