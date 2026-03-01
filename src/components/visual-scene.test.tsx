@@ -3,12 +3,16 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@react-three/drei', () => ({
-  Line: ({ children }: any) => <div data-testid="drei-line">{children}</div>,
+  Line: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="drei-line">{children}</div>
+  )
 }));
 
 vi.mock('@react-three/postprocessing', () => ({
-  EffectComposer: ({ children }: any) => <div data-testid="effect-composer">{children}</div>,
-  Bloom: () => <div data-testid="bloom" />,
+  EffectComposer: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="effect-composer">{children}</div>
+  ),
+  Bloom: () => <div data-testid="bloom" />
 }));
 
 const useLoaderMock = vi.fn();
@@ -35,7 +39,13 @@ describe('VisualScene', () => {
 
   it('renders an R3F scene using uploaded image texture fit to canvas', () => {
     render(
-      <VisualScene imageUrl="blob:http://localhost/my-upload" audioCurrentTime={8} audioDuration={32} isPlaying={false} />
+      <VisualScene
+        imageUrl="blob:http://localhost/my-upload"
+        audioCurrentTime={8}
+        audioDuration={32}
+        isPlaying={false}
+        aspectRatio={16 / 9}
+      />
     );
 
     expect(screen.getByTestId('r3f-canvas')).toBeInTheDocument();
@@ -47,16 +57,46 @@ describe('VisualScene', () => {
 
   it('shows a visible waveform overlay in the scene', () => {
     render(
-      <VisualScene imageUrl="blob:http://localhost/my-upload" audioCurrentTime={16} audioDuration={32} isPlaying={true} />
+      <VisualScene
+        imageUrl="blob:http://localhost/my-upload"
+        audioCurrentTime={16}
+        audioDuration={32}
+        isPlaying={true}
+        aspectRatio={16 / 9}
+      />
     );
 
     expect(screen.getByTestId('waveform-overlay')).toBeInTheDocument();
   });
 
   it('renders fallback visual copy when no image was uploaded', () => {
-    render(<VisualScene imageUrl={null} audioCurrentTime={0} audioDuration={0} isPlaying={false} />);
+    render(
+      <VisualScene
+        imageUrl={null}
+        audioCurrentTime={0}
+        audioDuration={0}
+        isPlaying={false}
+        aspectRatio={1}
+      />
+    );
 
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-has-image', 'false');
     expect(screen.getByTestId('visual-placeholder-copy')).toBeInTheDocument();
+  });
+
+  it('applies the requested aspect ratio to the viewport container', () => {
+    render(
+      <VisualScene
+        imageUrl={null}
+        audioCurrentTime={0}
+        audioDuration={0}
+        isPlaying={false}
+        aspectRatio={9 / 16}
+      />
+    );
+
+    expect(screen.getByTestId('visual-scene')).toHaveStyle({
+      aspectRatio: `${9 / 16}`
+    });
   });
 });

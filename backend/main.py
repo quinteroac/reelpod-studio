@@ -22,24 +22,37 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, StrictInt, StrictStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 MIN_TEMPO = 60
 MAX_TEMPO = 120
+MIN_DURATION_SECONDS = 40
+MAX_DURATION_SECONDS = 300
+DEFAULT_DURATION_SECONDS = 40
 
 INVALID_PAYLOAD_ERROR = (
     "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', "
-    f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), style?: string }}"
+    f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), "
+    f"duration?: number ({MIN_DURATION_SECONDS}-{MAX_DURATION_SECONDS}), style?: string }}"
 )
 
 DEFAULT_ACESTEP_API_URL = "http://localhost:8001"
 RELEASE_TASK_PATH = "/release_task"
 QUERY_RESULT_PATH = "/query_result"
-POLL_INTERVAL_SECONDS = 0.25
-MAX_POLL_ATTEMPTS = 120
+POLL_INTERVAL_SECONDS = 0.5
+MAX_POLL_ATTEMPTS = 1200
 IMAGE_MODEL_ID = "Ine007/waiIllustriousSDXL_v160"
 IMAGE_SIZE = 1024
 IMAGE_NUM_INFERENCE_STEPS = 25  # 25 vs default 50 — faster, acceptable quality
+IMAGE_ASPECT_TOLERANCE = 1e-6
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
 
 QueueItemStatus = Literal["queued", "generating", "completed", "failed"]
@@ -55,6 +68,7 @@ class GenerationQueueItem:
     prompt: str
     status: QueueItemStatus
     tempo: int = 80
+    duration: int = DEFAULT_DURATION_SECONDS
     wav_bytes: bytes | None = None
     error_message: str | None = None
 
@@ -71,6 +85,11 @@ class GenerateRequestBody(BaseModel):
     prompt: Optional[StrictStr] = None
     mood: StrictStr = "chill"
     tempo: StrictInt = Field(default=80, ge=MIN_TEMPO, le=MAX_TEMPO)
+    duration: StrictInt = Field(
+        default=DEFAULT_DURATION_SECONDS,
+        ge=MIN_DURATION_SECONDS,
+        le=MAX_DURATION_SECONDS,
+    )
     style: StrictStr = "jazz"
 
     @field_validator("prompt")
@@ -101,6 +120,10 @@ class GenerateRequestBody(BaseModel):
 
 class GenerateImageRequestBody(BaseModel):
     prompt: StrictStr
+    target_width: StrictInt = Field(default=IMAGE_SIZE, ge=1, alias="targetWidth")
+    target_height: StrictInt = Field(default=IMAGE_SIZE, ge=1, alias="targetHeight")
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("prompt")
     @classmethod
@@ -188,12 +211,52 @@ def load_image_pipeline() -> Any:
     return pipeline.to(device)
 
 
-def submit_task(prompt: str, tempo: int = 80) -> str:
+def needs_image_refiner_pass(
+    source_width: int, source_height: int, target_width: int, target_height: int
+) -> bool:
+    if source_width != target_width or source_height != target_height:
+        return True
+
+    source_aspect = source_width / source_height
+    target_aspect = target_width / target_height
+    return abs(source_aspect - target_aspect) > IMAGE_ASPECT_TOLERANCE
+
+
+def center_crop_and_resize_to_target(image: Any, target_width: int, target_height: int) -> Any:
+    from PIL import Image
+
+    source_width, source_height = image.size
+    source_aspect = source_width / source_height
+    target_aspect = target_width / target_height
+
+    if abs(source_aspect - target_aspect) <= IMAGE_ASPECT_TOLERANCE:
+        cropped = image
+    elif source_aspect > target_aspect:
+        crop_width = max(1, int(round(source_height * target_aspect)))
+        left = max(0, (source_width - crop_width) // 2)
+        cropped = image.crop((left, 0, left + crop_width, source_height))
+    else:
+        crop_height = max(1, int(round(source_width / target_aspect)))
+        top = max(0, (source_height - crop_height) // 2)
+        cropped = image.crop((0, top, source_width, top + crop_height))
+
+    if cropped.size == (target_width, target_height):
+        return cropped
+
+    resampling = Image.Resampling.LANCZOS
+    return cropped.resize((target_width, target_height), resampling)
+
+
+def submit_task(
+    prompt: str,
+    tempo: int = 80,
+    duration: int = DEFAULT_DURATION_SECONDS,
+) -> str:
     payload = {
         "prompt": prompt,
         "lyrics": "",
         "bpm": tempo,
-        "audio_duration": 30,
+        "audio_duration": duration,
         "inference_steps": 20,
         "audio_format": "wav",
         "thinking": True,
@@ -241,8 +304,12 @@ def extract_file_path(response: dict[str, Any]) -> str:
     raise RuntimeError(f"Missing file path in result: {parsed_result}")
 
 
-def generate_audio_bytes_for_prompt(prompt: str, tempo: int = 80) -> bytes:
-    task_id = submit_task(prompt, tempo=tempo)
+def generate_audio_bytes_for_prompt(
+    prompt: str,
+    tempo: int = 80,
+    duration: int = DEFAULT_DURATION_SECONDS,
+) -> bytes:
+    task_id = submit_task(prompt, tempo=tempo, duration=duration)
     completed_task = poll_until_complete(task_id)
     file_path = extract_file_path(completed_task)
     return get_bytes(make_absolute_url(file_path))
@@ -258,6 +325,7 @@ def get_queue_item_snapshot(item_id: str) -> GenerationQueueItem | None:
             prompt=item.prompt,
             status=item.status,
             tempo=item.tempo,
+            duration=item.duration,
             wav_bytes=item.wav_bytes,
             error_message=item.error_message,
         )
@@ -270,6 +338,7 @@ def enqueue_generation_request(body: GenerateRequestBody) -> GenerationQueueItem
         prompt=build_prompt(body),
         status="queued",
         tempo=tempo,
+        duration=body.duration,
     )
     with queue_condition:
         queue_items[item.id] = item
@@ -294,6 +363,7 @@ def wait_for_terminal_status(
                     prompt=item.prompt,
                     status=item.status,
                     tempo=item.tempo,
+                    duration=item.duration,
                     wav_bytes=item.wav_bytes,
                     error_message=item.error_message,
                 )
@@ -327,7 +397,11 @@ def queue_worker() -> None:
             queue_condition.notify_all()
 
         try:
-            wav_bytes = generate_audio_bytes_for_prompt(item.prompt, tempo=item.tempo)
+            wav_bytes = generate_audio_bytes_for_prompt(
+                item.prompt,
+                tempo=item.tempo,
+                duration=item.duration,
+            )
         except (RuntimeError, URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
             logger.error("ACE-Step API error: %s: %s", type(exc).__name__, exc)
             with queue_condition:
@@ -463,8 +537,24 @@ def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
         if not isinstance(images, list) or not images:
             raise RuntimeError("No generated image returned by model")
 
+        source_image = images[0]
+        source_width, source_height = source_image.size
+        if needs_image_refiner_pass(
+            source_width=source_width,
+            source_height=source_height,
+            target_width=body.target_width,
+            target_height=body.target_height,
+        ):
+            final_image = center_crop_and_resize_to_target(
+                source_image,
+                target_width=body.target_width,
+                target_height=body.target_height,
+            )
+        else:
+            final_image = source_image
+
         output = io.BytesIO()
-        images[0].save(output, format="PNG")
+        final_image.save(output, format="PNG")
         output.seek(0)
         return StreamingResponse(output, media_type="image/png")
     except HTTPException:

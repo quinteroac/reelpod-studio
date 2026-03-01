@@ -3,11 +3,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
 type GenerationMode = 'text' | 'text-and-parameters' | 'parameters';
+type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
+
+interface SocialFormatPreset {
+  id: SocialFormatId;
+  label: string;
+  aspectRatio: number;
+  width: number;
+  height: number;
+}
 
 interface GenerationParams {
   mood: Mood;
   tempo: number;
   style: Style;
+  duration: number;
   mode?: GenerationMode;
   prompt?: string;
 }
@@ -23,15 +33,20 @@ type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
 interface QueueEntry {
   id: number;
   params: GenerationParams;
+  imagePrompt: string;
+  targetWidth: number;
+  targetHeight: number;
   status: QueueEntryStatus;
   errorMessage: string | null;
   audioUrl: string | null;
+  imageUrl: string | null;
 }
 
 const defaultParams: GenerationParams = {
   mood: 'chill',
   tempo: 80,
-  style: 'jazz'
+  style: 'jazz',
+  duration: 40
 };
 const generationModeOptions: ReadonlyArray<{
   value: GenerationMode;
@@ -41,12 +56,39 @@ const generationModeOptions: ReadonlyArray<{
   { value: 'text-and-parameters', label: 'Text + Parameters' },
   { value: 'parameters', label: 'Parameters' }
 ];
+const socialFormatOptions: ReadonlyArray<SocialFormatPreset> = [
+  {
+    id: 'youtube',
+    label: 'YouTube (16:9 · 1920×1080)',
+    aspectRatio: 16 / 9,
+    width: 1920,
+    height: 1080
+  },
+  {
+    id: 'tiktok-reels',
+    label: 'TikTok/Reels (9:16 · 1080×1920)',
+    aspectRatio: 9 / 16,
+    width: 1080,
+    height: 1920
+  },
+  {
+    id: 'instagram-square',
+    label: 'Instagram Square (1:1 · 1080×1080)',
+    aspectRatio: 1,
+    width: 1080,
+    height: 1080
+  }
+];
+const defaultSocialFormatId: SocialFormatId = 'youtube';
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
 const TEXT_PROMPT_MAX_SUMMARY_CHARS = 60;
 const TEXT_MODE_DEFAULT_TEMPO = 80;
+const DURATION_MIN_SECONDS = 40;
+const DURATION_MAX_SECONDS = 300;
 const MUSIC_PROMPT_REQUIRED_ERROR = 'Please enter a music prompt.';
+const DURATION_RANGE_ERROR = `Duration must be between ${DURATION_MIN_SECONDS} and ${DURATION_MAX_SECONDS} seconds.`;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -123,13 +165,17 @@ async function requestGeneratedAudio(
   return URL.createObjectURL(blob);
 }
 
-async function requestGeneratedImage(prompt: string): Promise<string> {
+async function requestGeneratedImage(
+  prompt: string,
+  targetWidth: number,
+  targetHeight: number
+): Promise<string> {
   const response = await fetch(GENERATE_IMAGE_ENDPOINT_PATH, {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify({ prompt })
+    body: JSON.stringify({ prompt, targetWidth, targetHeight })
   });
 
   if (!response.ok) {
@@ -160,7 +206,7 @@ async function requestGeneratedImage(prompt: string): Promise<string> {
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const generatedAudioUrlsRef = useRef<string[]>([]);
-  const visualUrlRef = useRef<string | null>(null);
+  const generatedImageUrlsRef = useRef<string[]>([]);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [generationMode, setGenerationMode] = useState<GenerationMode>(
@@ -170,17 +216,27 @@ export function App() {
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
     string | null
   >(null);
+  const [durationInput, setDurationInput] = useState(
+    String(defaultParams.duration)
+  );
+  const [durationErrorMessage, setDurationErrorMessage] = useState<
+    string | null
+  >(null);
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(
-    null
-  );
+  const [imagePromptErrorMessage, setImagePromptErrorMessage] = useState<
+    string | null
+  >(null);
   const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
+  const [useSamePromptForImage, setUseSamePromptForImage] = useState(false);
+  const [imagePromptBeforeSharedToggle, setImagePromptBeforeSharedToggle] =
+    useState(imagePrompt);
+  const [socialFormatId, setSocialFormatId] =
+    useState<SocialFormatId>(defaultSocialFormatId);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -189,6 +245,9 @@ export function App() {
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
+  const selectedSocialFormat =
+    socialFormatOptions.find((option) => option.id === socialFormatId) ??
+    socialFormatOptions[0];
 
   const stopSeekPolling = useCallback((): void => {
     if (seekPollRef.current !== null) {
@@ -216,11 +275,10 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      if (visualUrlRef.current) {
-        URL.revokeObjectURL(visualUrlRef.current);
-      }
       generatedAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      generatedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       generatedAudioUrlsRef.current = [];
+      generatedImageUrlsRef.current = [];
       stopSeekPolling();
     };
   }, [stopSeekPolling]);
@@ -275,6 +333,9 @@ export function App() {
           .find((e) => e.status === 'completed' && e.audioUrl);
         if (next?.audioUrl) {
           setPlayingEntryId(next.id);
+          if (next.imageUrl) {
+            setVisualImageUrl(next.imageUrl);
+          }
           void playAudioFromUrl(next.audioUrl, {
             entryId: next.id,
             onEnded: createQueueOnEnded(next)
@@ -299,26 +360,75 @@ export function App() {
       );
 
       try {
-        const audioUrl = await requestGeneratedAudio(entry.params);
-        generatedAudioUrlsRef.current.push(audioUrl);
-
-        setQueueEntries((prev) =>
-          prev.map((item) =>
-            item.id === entry.id
-              ? { ...item, status: 'completed', errorMessage: null, audioUrl }
-              : item
+        const [audioResult, imageResult] = await Promise.allSettled([
+          requestGeneratedAudio(entry.params),
+          requestGeneratedImage(
+            entry.imagePrompt,
+            entry.targetWidth,
+            entry.targetHeight
           )
-        );
+        ]);
 
-        const isPlayingAudio = audioRef.current && !audioRef.current.paused;
-        if (!isPlayingAudio) {
-          setPlayingEntryId(entry.id);
-          await playAudioFromUrl(audioUrl, {
-            entryId: entry.id,
-            onEnded: createQueueOnEnded(entry)
-          });
+        if (
+          audioResult.status === 'fulfilled' &&
+          imageResult.status === 'fulfilled'
+        ) {
+          const audioUrl = audioResult.value;
+          const imageUrl = imageResult.value;
+          generatedAudioUrlsRef.current.push(audioUrl);
+          generatedImageUrlsRef.current.push(imageUrl);
+
+          setQueueEntries((prev) =>
+            prev.map((item) =>
+              item.id === entry.id
+                ? {
+                    ...item,
+                    status: 'completed',
+                    errorMessage: null,
+                    audioUrl,
+                    imageUrl
+                  }
+                : item
+            )
+          );
+
+          const isPlayingAudio = audioRef.current && !audioRef.current.paused;
+          if (!isPlayingAudio) {
+            setPlayingEntryId(entry.id);
+            setVisualImageUrl(imageUrl);
+            await playAudioFromUrl(audioUrl, {
+              entryId: entry.id,
+              onEnded: createQueueOnEnded(entry)
+            });
+          } else {
+            setStatus('success');
+          }
         } else {
-          setStatus('success');
+          if (audioResult.status === 'fulfilled') {
+            URL.revokeObjectURL(audioResult.value);
+          }
+          if (imageResult.status === 'fulfilled') {
+            URL.revokeObjectURL(imageResult.value);
+          }
+
+          const audioError =
+            audioResult.status === 'rejected'
+              ? getErrorMessage(audioResult.reason)
+              : null;
+          const imageError =
+            imageResult.status === 'rejected'
+              ? getErrorMessage(imageResult.reason)
+              : null;
+          const message =
+            audioError && imageError
+              ? `Could not generate pair: audio failed (${audioError}); image failed (${imageError})`
+              : audioError
+                ? `Could not generate pair: audio failed (${audioError})`
+                : imageError
+                  ? `Could not generate pair: image failed (${imageError})`
+                  : 'Could not generate pair: Unknown error';
+
+          throw new Error(message);
         }
       } catch (error) {
         const message = getErrorMessage(error);
@@ -331,7 +441,8 @@ export function App() {
                   ...item,
                   status: 'failed',
                   errorMessage: message,
-                  audioUrl: null
+                  audioUrl: null,
+                  imageUrl: null
                 }
               : item
           )
@@ -356,45 +467,80 @@ export function App() {
 
   function handleGenerate(): void {
     setErrorMessage(null);
+    setImagePromptErrorMessage(null);
+    const parsedDuration = Number(durationInput);
+    const hasValidDuration =
+      Number.isInteger(parsedDuration) &&
+      parsedDuration >= DURATION_MIN_SECONDS &&
+      parsedDuration <= DURATION_MAX_SECONDS;
+
+    if (!hasValidDuration) {
+      setDurationErrorMessage(DURATION_RANGE_ERROR);
+      return;
+    }
+
+    setDurationErrorMessage(null);
+    const nextParams: GenerationParams = {
+      ...params,
+      duration: parsedDuration
+    };
 
     const requiresPrompt =
       generationMode === 'text' || generationMode === 'text-and-parameters';
+    const trimmedMusicPrompt = musicPrompt.trim();
     if (requiresPrompt) {
-      const trimmedPrompt = musicPrompt.trim();
-      if (!trimmedPrompt) {
+      if (!trimmedMusicPrompt) {
         setMusicPromptErrorMessage(MUSIC_PROMPT_REQUIRED_ERROR);
         return;
       }
 
       setMusicPromptErrorMessage(null);
+    }
 
-      if (generationMode === 'text') {
-        const nextEntry: QueueEntry = {
-          id: queueIdRef.current++,
-          params: {
-            ...params,
-            mode: 'text',
-            prompt: trimmedPrompt,
-            tempo: TEXT_MODE_DEFAULT_TEMPO
-          },
-          status: 'queued',
-          errorMessage: null,
-          audioUrl: null
-        };
-        setQueueEntries((prev) => [...prev, nextEntry]);
-        return;
-      }
+    const trimmedImagePrompt = useSamePromptForImage
+      ? trimmedMusicPrompt
+      : imagePrompt.trim();
+    if (!trimmedImagePrompt) {
+      setImagePromptErrorMessage('Please enter an image prompt.');
+      return;
+    }
 
+    if (requiresPrompt && generationMode === 'text') {
       const nextEntry: QueueEntry = {
         id: queueIdRef.current++,
         params: {
-          ...params,
-          mode: 'text-and-parameters',
-          prompt: trimmedPrompt
+          ...nextParams,
+          mode: 'text',
+          prompt: trimmedMusicPrompt,
+          tempo: TEXT_MODE_DEFAULT_TEMPO
         },
+        imagePrompt: trimmedImagePrompt,
+        targetWidth: selectedSocialFormat.width,
+        targetHeight: selectedSocialFormat.height,
         status: 'queued',
         errorMessage: null,
-        audioUrl: null
+        audioUrl: null,
+        imageUrl: null
+      };
+      setQueueEntries((prev) => [...prev, nextEntry]);
+      return;
+    }
+
+    if (requiresPrompt && generationMode === 'text-and-parameters') {
+      const nextEntry: QueueEntry = {
+        id: queueIdRef.current++,
+        params: {
+          ...nextParams,
+          mode: 'text-and-parameters',
+          prompt: trimmedMusicPrompt
+        },
+        imagePrompt: trimmedImagePrompt,
+        targetWidth: selectedSocialFormat.width,
+        targetHeight: selectedSocialFormat.height,
+        status: 'queued',
+        errorMessage: null,
+        audioUrl: null,
+        imageUrl: null
       };
       setQueueEntries((prev) => [...prev, nextEntry]);
       return;
@@ -403,10 +549,14 @@ export function App() {
     setMusicPromptErrorMessage(null);
     const nextEntry: QueueEntry = {
       id: queueIdRef.current++,
-      params: { ...params },
+      params: nextParams,
+      imagePrompt: trimmedImagePrompt,
+      targetWidth: selectedSocialFormat.width,
+      targetHeight: selectedSocialFormat.height,
       status: 'queued',
       errorMessage: null,
-      audioUrl: null
+      audioUrl: null,
+      imageUrl: null
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
@@ -417,6 +567,9 @@ export function App() {
     }
 
     setPlayingEntryId(entry.id);
+    if (entry.imageUrl) {
+      setVisualImageUrl(entry.imageUrl);
+    }
     try {
       await playAudioFromUrl(entry.audioUrl, {
         entryId: entry.id,
@@ -460,39 +613,6 @@ export function App() {
       audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
       setAudioCurrentTime(audio.currentTime);
       setAudioDuration(audio.duration);
-    }
-  }
-
-  async function handleGenerateImage(): Promise<void> {
-    if (isGeneratingImage) {
-      return;
-    }
-
-    const trimmedPrompt = imagePrompt.trim();
-    if (!trimmedPrompt) {
-      setVisualErrorMessage('Please enter an image prompt.');
-      return;
-    }
-
-    setVisualErrorMessage(null);
-    setIsGeneratingImage(true);
-    try {
-      const nextVisualUrl = await requestGeneratedImage(trimmedPrompt);
-
-      if (visualUrlRef.current) {
-        URL.revokeObjectURL(visualUrlRef.current);
-      }
-
-      visualUrlRef.current = nextVisualUrl;
-      setVisualImageUrl(nextVisualUrl);
-    } catch (error) {
-      setVisualErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Could not generate image: Unknown error'
-      );
-    } finally {
-      setIsGeneratingImage(false);
     }
   }
 
@@ -665,6 +785,67 @@ export function App() {
               </fieldset>
             </div>
           )}
+
+          <div className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3">
+            <label
+              htmlFor="duration"
+              className="block text-sm font-semibold text-lofi-text"
+            >
+              Duration (s)
+            </label>
+            <input
+              id="duration"
+              type="number"
+              min={DURATION_MIN_SECONDS}
+              max={DURATION_MAX_SECONDS}
+              step={1}
+              value={durationInput}
+              onChange={(event) => {
+                setDurationInput(event.target.value);
+                if (durationErrorMessage) {
+                  setDurationErrorMessage(null);
+                }
+              }}
+              disabled={status === 'loading'}
+              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+            />
+          </div>
+
+          <fieldset
+            role="radiogroup"
+            aria-label="Social format"
+            className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+          >
+            <legend className="text-sm font-semibold text-lofi-text">
+              Format
+            </legend>
+            <div className="grid gap-2">
+              {socialFormatOptions.map((option) => {
+                const isSelected = socialFormatId === option.id;
+                return (
+                  <label
+                    key={option.id}
+                    className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${
+                      isSelected
+                        ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                        : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                    } ${status === 'loading' ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="social-format"
+                      value={option.id}
+                      checked={isSelected}
+                      onChange={() => setSocialFormatId(option.id)}
+                      disabled={status === 'loading'}
+                      className="sr-only"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
         </section>
 
         <section
@@ -681,6 +862,11 @@ export function App() {
           {musicPromptErrorMessage && (
             <p role="alert" className="text-sm font-semibold text-red-100">
               {musicPromptErrorMessage}
+            </p>
+          )}
+          {durationErrorMessage && (
+            <p role="alert" className="text-sm font-semibold text-red-100">
+              {durationErrorMessage}
             </p>
           )}
 
@@ -746,13 +932,14 @@ export function App() {
             <p className="text-sm text-stone-300">No generations yet.</p>
           ) : (
             <ul className="space-y-2">
-              {queueEntries.map((entry) => {
+              {queueEntries.map((entry, index) => {
                 const statusLabel =
                   entry.status[0].toUpperCase() + entry.status.slice(1);
                 const isGenerating = entry.status === 'generating';
                 const isCompleted = entry.status === 'completed';
                 const isFailed = entry.status === 'failed';
                 const isCurrentlyPlaying = entry.id === playingEntryId;
+                const trackNumber = index + 1;
 
                 return (
                   <li
@@ -775,17 +962,22 @@ export function App() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-lofi-text">
-                        {isCurrentlyPlaying && (
-                          <span
-                            className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
-                            aria-hidden="true"
-                          >
-                            ▶ Now playing
-                          </span>
-                        )}
-                        {buildQueueSummary(entry.params)}
-                      </p>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                          Track {trackNumber}
+                        </p>
+                        <p className="text-lofi-text">
+                          {isCurrentlyPlaying && (
+                            <span
+                              className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
+                              aria-hidden="true"
+                            >
+                              ▶ Now playing
+                            </span>
+                          )}
+                          {buildQueueSummary(entry.params)}
+                        </p>
+                      </div>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
                           isGenerating
@@ -836,62 +1028,80 @@ export function App() {
           aria-label="Visual prompt"
           className="space-y-3 rounded-lg bg-lofi-panel p-4"
         >
-          <label
-            htmlFor="visual-prompt"
-            className="block text-sm font-semibold text-lofi-text"
-          >
-            Image prompt
-          </label>
-          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <input
-              id="visual-prompt"
-              type="text"
-              value={imagePrompt}
-              onChange={(event) => setImagePrompt(event.target.value)}
-              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-              placeholder="Describe your lofi scene..."
-            />
-            <button
-              type="button"
-              onClick={() => void handleGenerateImage()}
-              disabled={isGeneratingImage}
-              className="rounded-md bg-lofi-accent px-4 py-2 text-sm font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60"
+          <div className="space-y-2">
+            <label
+              htmlFor="visual-prompt"
+              className="block text-sm font-semibold text-lofi-text"
             >
-              Generate Image
-            </button>
+              Image prompt
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-stone-200">
+              <input
+                type="checkbox"
+                checked={useSamePromptForImage}
+                onChange={(event) => {
+                  const nextChecked = event.target.checked;
+                  setUseSamePromptForImage(nextChecked);
+
+                  if (nextChecked) {
+                    setImagePromptBeforeSharedToggle(imagePrompt);
+                    setImagePrompt(musicPrompt);
+                  } else {
+                    setImagePrompt(imagePromptBeforeSharedToggle);
+                  }
+
+                  if (imagePromptErrorMessage) {
+                    setImagePromptErrorMessage(null);
+                  }
+                }}
+                className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+              />
+              <span>Use same prompt for image</span>
+            </label>
           </div>
 
-          <div data-testid="visual-prompt-feedback" className="space-y-2">
-            {isGeneratingImage && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
-              >
-                <span
-                  aria-hidden="true"
-                  className="h-4 w-4 animate-spin rounded-full border-2 border-lofi-accent border-t-transparent"
-                />
-                <span>Generating image...</span>
-              </div>
-            )}
+          {!useSamePromptForImage && (
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                id="visual-prompt"
+                type="text"
+                value={imagePrompt}
+                onChange={(event) => {
+                  setImagePrompt(event.target.value);
+                  if (imagePromptErrorMessage) {
+                    setImagePromptErrorMessage(null);
+                  }
+                }}
+                className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                placeholder="Describe your lofi scene..."
+              />
+            </div>
+          )}
 
-            {visualErrorMessage && (
+          {useSamePromptForImage && (
+            <p className="text-sm text-stone-300">
+              Image prompt will use the current music prompt.
+            </p>
+          )}
+
+          <div data-testid="visual-prompt-feedback" className="space-y-2">
+            {imagePromptErrorMessage && (
               <p role="alert" className="text-sm font-semibold text-red-100">
-                {visualErrorMessage}
+                {imagePromptErrorMessage}
               </p>
             )}
           </div>
 
           <div
             data-testid="visual-canvas"
-            className="flex h-[min(60vh,420px)] w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
+            className="mx-auto flex w-full max-w-[760px] items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
           >
             <VisualScene
               imageUrl={visualImageUrl}
               audioCurrentTime={audioCurrentTime}
               audioDuration={audioDuration}
               isPlaying={isPlaying}
+              aspectRatio={selectedSocialFormat.aspectRatio}
             />
           </div>
         </section>
