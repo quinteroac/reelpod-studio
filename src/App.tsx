@@ -26,6 +26,7 @@ import {
   GENERATE_IMAGE_ENDPOINT_PATH
 } from './api/constants';
 import { VisualScene } from './components/visual-scene';
+import type { VisualizerType } from './components/visualizers';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
@@ -80,6 +81,21 @@ const socialFormatOptions: ReadonlyArray<SocialFormatPreset> = [
   }
 ];
 const defaultSocialFormatId: SocialFormatId = 'youtube';
+const visualizerOptions: ReadonlyArray<{
+  value: VisualizerType;
+  label: string;
+}> = [
+  { value: 'waveform', label: 'waveform' },
+  { value: 'rain', label: 'rain' },
+  { value: 'scene-rain', label: 'scene-rain' },
+  { value: 'starfield', label: 'starfield' },
+  { value: 'aurora', label: 'aurora' },
+  { value: 'circle-spectrum', label: 'circle-spectrum' },
+  { value: 'glitch', label: 'glitch' },
+  { value: 'smoke', label: 'smoke' },
+  { value: 'contour', label: 'contour' },
+  { value: 'none', label: 'none' }
+];
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
@@ -243,6 +259,8 @@ export function App() {
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
+  const [activeVisualizerType, setActiveVisualizerType] =
+    useState<VisualizerType>('glitch');
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
   const selectedSocialFormat =
@@ -1092,6 +1110,29 @@ export function App() {
             )}
           </div>
 
+          <div className="space-y-2">
+            <label
+              htmlFor="active-visualizer"
+              className="block text-sm font-semibold text-lofi-text"
+            >
+              Active visualizer
+            </label>
+            <select
+              id="active-visualizer"
+              value={activeVisualizerType}
+              onChange={(event) =>
+                setActiveVisualizerType(event.target.value as VisualizerType)
+              }
+              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+            >
+              {visualizerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div
             data-testid="visual-canvas"
             className="mx-auto flex w-full max-w-[760px] items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
@@ -1102,6 +1143,7 @@ export function App() {
               audioDuration={audioDuration}
               isPlaying={isPlaying}
               aspectRatio={selectedSocialFormat.aspectRatio}
+              visualizerType={activeVisualizerType}
             />
           </div>
         </section>

@@ -13,6 +13,17 @@ type VisualSceneProps = {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  visualizerType:
+    | 'waveform'
+    | 'rain'
+    | 'scene-rain'
+    | 'starfield'
+    | 'aurora'
+    | 'circle-spectrum'
+    | 'glitch'
+    | 'smoke'
+    | 'contour'
+    | 'none';
 };
 
 const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
@@ -23,6 +34,7 @@ const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
     data-audio-duration={props.audioDuration.toFixed(2)}
     data-is-playing={props.isPlaying ? 'true' : 'false'}
     data-aspect-ratio={props.aspectRatio.toFixed(4)}
+    data-visualizer-type={props.visualizerType}
   />
 ));
 
@@ -139,6 +151,50 @@ describe('App unified generate flow (US-003)', () => {
         })
       });
     });
+  });
+
+  it('renders the visualizer selector in the Visual prompt section with all visualizer options', () => {
+    render(<App />);
+
+    const visualPromptSection = screen.getByRole('region', {
+      name: 'Visual prompt'
+    });
+    const selector = within(visualPromptSection).getByLabelText(
+      'Active visualizer'
+    ) as HTMLSelectElement;
+
+    expect(selector).toBeInTheDocument();
+    expect(Array.from(selector.options).map((option) => option.value)).toEqual([
+      'waveform',
+      'rain',
+      'scene-rain',
+      'starfield',
+      'aurora',
+      'circle-spectrum',
+      'glitch',
+      'smoke',
+      'contour',
+      'none'
+    ]);
+  });
+
+  it('defaults to glitch and updates the active visualizer immediately on selection change', () => {
+    render(<App />);
+
+    const selector = screen.getByLabelText(
+      'Active visualizer'
+    ) as HTMLSelectElement;
+    expect(selector.value).toBe('glitch');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-visualizer-type',
+      'glitch'
+    );
+
+    fireEvent.change(selector, { target: { value: 'waveform' } });
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-visualizer-type',
+      'waveform'
+    );
   });
 
   it('keeps Generate enabled while processing and transitions queue from Queued -> Generating -> Completed', async () => {

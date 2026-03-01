@@ -18,6 +18,7 @@ type VisualSceneProps = {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  visualizerType: VisualizerType;
 };
 
 type SceneRenderProps = {
@@ -93,10 +94,9 @@ export function VisualScene({
   audioCurrentTime,
   audioDuration,
   isPlaying,
-  aspectRatio
+  aspectRatio,
+  visualizerType
 }: VisualSceneProps) {
-  // Available visualizers: 'waveform' | 'rain' | 'scene-rain' | 'starfield' | 'aurora' | 'circle-spectrum' | 'glitch' | 'smoke' | 'contour' | 'none'
-  const currentVisualizerType: VisualizerType = 'glitch';
   // Available effects: 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'none'
   const currentEffects: EffectType[] = ['colorDrift'];
   // DOM overlay elements carry test-query attributes but are invisible on screen.
@@ -140,7 +140,7 @@ export function VisualScene({
           audioCurrentTime={audioCurrentTime}
           audioDuration={audioDuration}
           isPlaying={isPlaying}
-          visualizerType={currentVisualizerType}
+          visualizerType={visualizerType}
           effects={currentEffects}
           onDerived={handleDerived}
         />
