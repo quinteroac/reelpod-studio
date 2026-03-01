@@ -52,6 +52,7 @@ MAX_POLL_ATTEMPTS = 120
 IMAGE_MODEL_ID = "Ine007/waiIllustriousSDXL_v160"
 IMAGE_SIZE = 1024
 IMAGE_NUM_INFERENCE_STEPS = 25  # 25 vs default 50 — faster, acceptable quality
+IMAGE_ASPECT_TOLERANCE = 1e-6
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
 
 QueueItemStatus = Literal["queued", "generating", "completed", "failed"]
@@ -208,6 +209,42 @@ def load_image_pipeline() -> Any:
         return pipeline
         
     return pipeline.to(device)
+
+
+def needs_image_refiner_pass(
+    source_width: int, source_height: int, target_width: int, target_height: int
+) -> bool:
+    if source_width != target_width or source_height != target_height:
+        return True
+
+    source_aspect = source_width / source_height
+    target_aspect = target_width / target_height
+    return abs(source_aspect - target_aspect) > IMAGE_ASPECT_TOLERANCE
+
+
+def center_crop_and_resize_to_target(image: Any, target_width: int, target_height: int) -> Any:
+    from PIL import Image
+
+    source_width, source_height = image.size
+    source_aspect = source_width / source_height
+    target_aspect = target_width / target_height
+
+    if abs(source_aspect - target_aspect) <= IMAGE_ASPECT_TOLERANCE:
+        cropped = image
+    elif source_aspect > target_aspect:
+        crop_width = max(1, int(round(source_height * target_aspect)))
+        left = max(0, (source_width - crop_width) // 2)
+        cropped = image.crop((left, 0, left + crop_width, source_height))
+    else:
+        crop_height = max(1, int(round(source_width / target_aspect)))
+        top = max(0, (source_height - crop_height) // 2)
+        cropped = image.crop((0, top, source_width, top + crop_height))
+
+    if cropped.size == (target_width, target_height):
+        return cropped
+
+    resampling = Image.Resampling.LANCZOS
+    return cropped.resize((target_width, target_height), resampling)
 
 
 def submit_task(
@@ -492,16 +529,32 @@ def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
     try:
         result = image_pipeline(
             prompt=body.prompt,
-            width=body.target_width,
-            height=body.target_height,
+            width=IMAGE_SIZE,
+            height=IMAGE_SIZE,
             num_inference_steps=IMAGE_NUM_INFERENCE_STEPS,
         )
         images = getattr(result, "images", None)
         if not isinstance(images, list) or not images:
             raise RuntimeError("No generated image returned by model")
 
+        source_image = images[0]
+        source_width, source_height = source_image.size
+        if needs_image_refiner_pass(
+            source_width=source_width,
+            source_height=source_height,
+            target_width=body.target_width,
+            target_height=body.target_height,
+        ):
+            final_image = center_crop_and_resize_to_target(
+                source_image,
+                target_width=body.target_width,
+                target_height=body.target_height,
+            )
+        else:
+            final_image = source_image
+
         output = io.BytesIO()
-        images[0].save(output, format="PNG")
+        final_image.save(output, format="PNG")
         output.seek(0)
         return StreamingResponse(output, media_type="image/png")
     except HTTPException:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import time
 import tomllib
@@ -8,6 +9,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 import main
 
@@ -28,14 +30,8 @@ class FakeHTTPResponse:
         return False
 
 
-class FakeImage:
-    def save(self, output, format: str) -> None:  # noqa: ANN001
-        assert format == "PNG"
-        output.write(b"\x89PNG\r\n\x1a\nfake")
-
-
 class FakeImageResult:
-    def __init__(self, images: list[FakeImage]):
+    def __init__(self, images: list[Image.Image]):
         self.images = images
 
 
@@ -444,7 +440,7 @@ class TestGenerateImageEndpoint:
         class Pipeline:
             def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
                 seen_calls.append({"prompt": prompt, "width": width, "height": height})
-                return FakeImageResult([FakeImage()])
+                return FakeImageResult([Image.new("RGB", (width, height), color=(80, 120, 200))])
 
         monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
@@ -469,7 +465,7 @@ class TestGenerateImageEndpoint:
         class Pipeline:
             def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
                 seen_calls.append({"prompt": prompt, "width": width, "height": height})
-                return FakeImageResult([FakeImage()])
+                return FakeImageResult([Image.new("RGB", (width, height), color=(255, 255, 255))])
 
         monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
@@ -479,9 +475,46 @@ class TestGenerateImageEndpoint:
             )
             assert response.status_code == 200
             assert response.headers["content-type"] == "image/png"
+            output = Image.open(io.BytesIO(response.content))
+            assert output.size == (1080, 1920)
+            assert output.width / output.height == pytest.approx(1080 / 1920, abs=1e-6)
 
         assert seen_calls == [
-            {"prompt": "vertical neon alley", "width": 1080, "height": 1920},
+            {"prompt": "vertical neon alley", "width": 1024, "height": 1024},
+        ]
+
+    def test_generate_image_applies_refiner_pass_only_when_needed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen_calls: list[dict[str, object]] = []
+
+        class Pipeline:
+            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
+                seen_calls.append({"prompt": prompt, "width": width, "height": height})
+                return FakeImageResult([Image.new("RGB", (width, height), color=(120, 80, 40))])
+
+        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            unchanged = test_client.post(
+                "/api/generate-image",
+                json={"prompt": "square art", "targetWidth": 1024, "targetHeight": 1024},
+            )
+            assert unchanged.status_code == 200
+            unchanged_image = Image.open(io.BytesIO(unchanged.content))
+            assert unchanged_image.size == (1024, 1024)
+
+            refined = test_client.post(
+                "/api/generate-image",
+                json={"prompt": "wide art", "targetWidth": 1920, "targetHeight": 1080},
+            )
+            assert refined.status_code == 200
+            refined_image = Image.open(io.BytesIO(refined.content))
+            assert refined_image.size == (1920, 1080)
+            assert refined_image.width / refined_image.height == pytest.approx(16 / 9, abs=1e-6)
+
+        assert seen_calls == [
+            {"prompt": "square art", "width": 1024, "height": 1024},
+            {"prompt": "wide art", "width": 1024, "height": 1024},
         ]
 
     def test_model_load_failure_returns_500_with_meaningful_message(
