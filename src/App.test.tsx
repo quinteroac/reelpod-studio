@@ -361,6 +361,87 @@ describe('App unified generate flow (US-003)', () => {
   });
 });
 
+describe('App controls panel layout (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      (obj: Blob | MediaSource) => {
+        if ('type' in obj && obj.type === 'image/png') {
+          return 'blob:http://localhost/generated-image-url';
+        }
+
+        return 'blob:http://localhost/generated-audio-url';
+      }
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('renders header above the desktop grid and keeps the required left-column section order', () => {
+    render(<App />);
+
+    const header = screen.getByRole('banner');
+    const layoutGrid = screen.getByTestId('studio-layout-grid');
+    const controlsColumn = screen.getByTestId('controls-column');
+
+    expect(header.nextElementSibling).toBe(layoutGrid);
+    expect(layoutGrid.className).toContain('lg:grid-cols-');
+    expect(layoutGrid.firstElementChild).toBe(controlsColumn);
+
+    const sectionLabels = within(controlsColumn)
+      .getAllByRole('region')
+      .map((section) => section.getAttribute('aria-label'));
+    expect(sectionLabels).toEqual([
+      'Generation parameters',
+      'Generation actions',
+      'Generation queue',
+      'Visual prompt'
+    ]);
+  });
+
+  it('preserves existing controls, labels, and interactions in the left controls column', () => {
+    render(<App />);
+
+    const controlsColumn = screen.getByTestId('controls-column');
+    const parametersSection = within(controlsColumn).getByRole('region', {
+      name: 'Generation parameters'
+    });
+    const actionsSection = within(controlsColumn).getByRole('region', {
+      name: 'Generation actions'
+    });
+    const queueSection = within(controlsColumn).getByRole('region', {
+      name: 'Generation queue'
+    });
+    const visualPromptSection = within(controlsColumn).getByRole('region', {
+      name: 'Visual prompt'
+    });
+
+    expect(within(parametersSection).getByRole('radiogroup', { name: 'Generation mode' })).toBeInTheDocument();
+    expect(within(parametersSection).getByLabelText('Mood')).toBeInTheDocument();
+    expect(within(parametersSection).getByLabelText('Tempo (BPM)')).toBeInTheDocument();
+    expect(within(parametersSection).getByLabelText('Style')).toBeInTheDocument();
+    expect(within(parametersSection).getByLabelText('Duration (s)')).toBeInTheDocument();
+    expect(within(parametersSection).getByRole('radiogroup', { name: 'Social format' })).toBeInTheDocument();
+
+    expect(within(actionsSection).getByRole('button', { name: 'Generate' })).toBeInTheDocument();
+    expect(within(queueSection).getByText('No generations yet.')).toBeInTheDocument();
+    expect(within(visualPromptSection).getByLabelText('Image prompt')).toBeInTheDocument();
+    expect(within(visualPromptSection).getByLabelText('Active visualizer')).toBeInTheDocument();
+    expect(within(visualPromptSection).getByRole('group', { name: 'Post-processing effects' })).toBeInTheDocument();
+
+    fireEvent.click(within(actionsSection).getByRole('button', { name: 'Generate' }));
+    const queueEntry = screen.getByTestId('queue-entry-1');
+    expect(queueEntry).toBeInTheDocument();
+    const queueStatus = queueEntry.getAttribute('data-status');
+    expect(['queued', 'generating', 'completed']).toContain(queueStatus);
+  });
+});
+
 describe('App effects toggles (US-002)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
