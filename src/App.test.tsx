@@ -111,6 +111,15 @@ function mockPairedFetch(): ReturnType<typeof vi.fn> {
   });
 }
 
+function setViewportWidth(width: number): void {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width
+  });
+  window.dispatchEvent(new Event('resize'));
+}
+
 describe('App unified generate flow (US-003)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -390,7 +399,7 @@ describe('App controls panel layout (US-001)', () => {
     const controlsColumn = screen.getByTestId('controls-column');
 
     expect(header.nextElementSibling).toBe(layoutGrid);
-    expect(layoutGrid.className).toContain('lg:grid-cols-');
+    expect(layoutGrid.className).toContain('xl:grid-cols-');
     expect(layoutGrid.firstElementChild).toBe(controlsColumn);
 
     const sectionLabels = within(controlsColumn)
@@ -500,9 +509,9 @@ describe('App right column preview and playback layout (US-002)', () => {
     render(<App />);
 
     const previewColumn = screen.getByTestId('preview-column');
-    expect(previewColumn.className).toContain('lg:sticky');
-    expect(previewColumn.className).toContain('lg:top-10');
-    expect(previewColumn.className).toContain('lg:self-start');
+    expect(previewColumn.className).toContain('xl:sticky');
+    expect(previewColumn.className).toContain('xl:top-10');
+    expect(previewColumn.className).toContain('xl:self-start');
   });
 
   it('updates VisualScene aspect ratio based on selected social format', () => {
@@ -719,6 +728,62 @@ describe('App effect reorder (US-003)', () => {
       screen.getByTestId('visual-scene').getAttribute('data-effects') ?? '';
     expect(enabledEffectsInUiOrder).toEqual(sceneEffects.split(','));
   });
+});
+
+describe('App responsive single-column fallback (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      (obj: Blob | MediaSource) => {
+        if ('type' in obj && obj.type === 'image/png') {
+          return 'blob:http://localhost/generated-image-url';
+        }
+
+        return 'blob:http://localhost/generated-audio-url';
+      }
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('keeps controls first and preview second, with desktop split only at xl', () => {
+    render(<App />);
+
+    const layoutGrid = screen.getByTestId('studio-layout-grid');
+    const controlsColumn = screen.getByTestId('controls-column');
+    const previewColumn = screen.getByTestId('preview-column');
+
+    expect(layoutGrid.className).toContain('xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]');
+    expect(layoutGrid.className).not.toContain('lg:grid-cols-');
+    expect(layoutGrid.firstElementChild).toBe(controlsColumn);
+    expect(layoutGrid.lastElementChild).toBe(previewColumn);
+  });
+
+  it.each([375, 768, 1024])(
+    'applies no-horizontal-overflow guards for narrow viewport width %ipx',
+    (width) => {
+      setViewportWidth(width);
+      render(<App />);
+
+      const main = screen.getByRole('main');
+      const layoutGrid = screen.getByTestId('studio-layout-grid');
+      const controlsColumn = screen.getByTestId('controls-column');
+      const previewColumn = screen.getByTestId('preview-column');
+      const visualCanvas = screen.getByTestId('visual-canvas');
+
+      expect(main.className).toContain('overflow-x-hidden');
+      expect(layoutGrid.className).toContain('min-w-0');
+      expect(controlsColumn.className).toContain('min-w-0');
+      expect(previewColumn.className).toContain('min-w-0');
+      expect(visualCanvas.className).toContain('w-full');
+      expect(visualCanvas.className).toContain('overflow-hidden');
+    }
+  );
 });
 
 describe('App shared prompt toggle (US-005)', () => {

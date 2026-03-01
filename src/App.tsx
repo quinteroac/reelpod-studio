@@ -685,8 +685,8 @@ export function App() {
   }
 
   return (
-    <main className="min-h-screen bg-lofi-bg px-6 py-10 text-lofi-text">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 text-lofi-text">
+      <div className="mx-auto w-full max-w-7xl min-w-0 space-y-6">
         <header className="space-y-2">
           <h1 className="font-serif text-4xl font-bold text-lofi-text">
             ReelPod Studio
@@ -697,9 +697,9 @@ export function App() {
         </header>
         <div
           data-testid="studio-layout-grid"
-          className="grid gap-6 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:items-start"
+          className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:items-start"
         >
-          <div data-testid="controls-column" className="space-y-6">
+          <div data-testid="controls-column" className="min-w-0 space-y-6">
             <section
               aria-label="Generation parameters"
               className="space-y-4 rounded-lg bg-lofi-panel p-5"
@@ -1245,7 +1245,7 @@ export function App() {
 
           <div
             data-testid="preview-column"
-            className="space-y-6 lg:sticky lg:top-10 lg:self-start"
+            className="min-w-0 space-y-6 xl:sticky xl:top-10 xl:self-start"
           >
             <section aria-label="Visual scene" className="rounded-lg bg-lofi-panel p-4">
               <div
