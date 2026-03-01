@@ -179,6 +179,37 @@ describe('App generation flow', () => {
     expect(textAndParamsMode.checked).toBe(false);
   });
 
+  it('defaults to Parameters mode, hides music prompt, and generates with params-only payload', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    const paramsMode = screen.getByRole('radio', {
+      name: 'Parameters'
+    }) as HTMLInputElement;
+    const textMode = screen.getByRole('radio', {
+      name: 'Text'
+    }) as HTMLInputElement;
+    const textAndParamsMode = screen.getByRole('radio', {
+      name: 'Text + Parameters'
+    }) as HTMLInputElement;
+
+    expect(paramsMode.checked).toBe(true);
+    expect(textMode.checked).toBe(false);
+    expect(textAndParamsMode.checked).toBe(false);
+    expect(screen.queryByLabelText('Music prompt')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mood: 'chill', tempo: 80, style: 'jazz' })
+      });
+    });
+  });
+
   it('shows both Music prompt and parameter controls in Text + Parameters mode', () => {
     render(<App />);
 
