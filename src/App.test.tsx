@@ -443,6 +443,101 @@ describe('App effects toggles (US-002)', () => {
   });
 });
 
+describe('App effect reorder (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
+      if ('type' in obj && obj.type === 'image/png') {
+        return 'blob:http://localhost/generated-image-url';
+      }
+
+      return 'blob:http://localhost/generated-audio-url';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('renders Up/Down buttons per effect row and disables first/last boundaries', () => {
+    render(<App />);
+
+    const rowZoom = screen.getByTestId('effect-row-zoom');
+    const rowColorDrift = screen.getByTestId('effect-row-colorDrift');
+
+    expect(within(rowZoom).getByRole('button', { name: 'Up' })).toBeDisabled();
+    expect(within(rowZoom).getByRole('button', { name: 'Down' })).toBeEnabled();
+    expect(within(rowColorDrift).getByRole('button', { name: 'Up' })).toBeEnabled();
+    expect(within(rowColorDrift).getByRole('button', { name: 'Down' })).toBeDisabled();
+  });
+
+  it('moves effects up and down and updates VisualScene effects immediately', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'vignette' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'vignette,filmGrain,colorDrift'
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Down'
+      })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'filmGrain,vignette,colorDrift'
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Up'
+      })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'vignette,filmGrain,colorDrift'
+    );
+  });
+
+  it('keeps enabled effect UI order aligned with effects passed to VisualScene', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'vignette' }));
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Down'
+      })
+    );
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Down'
+      })
+    );
+
+    const enabledEffectsInUiOrder = screen
+      .getAllByTestId(/effect-row-/)
+      .flatMap((row) => {
+        const checkbox = within(row).getByRole('checkbox') as HTMLInputElement;
+        if (!checkbox.checked) {
+          return [];
+        }
+
+        return [checkbox.id.replace('effect-', '')];
+      });
+
+    const sceneEffects =
+      screen.getByTestId('visual-scene').getAttribute('data-effects') ?? '';
+    expect(enabledEffectsInUiOrder).toEqual(sceneEffects.split(','));
+  });
+});
+
 describe('App shared prompt toggle (US-005)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

@@ -98,18 +98,16 @@ const visualizerOptions: ReadonlyArray<{
   { value: 'contour', label: 'contour' },
   { value: 'none', label: 'none' }
 ];
-const effectOptions: ReadonlyArray<{
-  value: ToggleableEffectType;
-  label: string;
-}> = [
-  { value: 'zoom', label: 'zoom' },
-  { value: 'flicker', label: 'flicker' },
-  { value: 'vignette', label: 'vignette' },
-  { value: 'filmGrain', label: 'filmGrain' },
-  { value: 'chromaticAberration', label: 'chromaticAberration' },
-  { value: 'scanLines', label: 'scanLines' },
-  { value: 'colorDrift', label: 'colorDrift' }
+const effectOptions: ReadonlyArray<ToggleableEffectType> = [
+  'zoom',
+  'flicker',
+  'vignette',
+  'filmGrain',
+  'chromaticAberration',
+  'scanLines',
+  'colorDrift'
 ];
+const defaultEffectOrder: ToggleableEffectType[] = [...effectOptions];
 const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
   zoom: false,
   flicker: false,
@@ -287,11 +285,11 @@ export function App() {
   const [enabledEffects, setEnabledEffects] = useState<
     Record<ToggleableEffectType, boolean>
   >(defaultEnabledEffects);
+  const [effectOrder, setEffectOrder] =
+    useState<ToggleableEffectType[]>(defaultEffectOrder);
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
-  const activeEffects = effectOptions
-    .filter((option) => enabledEffects[option.value])
-    .map((option) => option.value);
+  const activeEffects = effectOrder.filter((effect) => enabledEffects[effect]);
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
@@ -661,6 +659,29 @@ export function App() {
       setAudioCurrentTime(audio.currentTime);
       setAudioDuration(audio.duration);
     }
+  }
+
+  function handleMoveEffect(
+    effect: ToggleableEffectType,
+    direction: 'up' | 'down'
+  ): void {
+    setEffectOrder((prev) => {
+      const currentIndex = prev.indexOf(effect);
+      if (currentIndex === -1) {
+        return prev;
+      }
+
+      const targetIndex =
+        direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) {
+        return prev;
+      }
+
+      const next = [...prev];
+      const [movedEffect] = next.splice(currentIndex, 1);
+      next.splice(targetIndex, 0, movedEffect);
+      return next;
+    });
   }
 
   return (
@@ -1169,27 +1190,47 @@ export function App() {
             <legend className="text-sm font-semibold text-lofi-text">
               Effects
             </legend>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {effectOptions.map((option) => (
-                <label
-                  key={option.value}
-                  htmlFor={`effect-${option.value}`}
-                  className="inline-flex items-center gap-2 text-sm text-stone-200"
+            <div className="space-y-2">
+              {effectOrder.map((effectType, index) => (
+                <div
+                  key={effectType}
+                  data-testid={`effect-row-${effectType}`}
+                  className="flex items-center justify-between gap-2 rounded-md border border-stone-700/80 bg-stone-900/60 px-3 py-2 text-sm text-stone-200"
                 >
-                  <input
-                    id={`effect-${option.value}`}
-                    type="checkbox"
-                    checked={enabledEffects[option.value]}
-                    onChange={(event) =>
-                      setEnabledEffects((prev) => ({
-                        ...prev,
-                        [option.value]: event.target.checked
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
-                  />
-                  <span>{option.label}</span>
-                </label>
+                  <span className="inline-flex items-center gap-2">
+                    <input
+                      id={`effect-${effectType}`}
+                      type="checkbox"
+                      checked={enabledEffects[effectType]}
+                      onChange={(event) =>
+                        setEnabledEffects((prev) => ({
+                          ...prev,
+                          [effectType]: event.target.checked
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                    />
+                    <label htmlFor={`effect-${effectType}`}>{effectType}</label>
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveEffect(effectType, 'up')}
+                      disabled={index === 0}
+                      className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveEffect(effectType, 'down')}
+                      disabled={index === effectOrder.length - 1}
+                      className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Down
+                    </button>
+                  </span>
+                </div>
               ))}
             </div>
           </fieldset>
