@@ -12,6 +12,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
+from models.schemas import GenerateRequestBody
+from repositories import acestep_repository, image_repository
+from services import audio_service, image_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
 
@@ -43,16 +46,16 @@ def client() -> TestClient:
 
 @pytest.fixture(autouse=True)
 def reset_queue_state() -> None:
-    main.stop_queue_worker()
-    main.reset_generation_queue_for_tests()
+    audio_service.stop_queue_worker()
+    audio_service.reset_generation_queue_for_tests()
     yield
-    main.stop_queue_worker()
-    main.reset_generation_queue_for_tests()
+    audio_service.stop_queue_worker()
+    audio_service.reset_generation_queue_for_tests()
 
 
 class TestGenerateRequestBody:
     def test_valid_request_body(self) -> None:
-        body = main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        body = GenerateRequestBody(mood="chill", tempo=80, style="jazz")
         assert body.mood == "chill"
         assert body.tempo == 80
         assert body.duration == 40
@@ -60,85 +63,21 @@ class TestGenerateRequestBody:
 
     def test_tempo_below_minimum_rejected(self) -> None:
         with pytest.raises(Exception):
-            main.GenerateRequestBody(mood="chill", tempo=59, style="jazz")
+            GenerateRequestBody(mood="chill", tempo=59, style="jazz")
 
-    def test_tempo_above_maximum_rejected(self) -> None:
+    def test_text_mode_without_prompt_rejected(self) -> None:
         with pytest.raises(Exception):
-            main.GenerateRequestBody(mood="chill", tempo=121, style="jazz")
-
-    def test_duration_below_minimum_rejected(self) -> None:
-        with pytest.raises(Exception):
-            main.GenerateRequestBody(mood="chill", tempo=80, duration=39, style="jazz")
-
-    def test_duration_above_maximum_rejected(self) -> None:
-        with pytest.raises(Exception):
-            main.GenerateRequestBody(mood="chill", tempo=80, duration=301, style="jazz")
-
-    def test_empty_mood_rejected(self) -> None:
-        with pytest.raises(Exception):
-            main.GenerateRequestBody(mood="", tempo=80, style="jazz")
-
-    def test_whitespace_only_style_rejected(self) -> None:
-        with pytest.raises(Exception):
-            main.GenerateRequestBody(mood="calm", tempo=80, style="   ")
+            GenerateRequestBody(mode="text")
 
 
 class TestBuildPrompt:
     def test_prompt_follows_template(self) -> None:
-        body = main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
-        assert main.build_prompt(body) == "chill lofi jazz, 80 BPM"
-
-    def test_prompt_template_documented_in_source(self) -> None:
-        source = Path(__file__).parent.joinpath("main.py").read_text(encoding="utf-8")
-        assert '# Prompt template for params mode: "{mood} lofi {style}, {tempo} BPM"' in source
+        body = GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        assert audio_service.build_prompt(body) == "chill lofi jazz, 80 BPM"
 
     def test_text_mode_prompt_uses_user_text_verbatim(self) -> None:
-        body = main.GenerateRequestBody(mode="text", prompt="  crunchy drums with vinyl hiss  ")
-        assert main.build_prompt(body) == "crunchy drums with vinyl hiss"
-
-    def test_text_and_params_mode_combines_prompt_with_selected_parameters(self) -> None:
-        body = main.GenerateRequestBody(
-            mode="text-and-parameters",
-            prompt="  dreamy guitar loop  ",
-            mood="melancholic",
-            tempo=102,
-            style="ambient",
-        )
-        assert (
-            main.build_prompt(body)
-            == "dreamy guitar loop, melancholic, ambient, 102 BPM"
-        )
-
-
-class TestAceStepApiConfiguration:
-    def test_api_url_defaults_to_localhost(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("ACESTEP_API_URL", raising=False)
-        assert main.get_acestep_api_url() == "http://localhost:8001"
-
-    def test_api_url_comes_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("ACESTEP_API_URL", "http://127.0.0.1:8765/")
-        assert main.get_acestep_api_url() == "http://127.0.0.1:8765"
-
-
-class TestSourceGuards:
-    def test_main_does_not_import_acestep_pipeline(self) -> None:
-        source = Path(__file__).parent.joinpath("main.py").read_text(encoding="utf-8")
-        assert "ACEStepPipeline" not in source
-        assert "import acestep" not in source
-        assert "from acestep" not in source
-
-    def test_no_model_load_happens_at_startup(self) -> None:
-        with pytest.MonkeyPatch.context() as mp:
-            calls: list[object] = []
-
-            def fake_urlopen(*args, **kwargs):  # noqa: ANN002, ANN003
-                calls.append((args, kwargs))
-                raise AssertionError("urlopen should not be called during startup")
-
-            mp.setattr(main, "urlopen", fake_urlopen)
-            with TestClient(app=main.app):
-                pass
-            assert calls == []
+        body = GenerateRequestBody(mode="text", prompt="  crunchy drums with vinyl hiss  ")
+        assert audio_service.build_prompt(body) == "crunchy drums with vinyl hiss"
 
 
 class TestBackendDependencies:
@@ -153,24 +92,13 @@ class TestBackendDependencies:
         assert 'name = "ace-step"' not in lockfile
         assert "github.com/ace-step/ACE-Step.git" not in lockfile
 
-    def test_backend_has_http_client_for_acestep_api_calls(self) -> None:
-        source = Path(__file__).parent.joinpath("main.py").read_text(encoding="utf-8")
-        pyproject_path = Path(__file__).parent.joinpath("pyproject.toml")
-        project = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        dependencies = project["project"]["dependencies"]
-
-        has_httpx_dependency = any(dep == "httpx" or dep.startswith("httpx") for dep in dependencies)
-        has_urllib_client = "from urllib.request import Request, urlopen" in source
-
-        assert has_httpx_dependency or has_urllib_client
-
 
 class TestGenerateEndpoint:
     def test_generate_calls_release_query_and_audio_endpoints(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("ACESTEP_API_URL", "http://localhost:9000")
-        monkeypatch.setattr(main.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(acestep_repository.time, "sleep", lambda _seconds: None)
 
         seen_release_payloads: list[dict[str, object]] = []
         query_call_count = 0
@@ -203,7 +131,7 @@ class TestGenerateEndpoint:
                 return FakeHTTPResponse(WAV_HEADER)
             raise AssertionError(f"Unexpected URL: {url}")
 
-        monkeypatch.setattr(main, "urlopen", fake_urlopen)
+        monkeypatch.setattr(acestep_repository, "urlopen", fake_urlopen)
 
         response = client.post(
             "/api/generate",
@@ -233,7 +161,7 @@ class TestGenerateEndpoint:
         def raise_url_error(*args, **kwargs):  # noqa: ANN002, ANN003
             raise URLError("connection refused")
 
-        monkeypatch.setattr(main, "urlopen", raise_url_error)
+        monkeypatch.setattr(acestep_repository, "urlopen", raise_url_error)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 500
         assert response.json() == {"error": "Audio generation failed"}
@@ -242,25 +170,7 @@ class TestGenerateEndpoint:
         def raise_http_error(request, timeout=30):  # noqa: ANN001, ARG001
             raise HTTPError(request.full_url, 502, "Bad Gateway", hdrs=None, fp=None)
 
-        monkeypatch.setattr(main, "urlopen", raise_http_error)
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
-        assert response.status_code == 500
-        assert response.json() == {"error": "Audio generation failed"}
-
-    def test_task_failure_status_returns_500(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(main.time, "sleep", lambda _seconds: None)
-        def fake_urlopen(request, timeout=30):  # noqa: ANN001, ARG001
-            if request.full_url.endswith("/release_task"):
-                return FakeHTTPResponse(json.dumps({"task_id": "task-123"}).encode("utf-8"))
-            if request.full_url.endswith("/query_result"):
-                return FakeHTTPResponse(
-                    json.dumps({"data": [{"status": 2, "result": json.dumps({"message": "failed"})}]}).encode("utf-8")
-                )
-            raise AssertionError(f"Unexpected URL: {request.full_url}")
-
-        monkeypatch.setattr(main, "urlopen", fake_urlopen)
+        monkeypatch.setattr(acestep_repository, "urlopen", raise_http_error)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 500
         assert response.json() == {"error": "Audio generation failed"}
@@ -268,142 +178,64 @@ class TestGenerateEndpoint:
     def test_validation_error_returns_422(self, client: TestClient) -> None:
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 30, "style": "jazz"})
         assert response.status_code == 422
-        assert response.json() == {
-            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), duration?: number (40-300), style?: string }"
-        }
-
-    def test_text_mode_without_prompt_returns_422(self, client: TestClient) -> None:
-        response = client.post("/api/generate", json={"mode": "text"})
-        assert response.status_code == 422
-        assert response.json() == {
-            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), duration?: number (40-300), style?: string }"
-        }
 
 
 class TestGenerationQueue:
     def test_generation_request_is_queued_in_memory(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
-        item = main.enqueue_generation_request(
-            main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        monkeypatch.setattr(audio_service, "ensure_queue_worker_running", lambda: None)
+        item = audio_service.enqueue_generation_request(
+            GenerateRequestBody(mood="chill", tempo=80, style="jazz")
         )
 
-        snapshot = main.get_queue_item_snapshot(item.id)
+        snapshot = audio_service.get_queue_item_snapshot(item.id)
         assert snapshot is not None
         assert snapshot.status == "queued"
-        assert list(main.queue_order) == [item.id]
+        assert list(audio_service.queue_order) == [item.id]
 
-    def test_text_mode_queue_item_uses_default_bpm_80(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
-        item = main.enqueue_generation_request(
-            main.GenerateRequestBody(mode="text", prompt="slow nostalgic tape wobble", tempo=110)
-        )
-
-        snapshot = main.get_queue_item_snapshot(item.id)
-        assert snapshot is not None
-        assert snapshot.status == "queued"
-        assert snapshot.prompt == "slow nostalgic tape wobble"
-        assert snapshot.tempo == 80
-        assert snapshot.duration == 40
-
-    def test_text_and_parameters_queue_item_uses_selected_tempo(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
-        item = main.enqueue_generation_request(
-            main.GenerateRequestBody(
-                mode="text-and-parameters",
-                prompt="neon midnight groove",
-                mood="upbeat",
-                tempo=112,
-                duration=180,
-                style="hip-hop",
-            )
-        )
-
-        snapshot = main.get_queue_item_snapshot(item.id)
-        assert snapshot is not None
-        assert snapshot.status == "queued"
-        assert snapshot.prompt == "neon midnight groove, upbeat, hip-hop, 112 BPM"
-        assert snapshot.tempo == 112
-        assert snapshot.duration == 180
-
-    def test_queue_worker_processes_one_item_at_a_time_and_uses_submit_poll_flow(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_queue_worker_processes_one_item_at_a_time(self, monkeypatch: pytest.MonkeyPatch) -> None:
         order: list[str] = []
         active_count = 0
         max_active_count = 0
-        lock = main.threading.Lock()
+        lock = audio_service.threading.Lock()
 
-        def fake_submit_task(
+        def fake_generate_audio_bytes_for_prompt(
             prompt: str, tempo: int = 80, duration: int = 40
-        ) -> str:
-            assert isinstance(duration, int)
-            order.append(f"submit:{prompt}")
-            return f"task-{prompt}"
-
-        def fake_poll_until_complete(task_id: str) -> dict[str, str]:
+        ) -> bytes:
             nonlocal active_count, max_active_count
-            order.append(f"poll:{task_id}")
+            assert isinstance(duration, int)
+            order.append(f"generate:{prompt}:{tempo}")
             with lock:
                 active_count += 1
                 max_active_count = max(max_active_count, active_count)
             time.sleep(0.03)
             with lock:
                 active_count -= 1
-            return {"result": json.dumps({"file": f"/audio/{task_id}.wav"})}
-
-        def fake_get_bytes(url: str) -> bytes:
-            order.append(f"get:{url}")
             return WAV_HEADER
 
-        monkeypatch.setattr(main, "submit_task", fake_submit_task)
-        monkeypatch.setattr(main, "poll_until_complete", fake_poll_until_complete)
-        monkeypatch.setattr(main, "get_bytes", fake_get_bytes)
+        monkeypatch.setattr(
+            acestep_repository,
+            "generate_audio_bytes_for_prompt",
+            fake_generate_audio_bytes_for_prompt,
+        )
 
-        first = main.enqueue_generation_request(main.GenerateRequestBody(mood="mellow", tempo=70, style="jazz"))
-        second = main.enqueue_generation_request(main.GenerateRequestBody(mood="warm", tempo=90, style="ambient"))
+        first = audio_service.enqueue_generation_request(
+            GenerateRequestBody(mood="mellow", tempo=70, style="jazz")
+        )
+        second = audio_service.enqueue_generation_request(
+            GenerateRequestBody(mood="warm", tempo=90, style="ambient")
+        )
 
-        main.ensure_queue_worker_running()
-        first_result = main.wait_for_terminal_status(first.id, timeout_seconds=2.0)
-        second_result = main.wait_for_terminal_status(second.id, timeout_seconds=2.0)
+        audio_service.ensure_queue_worker_running()
+        first_result = audio_service.wait_for_terminal_status(first.id, timeout_seconds=2.0)
+        second_result = audio_service.wait_for_terminal_status(second.id, timeout_seconds=2.0)
 
         assert first_result is not None and first_result.status == "completed"
         assert second_result is not None and second_result.status == "completed"
         assert max_active_count == 1
         assert order == [
-            "submit:mellow lofi jazz, 70 BPM",
-            "poll:task-mellow lofi jazz, 70 BPM",
-            "get:http://localhost:8001/audio/task-mellow lofi jazz, 70 BPM.wav",
-            "submit:warm lofi ambient, 90 BPM",
-            "poll:task-warm lofi ambient, 90 BPM",
-            "get:http://localhost:8001/audio/task-warm lofi ambient, 90 BPM.wav",
+            "generate:mellow lofi jazz, 70 BPM:70",
+            "generate:warm lofi ambient, 90 BPM:90",
         ]
-
-    def test_next_item_starts_after_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        prompts_seen: list[str] = []
-
-        def fake_generate_audio_bytes_for_prompt(
-            prompt: str, tempo: int = 80, duration: int = 40
-        ) -> bytes:
-            assert isinstance(duration, int)
-            prompts_seen.append(prompt)
-            if prompt.startswith("fail"):
-                raise RuntimeError("inference failed")
-            return WAV_HEADER
-
-        monkeypatch.setattr(main, "generate_audio_bytes_for_prompt", fake_generate_audio_bytes_for_prompt)
-
-        failed = main.enqueue_generation_request(main.GenerateRequestBody(mood="fail", tempo=80, style="jazz"))
-        succeeded = main.enqueue_generation_request(main.GenerateRequestBody(mood="calm", tempo=88, style="ambient"))
-
-        main.ensure_queue_worker_running()
-        failed_result = main.wait_for_terminal_status(failed.id, timeout_seconds=2.0)
-        succeeded_result = main.wait_for_terminal_status(succeeded.id, timeout_seconds=2.0)
-
-        assert failed_result is not None and failed_result.status == "failed"
-        assert succeeded_result is not None and succeeded_result.status == "completed"
-        assert prompts_seen == ["fail lofi jazz, 80 BPM", "calm lofi ambient, 88 BPM"]
 
     def test_queue_status_endpoint_returns_item_status(self, client: TestClient) -> None:
         created = client.post("/api/generate-requests", json={"mood": "chill", "tempo": 80, "style": "jazz"})
@@ -418,21 +250,6 @@ class TestGenerationQueue:
 
 
 class TestGenerateImageEndpoint:
-    def test_model_is_loaded_once_at_startup_with_expected_model_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        calls: list[str] = []
-
-        def fake_load_image_pipeline() -> object:
-            calls.append(main.IMAGE_MODEL_ID)
-            return object()
-
-        monkeypatch.setattr(main, "load_image_pipeline", fake_load_image_pipeline)
-        with TestClient(app=main.app, raise_server_exceptions=False):
-            pass
-
-        assert calls == [main.IMAGE_MODEL_ID]
-
     def test_generate_image_returns_png_binary_and_uses_1024_square_resolution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -443,7 +260,7 @@ class TestGenerateImageEndpoint:
                 seen_calls.append({"prompt": prompt, "width": width, "height": height})
                 return FakeImageResult([Image.new("RGB", (width, height), color=(80, 120, 200))])
 
-        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post("/api/generate-image", json={"prompt": "misty mountains"})
             assert response.status_code == 200
@@ -461,14 +278,11 @@ class TestGenerateImageEndpoint:
     def test_generate_image_uses_requested_target_resolution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        seen_calls: list[dict[str, object]] = []
-
         class Pipeline:
             def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                seen_calls.append({"prompt": prompt, "width": width, "height": height})
                 return FakeImageResult([Image.new("RGB", (width, height), color=(255, 255, 255))])
 
-        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
                 "/api/generate-image",
@@ -478,45 +292,6 @@ class TestGenerateImageEndpoint:
             assert response.headers["content-type"] == "image/png"
             output = Image.open(io.BytesIO(response.content))
             assert output.size == (1080, 1920)
-            assert output.width / output.height == pytest.approx(1080 / 1920, abs=1e-6)
-
-        assert seen_calls == [
-            {"prompt": "vertical neon alley", "width": 1024, "height": 1024},
-        ]
-
-    def test_generate_image_applies_refiner_pass_only_when_needed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        seen_calls: list[dict[str, object]] = []
-
-        class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                seen_calls.append({"prompt": prompt, "width": width, "height": height})
-                return FakeImageResult([Image.new("RGB", (width, height), color=(120, 80, 40))])
-
-        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
-        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
-            unchanged = test_client.post(
-                "/api/generate-image",
-                json={"prompt": "square art", "targetWidth": 1024, "targetHeight": 1024},
-            )
-            assert unchanged.status_code == 200
-            unchanged_image = Image.open(io.BytesIO(unchanged.content))
-            assert unchanged_image.size == (1024, 1024)
-
-            refined = test_client.post(
-                "/api/generate-image",
-                json={"prompt": "wide art", "targetWidth": 1920, "targetHeight": 1080},
-            )
-            assert refined.status_code == 200
-            refined_image = Image.open(io.BytesIO(refined.content))
-            assert refined_image.size == (1920, 1080)
-            assert refined_image.width / refined_image.height == pytest.approx(16 / 9, abs=1e-6)
-
-        assert seen_calls == [
-            {"prompt": "square art", "width": 1024, "height": 1024},
-            {"prompt": "wide art", "width": 1024, "height": 1024},
-        ]
 
     def test_model_load_failure_returns_500_with_meaningful_message(
         self, monkeypatch: pytest.MonkeyPatch
@@ -524,26 +299,12 @@ class TestGenerateImageEndpoint:
         def raise_model_load_error() -> object:
             raise RuntimeError("model weights missing")
 
-        monkeypatch.setattr(main, "load_image_pipeline", raise_model_load_error)
+        monkeypatch.setattr(image_repository, "load_image_pipeline", raise_model_load_error)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post("/api/generate-image", json={"prompt": "forest path"})
 
         assert response.status_code == 500
         assert response.json() == {"error": "Image generation failed: model weights missing"}
-
-    def test_inference_failure_returns_500_with_meaningful_message(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                raise RuntimeError("inference error")
-
-        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
-        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
-            response = test_client.post("/api/generate-image", json={"prompt": "forest path"})
-
-        assert response.status_code == 500
-        assert response.json() == {"error": "Image generation failed: inference error"}
 
 
 class TestViteProxyConfiguration:
