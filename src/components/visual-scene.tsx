@@ -117,7 +117,10 @@ export function VisualScene({
     <div
       data-testid="visual-scene"
       className="relative w-full"
-      style={{ aspectRatio: `${aspectRatio}` }}
+      style={{
+        aspectRatio: `${aspectRatio}`,
+        width: `min(100%, 70vh * ${aspectRatio})`
+      }}
     >
       {/* Invisible DOM overlay elements for test queries — no visual impact */}
       <div
