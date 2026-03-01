@@ -25,11 +25,13 @@ import {
   GENERATE_ENDPOINT_PATH,
   GENERATE_IMAGE_ENDPOINT_PATH
 } from './api/constants';
+import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
+type ToggleableEffectType = Exclude<EffectType, 'none'>;
 
 interface QueueEntry {
   id: number;
@@ -96,6 +98,27 @@ const visualizerOptions: ReadonlyArray<{
   { value: 'contour', label: 'contour' },
   { value: 'none', label: 'none' }
 ];
+const effectOptions: ReadonlyArray<{
+  value: ToggleableEffectType;
+  label: string;
+}> = [
+  { value: 'zoom', label: 'zoom' },
+  { value: 'flicker', label: 'flicker' },
+  { value: 'vignette', label: 'vignette' },
+  { value: 'filmGrain', label: 'filmGrain' },
+  { value: 'chromaticAberration', label: 'chromaticAberration' },
+  { value: 'scanLines', label: 'scanLines' },
+  { value: 'colorDrift', label: 'colorDrift' }
+];
+const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
+  zoom: false,
+  flicker: false,
+  vignette: false,
+  filmGrain: false,
+  chromaticAberration: false,
+  scanLines: false,
+  colorDrift: true
+};
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
@@ -261,8 +284,14 @@ export function App() {
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
   const [activeVisualizerType, setActiveVisualizerType] =
     useState<VisualizerType>('glitch');
+  const [enabledEffects, setEnabledEffects] = useState<
+    Record<ToggleableEffectType, boolean>
+  >(defaultEnabledEffects);
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
+  const activeEffects = effectOptions
+    .filter((option) => enabledEffects[option.value])
+    .map((option) => option.value);
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
@@ -1133,6 +1162,38 @@ export function App() {
             </select>
           </div>
 
+          <fieldset
+            aria-label="Post-processing effects"
+            className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+          >
+            <legend className="text-sm font-semibold text-lofi-text">
+              Effects
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {effectOptions.map((option) => (
+                <label
+                  key={option.value}
+                  htmlFor={`effect-${option.value}`}
+                  className="inline-flex items-center gap-2 text-sm text-stone-200"
+                >
+                  <input
+                    id={`effect-${option.value}`}
+                    type="checkbox"
+                    checked={enabledEffects[option.value]}
+                    onChange={(event) =>
+                      setEnabledEffects((prev) => ({
+                        ...prev,
+                        [option.value]: event.target.checked
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <div
             data-testid="visual-canvas"
             className="mx-auto flex w-full max-w-[760px] items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
@@ -1144,6 +1205,7 @@ export function App() {
               isPlaying={isPlaying}
               aspectRatio={selectedSocialFormat.aspectRatio}
               visualizerType={activeVisualizerType}
+              effects={activeEffects}
             />
           </div>
         </section>

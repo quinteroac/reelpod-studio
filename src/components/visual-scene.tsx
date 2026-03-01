@@ -19,6 +19,7 @@ type VisualSceneProps = {
   isPlaying: boolean;
   aspectRatio: number;
   visualizerType: VisualizerType;
+  effects: EffectType[];
 };
 
 type SceneRenderProps = {
@@ -95,10 +96,9 @@ export function VisualScene({
   audioDuration,
   isPlaying,
   aspectRatio,
-  visualizerType
+  visualizerType,
+  effects
 }: VisualSceneProps) {
-  // Available effects: 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'none'
-  const currentEffects: EffectType[] = ['colorDrift'];
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,7 +141,7 @@ export function VisualScene({
           audioDuration={audioDuration}
           isPlaying={isPlaying}
           visualizerType={visualizerType}
-          effects={currentEffects}
+          effects={effects}
           onDerived={handleDerived}
         />
       </Canvas>

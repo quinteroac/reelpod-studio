@@ -13,6 +13,16 @@ type VisualSceneProps = {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  effects: Array<
+    | 'zoom'
+    | 'flicker'
+    | 'vignette'
+    | 'filmGrain'
+    | 'chromaticAberration'
+    | 'scanLines'
+    | 'colorDrift'
+    | 'none'
+  >;
   visualizerType:
     | 'waveform'
     | 'rain'
@@ -34,6 +44,7 @@ const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
     data-audio-duration={props.audioDuration.toFixed(2)}
     data-is-playing={props.isPlaying ? 'true' : 'false'}
     data-aspect-ratio={props.aspectRatio.toFixed(4)}
+    data-effects={props.effects.join(',')}
     data-visualizer-type={props.visualizerType}
   />
 ));
@@ -347,6 +358,88 @@ describe('App unified generate flow (US-003)', () => {
     );
     expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('App effects toggles (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
+      if ('type' in obj && obj.type === 'image/png') {
+        return 'blob:http://localhost/generated-image-url';
+      }
+
+      return 'blob:http://localhost/generated-audio-url';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('lists all 7 effect types and defaults to colorDrift only', () => {
+    render(<App />);
+
+    const expectedEffects = [
+      'zoom',
+      'flicker',
+      'vignette',
+      'filmGrain',
+      'chromaticAberration',
+      'scanLines',
+      'colorDrift'
+    ];
+
+    const effectSection = screen.getByRole('group', {
+      name: 'Post-processing effects'
+    });
+    const checkboxes = within(effectSection).getAllByRole('checkbox');
+    expect(checkboxes).toHaveLength(7);
+
+    expectedEffects.forEach((effect) => {
+      expect(within(effectSection).getByRole('checkbox', { name: effect })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('checkbox', { name: 'colorDrift' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'zoom' })).not.toBeChecked();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'colorDrift'
+    );
+  });
+
+  it('adds and removes effects from the active array immediately when toggled', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'zoom' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom,colorDrift'
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'colorDrift' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom'
+    );
+  });
+
+  it('passes active effects to VisualScene in fixed list order', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'scanLines' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'chromaticAberration' })
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'zoom' }));
+
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom,chromaticAberration,scanLines,colorDrift'
+    );
   });
 });
 

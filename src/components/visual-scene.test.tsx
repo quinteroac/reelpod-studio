@@ -46,6 +46,7 @@ describe('VisualScene', () => {
         isPlaying={false}
         aspectRatio={16 / 9}
         visualizerType="glitch"
+        effects={['colorDrift']}
       />
     );
 
@@ -65,6 +66,7 @@ describe('VisualScene', () => {
         isPlaying={true}
         aspectRatio={16 / 9}
         visualizerType="glitch"
+        effects={['colorDrift']}
       />
     );
 
@@ -80,6 +82,7 @@ describe('VisualScene', () => {
         isPlaying={false}
         aspectRatio={1}
         visualizerType="glitch"
+        effects={['colorDrift']}
       />
     );
 
@@ -96,6 +99,7 @@ describe('VisualScene', () => {
         isPlaying={false}
         aspectRatio={9 / 16}
         visualizerType="glitch"
+        effects={['colorDrift']}
       />
     );
 
