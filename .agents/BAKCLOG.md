@@ -7,6 +7,5 @@
 
 
 ## Improvements
-- Add effect and visualization selector
 
 ## Issues
