@@ -26,10 +26,14 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr, field_validator, mo
 
 MIN_TEMPO = 60
 MAX_TEMPO = 120
+MIN_DURATION_SECONDS = 40
+MAX_DURATION_SECONDS = 300
+DEFAULT_DURATION_SECONDS = 40
 
 INVALID_PAYLOAD_ERROR = (
     "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', "
-    f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), style?: string }}"
+    f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), "
+    f"duration?: number ({MIN_DURATION_SECONDS}-{MAX_DURATION_SECONDS}), style?: string }}"
 )
 
 DEFAULT_ACESTEP_API_URL = "http://localhost:8001"
@@ -55,6 +59,7 @@ class GenerationQueueItem:
     prompt: str
     status: QueueItemStatus
     tempo: int = 80
+    duration: int = DEFAULT_DURATION_SECONDS
     wav_bytes: bytes | None = None
     error_message: str | None = None
 
@@ -71,6 +76,11 @@ class GenerateRequestBody(BaseModel):
     prompt: Optional[StrictStr] = None
     mood: StrictStr = "chill"
     tempo: StrictInt = Field(default=80, ge=MIN_TEMPO, le=MAX_TEMPO)
+    duration: StrictInt = Field(
+        default=DEFAULT_DURATION_SECONDS,
+        ge=MIN_DURATION_SECONDS,
+        le=MAX_DURATION_SECONDS,
+    )
     style: StrictStr = "jazz"
 
     @field_validator("prompt")
@@ -188,12 +198,16 @@ def load_image_pipeline() -> Any:
     return pipeline.to(device)
 
 
-def submit_task(prompt: str, tempo: int = 80) -> str:
+def submit_task(
+    prompt: str,
+    tempo: int = 80,
+    duration: int = DEFAULT_DURATION_SECONDS,
+) -> str:
     payload = {
         "prompt": prompt,
         "lyrics": "",
         "bpm": tempo,
-        "audio_duration": 30,
+        "audio_duration": duration,
         "inference_steps": 20,
         "audio_format": "wav",
         "thinking": True,
@@ -241,8 +255,12 @@ def extract_file_path(response: dict[str, Any]) -> str:
     raise RuntimeError(f"Missing file path in result: {parsed_result}")
 
 
-def generate_audio_bytes_for_prompt(prompt: str, tempo: int = 80) -> bytes:
-    task_id = submit_task(prompt, tempo=tempo)
+def generate_audio_bytes_for_prompt(
+    prompt: str,
+    tempo: int = 80,
+    duration: int = DEFAULT_DURATION_SECONDS,
+) -> bytes:
+    task_id = submit_task(prompt, tempo=tempo, duration=duration)
     completed_task = poll_until_complete(task_id)
     file_path = extract_file_path(completed_task)
     return get_bytes(make_absolute_url(file_path))
@@ -258,6 +276,7 @@ def get_queue_item_snapshot(item_id: str) -> GenerationQueueItem | None:
             prompt=item.prompt,
             status=item.status,
             tempo=item.tempo,
+            duration=item.duration,
             wav_bytes=item.wav_bytes,
             error_message=item.error_message,
         )
@@ -270,6 +289,7 @@ def enqueue_generation_request(body: GenerateRequestBody) -> GenerationQueueItem
         prompt=build_prompt(body),
         status="queued",
         tempo=tempo,
+        duration=body.duration,
     )
     with queue_condition:
         queue_items[item.id] = item
@@ -294,6 +314,7 @@ def wait_for_terminal_status(
                     prompt=item.prompt,
                     status=item.status,
                     tempo=item.tempo,
+                    duration=item.duration,
                     wav_bytes=item.wav_bytes,
                     error_message=item.error_message,
                 )
@@ -327,7 +348,11 @@ def queue_worker() -> None:
             queue_condition.notify_all()
 
         try:
-            wav_bytes = generate_audio_bytes_for_prompt(item.prompt, tempo=item.tempo)
+            wav_bytes = generate_audio_bytes_for_prompt(
+                item.prompt,
+                tempo=item.tempo,
+                duration=item.duration,
+            )
         except (RuntimeError, URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
             logger.error("ACE-Step API error: %s: %s", type(exc).__name__, exc)
             with queue_condition:

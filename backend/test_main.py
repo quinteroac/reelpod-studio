@@ -59,6 +59,7 @@ class TestGenerateRequestBody:
         body = main.GenerateRequestBody(mood="chill", tempo=80, style="jazz")
         assert body.mood == "chill"
         assert body.tempo == 80
+        assert body.duration == 40
         assert body.style == "jazz"
 
     def test_tempo_below_minimum_rejected(self) -> None:
@@ -68,6 +69,14 @@ class TestGenerateRequestBody:
     def test_tempo_above_maximum_rejected(self) -> None:
         with pytest.raises(Exception):
             main.GenerateRequestBody(mood="chill", tempo=121, style="jazz")
+
+    def test_duration_below_minimum_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="chill", tempo=80, duration=39, style="jazz")
+
+    def test_duration_above_maximum_rejected(self) -> None:
+        with pytest.raises(Exception):
+            main.GenerateRequestBody(mood="chill", tempo=80, duration=301, style="jazz")
 
     def test_empty_mood_rejected(self) -> None:
         with pytest.raises(Exception):
@@ -200,7 +209,10 @@ class TestGenerateEndpoint:
 
         monkeypatch.setattr(main, "urlopen", fake_urlopen)
 
-        response = client.post("/api/generate", json={"mood": "warm", "tempo": 95, "style": "hip-hop"})
+        response = client.post(
+            "/api/generate",
+            json={"mood": "warm", "tempo": 95, "duration": 95, "style": "hip-hop"},
+        )
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "audio/wav"
@@ -212,7 +224,7 @@ class TestGenerateEndpoint:
                 "prompt": "warm lofi hip-hop, 95 BPM",
                 "lyrics": "",
                 "bpm": 95,
-                "audio_duration": 30,
+                "audio_duration": 95,
                 "inference_steps": 20,
                 "audio_format": "wav",
                 "thinking": True,
@@ -260,14 +272,14 @@ class TestGenerateEndpoint:
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 30, "style": "jazz"})
         assert response.status_code == 422
         assert response.json() == {
-            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), style?: string }"
+            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), duration?: number (40-300), style?: string }"
         }
 
     def test_text_mode_without_prompt_returns_422(self, client: TestClient) -> None:
         response = client.post("/api/generate", json={"mode": "text"})
         assert response.status_code == 422
         assert response.json() == {
-            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), style?: string }"
+            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), duration?: number (40-300), style?: string }"
         }
 
 
@@ -294,6 +306,7 @@ class TestGenerationQueue:
         assert snapshot.status == "queued"
         assert snapshot.prompt == "slow nostalgic tape wobble"
         assert snapshot.tempo == 80
+        assert snapshot.duration == 40
 
     def test_text_and_parameters_queue_item_uses_selected_tempo(
         self, monkeypatch: pytest.MonkeyPatch
@@ -305,6 +318,7 @@ class TestGenerationQueue:
                 prompt="neon midnight groove",
                 mood="upbeat",
                 tempo=112,
+                duration=180,
                 style="hip-hop",
             )
         )
@@ -314,6 +328,7 @@ class TestGenerationQueue:
         assert snapshot.status == "queued"
         assert snapshot.prompt == "neon midnight groove, upbeat, hip-hop, 112 BPM"
         assert snapshot.tempo == 112
+        assert snapshot.duration == 180
 
     def test_queue_worker_processes_one_item_at_a_time_and_uses_submit_poll_flow(
         self, monkeypatch: pytest.MonkeyPatch
@@ -323,7 +338,10 @@ class TestGenerationQueue:
         max_active_count = 0
         lock = main.threading.Lock()
 
-        def fake_submit_task(prompt: str, tempo: int = 80) -> str:
+        def fake_submit_task(
+            prompt: str, tempo: int = 80, duration: int = 40
+        ) -> str:
+            assert isinstance(duration, int)
             order.append(f"submit:{prompt}")
             return f"task-{prompt}"
 
@@ -368,7 +386,10 @@ class TestGenerationQueue:
     def test_next_item_starts_after_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         prompts_seen: list[str] = []
 
-        def fake_generate_audio_bytes_for_prompt(prompt: str, tempo: int = 80) -> bytes:
+        def fake_generate_audio_bytes_for_prompt(
+            prompt: str, tempo: int = 80, duration: int = 40
+        ) -> bytes:
+            assert isinstance(duration, int)
             prompts_seen.append(prompt)
             if prompt.startswith("fail"):
                 raise RuntimeError("inference failed")
@@ -413,7 +434,7 @@ class TestGenerateImageEndpoint:
         with TestClient(app=main.app, raise_server_exceptions=False):
             pass
 
-        assert calls == ["circlestone-labs/Anima"]
+        assert calls == [main.IMAGE_MODEL_ID]
 
     def test_generate_image_returns_png_binary_and_uses_1024_square_resolution(
         self, monkeypatch: pytest.MonkeyPatch

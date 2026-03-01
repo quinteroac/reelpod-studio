@@ -8,6 +8,7 @@ interface GenerationParams {
   mood: Mood;
   tempo: number;
   style: Style;
+  duration: number;
   mode?: GenerationMode;
   prompt?: string;
 }
@@ -31,7 +32,8 @@ interface QueueEntry {
 const defaultParams: GenerationParams = {
   mood: 'chill',
   tempo: 80,
-  style: 'jazz'
+  style: 'jazz',
+  duration: 40
 };
 const generationModeOptions: ReadonlyArray<{
   value: GenerationMode;
@@ -46,7 +48,10 @@ const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
 const TEXT_PROMPT_MAX_SUMMARY_CHARS = 60;
 const TEXT_MODE_DEFAULT_TEMPO = 80;
+const DURATION_MIN_SECONDS = 40;
+const DURATION_MAX_SECONDS = 300;
 const MUSIC_PROMPT_REQUIRED_ERROR = 'Please enter a music prompt.';
+const DURATION_RANGE_ERROR = `Duration must be between ${DURATION_MIN_SECONDS} and ${DURATION_MAX_SECONDS} seconds.`;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -168,6 +173,12 @@ export function App() {
   );
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
+    string | null
+  >(null);
+  const [durationInput, setDurationInput] = useState(
+    String(defaultParams.duration)
+  );
+  const [durationErrorMessage, setDurationErrorMessage] = useState<
     string | null
   >(null);
   const [status, setStatus] = useState<GenerationStatus>('idle');
@@ -356,6 +367,22 @@ export function App() {
 
   function handleGenerate(): void {
     setErrorMessage(null);
+    const parsedDuration = Number(durationInput);
+    const hasValidDuration =
+      Number.isInteger(parsedDuration) &&
+      parsedDuration >= DURATION_MIN_SECONDS &&
+      parsedDuration <= DURATION_MAX_SECONDS;
+
+    if (!hasValidDuration) {
+      setDurationErrorMessage(DURATION_RANGE_ERROR);
+      return;
+    }
+
+    setDurationErrorMessage(null);
+    const nextParams: GenerationParams = {
+      ...params,
+      duration: parsedDuration
+    };
 
     const requiresPrompt =
       generationMode === 'text' || generationMode === 'text-and-parameters';
@@ -372,7 +399,7 @@ export function App() {
         const nextEntry: QueueEntry = {
           id: queueIdRef.current++,
           params: {
-            ...params,
+            ...nextParams,
             mode: 'text',
             prompt: trimmedPrompt,
             tempo: TEXT_MODE_DEFAULT_TEMPO
@@ -388,7 +415,7 @@ export function App() {
       const nextEntry: QueueEntry = {
         id: queueIdRef.current++,
         params: {
-          ...params,
+          ...nextParams,
           mode: 'text-and-parameters',
           prompt: trimmedPrompt
         },
@@ -403,7 +430,7 @@ export function App() {
     setMusicPromptErrorMessage(null);
     const nextEntry: QueueEntry = {
       id: queueIdRef.current++,
-      params: { ...params },
+      params: nextParams,
       status: 'queued',
       errorMessage: null,
       audioUrl: null
@@ -665,6 +692,31 @@ export function App() {
               </fieldset>
             </div>
           )}
+
+          <div className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3">
+            <label
+              htmlFor="duration"
+              className="block text-sm font-semibold text-lofi-text"
+            >
+              Duration (s)
+            </label>
+            <input
+              id="duration"
+              type="number"
+              min={DURATION_MIN_SECONDS}
+              max={DURATION_MAX_SECONDS}
+              step={1}
+              value={durationInput}
+              onChange={(event) => {
+                setDurationInput(event.target.value);
+                if (durationErrorMessage) {
+                  setDurationErrorMessage(null);
+                }
+              }}
+              disabled={status === 'loading'}
+              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+            />
+          </div>
         </section>
 
         <section
@@ -681,6 +733,11 @@ export function App() {
           {musicPromptErrorMessage && (
             <p role="alert" className="text-sm font-semibold text-red-100">
               {musicPromptErrorMessage}
+            </p>
+          )}
+          {durationErrorMessage && (
+            <p role="alert" className="text-sm font-semibold text-red-100">
+              {durationErrorMessage}
             </p>
           )}
 

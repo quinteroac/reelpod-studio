@@ -205,7 +205,65 @@ describe('App generation flow', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mood: 'chill', tempo: 80, style: 'jazz' })
+        body: JSON.stringify({
+          mood: 'chill',
+          tempo: 80,
+          style: 'jazz',
+          duration: 40
+        })
+      });
+    });
+  });
+
+  it('renders duration input with the required label, default value, and bounds', () => {
+    render(<App />);
+
+    const durationInput = screen.getByLabelText(
+      'Duration (s)'
+    ) as HTMLInputElement;
+    expect(durationInput).toBeInTheDocument();
+    expect(durationInput.type).toBe('number');
+    expect(durationInput.value).toBe('40');
+    expect(durationInput.min).toBe('40');
+    expect(durationInput.max).toBe('300');
+  });
+
+  it('rejects duration outside 40-300 seconds with a validation message', () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Duration (s)'), {
+      target: { value: '39' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Duration must be between 40 and 300 seconds.'
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('includes the selected duration in the generate request payload', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Duration (s)'), {
+      target: { value: '120' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mood: 'chill',
+          tempo: 80,
+          style: 'jazz',
+          duration: 120
+        })
       });
     });
   });
@@ -291,6 +349,7 @@ describe('App generation flow', () => {
           mood: 'chill',
           tempo: 80,
           style: 'jazz',
+          duration: 40,
           mode: 'text',
           prompt: longPrompt
         })
@@ -335,6 +394,7 @@ describe('App generation flow', () => {
           mood: 'upbeat',
           tempo: 110,
           style: 'hip-hop',
+          duration: 40,
           mode: 'text-and-parameters',
           prompt: longPrompt
         })
@@ -801,7 +861,12 @@ describe('App generation flow', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mood: 'upbeat', tempo: 110, style: 'hip-hop' })
+      body: JSON.stringify({
+        mood: 'upbeat',
+        tempo: 110,
+        style: 'hip-hop',
+        duration: 40
+      })
     });
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
