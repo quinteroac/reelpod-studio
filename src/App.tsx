@@ -55,10 +55,10 @@ const generationModeOptions: ReadonlyArray<{
   value: GenerationMode;
   label: string;
 }> = [
-  { value: 'text', label: 'Text' },
-  { value: 'text-and-parameters', label: 'Text + Parameters' },
-  { value: 'parameters', label: 'Parameters' }
-];
+    { value: 'text', label: 'Text' },
+    { value: 'text-and-parameters', label: 'Text + Parameters' },
+    { value: 'parameters', label: 'Parameters' }
+  ];
 const socialFormatOptions: ReadonlyArray<SocialFormatPreset> = [
   {
     id: 'youtube',
@@ -87,17 +87,17 @@ const visualizerOptions: ReadonlyArray<{
   value: VisualizerType;
   label: string;
 }> = [
-  { value: 'waveform', label: 'waveform' },
-  { value: 'rain', label: 'rain' },
-  { value: 'scene-rain', label: 'scene-rain' },
-  { value: 'starfield', label: 'starfield' },
-  { value: 'aurora', label: 'aurora' },
-  { value: 'circle-spectrum', label: 'circle-spectrum' },
-  { value: 'glitch', label: 'glitch' },
-  { value: 'smoke', label: 'smoke' },
-  { value: 'contour', label: 'contour' },
-  { value: 'none', label: 'none' }
-];
+    { value: 'waveform', label: 'waveform' },
+    { value: 'rain', label: 'rain' },
+    { value: 'scene-rain', label: 'scene-rain' },
+    { value: 'starfield', label: 'starfield' },
+    { value: 'aurora', label: 'aurora' },
+    { value: 'circle-spectrum', label: 'circle-spectrum' },
+    { value: 'glitch', label: 'glitch' },
+    { value: 'smoke', label: 'smoke' },
+    { value: 'contour', label: 'contour' },
+    { value: 'none', label: 'none' }
+  ];
 const effectOptions: ReadonlyArray<ToggleableEffectType> = [
   'zoom',
   'flicker',
@@ -194,7 +194,7 @@ async function requestGeneratedAudio(
 
     throw new Error(
       errorText ??
-        `Could not generate track: Request failed with status ${response.status}`
+      `Could not generate track: Request failed with status ${response.status}`
     );
   }
 
@@ -232,7 +232,7 @@ async function requestGeneratedImage(
 
     throw new Error(
       errorText ??
-        `Could not generate image: Request failed with status ${response.status}`
+      `Could not generate image: Request failed with status ${response.status}`
     );
   }
 
@@ -427,12 +427,12 @@ export function App() {
             prev.map((item) =>
               item.id === entry.id
                 ? {
-                    ...item,
-                    status: 'completed',
-                    errorMessage: null,
-                    audioUrl,
-                    imageUrl
-                  }
+                  ...item,
+                  status: 'completed',
+                  errorMessage: null,
+                  audioUrl,
+                  imageUrl
+                }
                 : item
             )
           );
@@ -483,12 +483,12 @@ export function App() {
           prev.map((item) =>
             item.id === entry.id
               ? {
-                  ...item,
-                  status: 'failed',
-                  errorMessage: message,
-                  audioUrl: null,
-                  imageUrl: null
-                }
+                ...item,
+                status: 'failed',
+                errorMessage: message,
+                audioUrl: null,
+                imageUrl: null
+              }
               : item
           )
         );
@@ -718,11 +718,10 @@ export function App() {
                     return (
                       <label
                         key={option.value}
-                        className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${
-                          isSelected
-                            ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
-                            : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
-                        } ${status === 'loading' ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
+                          ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                          : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                          }`}
                       >
                         <input
                           type="radio"
@@ -730,7 +729,6 @@ export function App() {
                           value={option.value}
                           checked={isSelected}
                           onChange={() => setGenerationMode(option.value)}
-                          disabled={status === 'loading'}
                           className="sr-only"
                         />
                         <span>{option.label}</span>
@@ -758,7 +756,6 @@ export function App() {
                         setMusicPromptErrorMessage(null);
                       }
                     }}
-                    disabled={status === 'loading'}
                     className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
                     placeholder="Describe the music you want..."
                   />
@@ -787,7 +784,6 @@ export function App() {
                           mood: event.target.value as Mood
                         }))
                       }
-                      disabled={status === 'loading'}
                     >
                       <option value="chill">chill</option>
                       <option value="melancholic">melancholic</option>
@@ -818,7 +814,6 @@ export function App() {
                           tempo: Number(event.target.value)
                         }))
                       }
-                      disabled={status === 'loading'}
                     />
                     <output
                       htmlFor="tempo"
@@ -848,7 +843,6 @@ export function App() {
                           style: event.target.value as Style
                         }))
                       }
-                      disabled={status === 'loading'}
                     >
                       <option value="jazz">jazz</option>
                       <option value="hip-hop">hip-hop</option>
@@ -878,7 +872,6 @@ export function App() {
                       setDurationErrorMessage(null);
                     }
                   }}
-                  disabled={status === 'loading'}
                   className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
                 />
               </div>
@@ -897,11 +890,10 @@ export function App() {
                     return (
                       <label
                         key={option.id}
-                        className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${
-                          isSelected
-                            ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
-                            : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
-                        } ${status === 'loading' ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
+                          ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                          : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                          }`}
                       >
                         <input
                           type="radio"
@@ -909,7 +901,6 @@ export function App() {
                           value={option.id}
                           checked={isSelected}
                           onChange={() => setSocialFormatId(option.id)}
-                          disabled={status === 'loading'}
                           className="sr-only"
                         />
                         <span>{option.label}</span>
@@ -1019,19 +1010,17 @@ export function App() {
                         data-testid={`queue-entry-${entry.id}`}
                         data-status={entry.status}
                         data-playing={isCurrentlyPlaying ? 'true' : undefined}
-                        className={`rounded-md border p-3 text-sm ${
-                          isCurrentlyPlaying
-                            ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
-                            : ''
-                        } ${
-                          isGenerating
+                        className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
+                          ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
+                          : ''
+                          } ${isGenerating
                             ? 'border-lofi-accent/70 bg-stone-900/80'
                             : isCompleted
                               ? 'border-emerald-300/60 bg-emerald-500/10'
                               : isFailed
                                 ? 'border-red-400/60 bg-red-950/30'
                                 : 'border-stone-600 bg-stone-900/40'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="space-y-1">
@@ -1051,15 +1040,14 @@ export function App() {
                             </p>
                           </div>
                           <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
-                              isGenerating
-                                ? 'bg-lofi-accent/20 text-lofi-accent'
-                                : isCompleted
-                                  ? 'bg-emerald-500/20 text-emerald-100'
-                                  : isFailed
-                                    ? 'bg-red-500/20 text-red-100'
-                                    : 'bg-stone-700 text-stone-200'
-                            }`}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${isGenerating
+                              ? 'bg-lofi-accent/20 text-lofi-accent'
+                              : isCompleted
+                                ? 'bg-emerald-500/20 text-emerald-100'
+                                : isFailed
+                                  ? 'bg-red-500/20 text-red-100'
+                                  : 'bg-stone-700 text-stone-200'
+                              }`}
                           >
                             {isGenerating && (
                               <span
