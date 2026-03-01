@@ -24,16 +24,16 @@ type VisualSceneProps = {
     | 'none'
   >;
   visualizerType:
-    | 'waveform'
-    | 'rain'
-    | 'scene-rain'
-    | 'starfield'
-    | 'aurora'
-    | 'circle-spectrum'
-    | 'glitch'
-    | 'smoke'
-    | 'contour'
-    | 'none';
+  | 'waveform'
+  | 'rain'
+  | 'scene-rain'
+  | 'starfield'
+  | 'aurora'
+  | 'circle-spectrum'
+  | 'glitch'
+  | 'smoke'
+  | 'contour'
+  | 'none';
 };
 
 const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
@@ -136,7 +136,7 @@ describe('App unified generate flow (US-003)', () => {
 
       return 'blob:http://localhost/generated-audio-url';
     });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('triggers both audio and image generation from one Generate click', async () => {
@@ -145,6 +145,7 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'neon city street at night' }
     });
@@ -176,6 +177,7 @@ describe('App unified generate flow (US-003)', () => {
   it('renders the visualizer selector in the Visual prompt section with all visualizer options', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const visualPromptSection = screen.getByRole('region', {
       name: 'Visual prompt'
     });
@@ -201,6 +203,7 @@ describe('App unified generate flow (US-003)', () => {
   it('defaults to glitch and updates the active visualizer immediately on selection change', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const selector = screen.getByLabelText(
       'Active visualizer'
     ) as HTMLSelectElement;
@@ -242,6 +245,7 @@ describe('App unified generate flow (US-003)', () => {
     expect(generateButton).toBeEnabled();
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       const first = screen.getByTestId('queue-entry-1');
       const second = screen.getByTestId('queue-entry-2');
       expect(first).toHaveAttribute('data-status', 'generating');
@@ -254,6 +258,7 @@ describe('App unified generate flow (US-003)', () => {
     resolveAudio?.(createAudioResponse());
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-status',
         'completed'
@@ -288,6 +293,7 @@ describe('App unified generate flow (US-003)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       const entry = screen.getByTestId('queue-entry-1');
       expect(entry).toHaveAttribute('data-status', 'failed');
       expect(entry).toHaveTextContent('Failed');
@@ -298,12 +304,14 @@ describe('App unified generate flow (US-003)', () => {
   it('shows completed pair with image rendered and audio playback controls ready', async () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'sunset highway with grainy film look' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-status',
         'completed'
@@ -341,6 +349,7 @@ describe('App unified generate flow (US-003)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       const entry = screen.getByTestId('queue-entry-1');
       expect(entry).toHaveAttribute('data-status', 'failed');
       expect(entry).toHaveTextContent('image generation failed');
@@ -356,6 +365,7 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: '   ' }
     });
@@ -388,7 +398,7 @@ describe('App controls panel layout (US-001)', () => {
         return 'blob:http://localhost/generated-audio-url';
       }
     );
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('renders header above the desktop grid and keeps the required left-column section order', () => {
@@ -407,28 +417,16 @@ describe('App controls panel layout (US-001)', () => {
       .map((section) => section.getAttribute('aria-label'));
     expect(sectionLabels).toEqual([
       'Generation parameters',
-      'Generation actions',
-      'Generation queue',
-      'Visual prompt'
+      'Generation actions'
     ]);
   });
 
   it('preserves existing controls, labels, and interactions in the left controls column', () => {
     render(<App />);
-
     const controlsColumn = screen.getByTestId('controls-column');
-    const parametersSection = within(controlsColumn).getByRole('region', {
-      name: 'Generation parameters'
-    });
-    const actionsSection = within(controlsColumn).getByRole('region', {
-      name: 'Generation actions'
-    });
-    const queueSection = within(controlsColumn).getByRole('region', {
-      name: 'Generation queue'
-    });
-    const visualPromptSection = within(controlsColumn).getByRole('region', {
-      name: 'Visual prompt'
-    });
+
+    const parametersSection = within(controlsColumn).getByRole('region', { name: 'Generation parameters' });
+    const actionsSection = within(controlsColumn).getByRole('region', { name: 'Generation actions' });
 
     expect(within(parametersSection).getByRole('radiogroup', { name: 'Generation mode' })).toBeInTheDocument();
     expect(within(parametersSection).getByLabelText('Mood')).toBeInTheDocument();
@@ -436,14 +434,22 @@ describe('App controls panel layout (US-001)', () => {
     expect(within(parametersSection).getByLabelText('Style')).toBeInTheDocument();
     expect(within(parametersSection).getByLabelText('Duration (s)')).toBeInTheDocument();
     expect(within(parametersSection).getByRole('radiogroup', { name: 'Social format' })).toBeInTheDocument();
-
     expect(within(actionsSection).getByRole('button', { name: 'Generate' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    const queueSection = within(controlsColumn).getByRole('region', { name: 'Generation queue' });
     expect(within(queueSection).getByText('No generations yet.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
+    const visualPromptSection = within(controlsColumn).getByRole('region', { name: 'Visual prompt' });
     expect(within(visualPromptSection).getByLabelText('Image prompt')).toBeInTheDocument();
     expect(within(visualPromptSection).getByLabelText('Active visualizer')).toBeInTheDocument();
     expect(within(visualPromptSection).getByRole('group', { name: 'Post-processing effects' })).toBeInTheDocument();
 
-    fireEvent.click(within(actionsSection).getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Generation actions' })).getByRole('button', { name: 'Generate' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
     const queueEntry = screen.getByTestId('queue-entry-1');
     expect(queueEntry).toBeInTheDocument();
     const queueStatus = queueEntry.getAttribute('data-status');
@@ -469,7 +475,7 @@ describe('App right column preview and playback layout (US-002)', () => {
         return 'blob:http://localhost/generated-audio-url';
       }
     );
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('keeps VisualScene in the right column and renders playback controls directly below it after generation', async () => {
@@ -483,6 +489,7 @@ describe('App right column preview and playback layout (US-002)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-status',
         'completed'
@@ -569,12 +576,13 @@ describe('App effects toggles (US-002)', () => {
 
       return 'blob:http://localhost/generated-audio-url';
     });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('lists all 7 effect types and defaults to colorDrift only', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const expectedEffects = [
       'zoom',
       'flicker',
@@ -606,6 +614,7 @@ describe('App effects toggles (US-002)', () => {
   it('adds and removes effects from the active array immediately when toggled', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'zoom' }));
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
@@ -622,6 +631,7 @@ describe('App effects toggles (US-002)', () => {
   it('passes active effects to VisualScene in fixed list order', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'scanLines' }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'chromaticAberration' })
@@ -651,12 +661,13 @@ describe('App effect reorder (US-003)', () => {
 
       return 'blob:http://localhost/generated-audio-url';
     });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('renders Up/Down buttons per effect row and disables first/last boundaries', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const rowZoom = screen.getByTestId('effect-row-zoom');
     const rowColorDrift = screen.getByTestId('effect-row-colorDrift');
 
@@ -669,6 +680,7 @@ describe('App effect reorder (US-003)', () => {
   it('moves effects up and down and updates VisualScene effects immediately', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'vignette' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
@@ -699,6 +711,7 @@ describe('App effect reorder (US-003)', () => {
 
   it('keeps enabled effect UI order aligned with effects passed to VisualScene', () => {
     render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'vignette' }));
@@ -748,7 +761,7 @@ describe('App responsive single-column fallback (US-003)', () => {
         return 'blob:http://localhost/generated-audio-url';
       }
     );
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('keeps controls first and preview second, with desktop split only at xl', () => {
@@ -802,7 +815,7 @@ describe('App shared prompt toggle (US-005)', () => {
 
       return 'blob:http://localhost/generated-audio-url';
     });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('defaults to independent music and image prompts and shows the toggle', () => {
@@ -811,18 +824,24 @@ describe('App shared prompt toggle (US-005)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
 
     const musicPromptField = screen.getByLabelText('Music prompt');
+    expect(musicPromptField).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
+
     const imagePromptField = screen.getByLabelText('Image prompt');
     const samePromptToggle = screen.getByRole('checkbox', {
       name: 'Use same prompt for image'
     });
 
-    expect(musicPromptField).toBeInTheDocument();
     expect(imagePromptField).toBeInTheDocument();
     expect(samePromptToggle).toBeVisible();
     expect(samePromptToggle).not.toBeChecked();
 
-    fireEvent.change(musicPromptField, { target: { value: 'dusty jazz trio' } });
-    expect(imagePromptField).toHaveValue('lofi cafe at night, cinematic lighting');
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), { target: { value: 'dusty jazz trio' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
+    expect(screen.getByLabelText('Image prompt')).toHaveValue('lofi cafe at night, cinematic lighting');
   });
 
   it('hides image prompt and uses music prompt for image generation in text mode when enabled', async () => {
@@ -835,6 +854,8 @@ describe('App shared prompt toggle (US-005)', () => {
     fireEvent.change(screen.getByLabelText('Music prompt'), {
       target: { value: 'rainy midnight synthwave' }
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'old value that should be ignored' }
     });
@@ -863,6 +884,7 @@ describe('App shared prompt toggle (US-005)', () => {
   it('restores previous image prompt value when toggle is turned off', () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'neon alley in tokyo rain' }
     });
@@ -889,6 +911,8 @@ describe('App shared prompt toggle (US-005)', () => {
     fireEvent.change(screen.getByLabelText('Music prompt'), {
       target: { value: 'nostalgic vinyl crackle piano' }
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Use same prompt for image' })
     );
@@ -930,18 +954,20 @@ describe('App track-image pair binding (US-006)', () => {
         return `blob:http://localhost/generated-audio-url-${audioUrlIndex}`;
       }
     );
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
   it('binds numbered track-image pairs, preserves prior pairs, and switches image with active playback', async () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'first scene' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-status',
         'completed'
@@ -954,12 +980,14 @@ describe('App track-image pair binding (US-006)', () => {
       'blob:http://localhost/generated-image-url-1'
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'second scene' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
         'data-status',
         'completed'
@@ -998,6 +1026,7 @@ describe('App track-image pair binding (US-006)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
 
     await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-playing',
         'true'

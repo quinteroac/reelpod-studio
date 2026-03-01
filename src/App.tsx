@@ -285,6 +285,7 @@ export function App() {
   const [enabledEffects, setEnabledEffects] = useState<
     Record<ToggleableEffectType, boolean>
   >(defaultEnabledEffects);
+  const [activeTab, setActiveTab] = useState<'music' | 'visuals' | 'queue'>('music');
   const [effectOrder, setEffectOrder] =
     useState<ToggleableEffectType[]>(defaultEffectOrder);
   const seekPollRef = useRef<number | null>(null);
@@ -700,216 +701,250 @@ export function App() {
           className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:items-start"
         >
           <div data-testid="controls-column" className="min-w-0 space-y-6">
-            <section
-              aria-label="Generation parameters"
-              className="space-y-4 rounded-lg bg-lofi-panel p-5"
-            >
-              <fieldset
-                role="radiogroup"
-                aria-label="Generation mode"
-                className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+            <div className="flex gap-6 border-b border-stone-800">
+              <button
+                className={`pb-3 text-sm font-semibold transition-colors ${activeTab === 'music'
+                  ? 'border-b-2 border-white text-white'
+                  : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                onClick={() => setActiveTab('music')}
               >
-                <legend className="text-sm font-semibold text-lofi-text">
-                  Generation mode
-                </legend>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {generationModeOptions.map((option) => {
-                    const isSelected = generationMode === option.value;
-                    return (
-                      <label
-                        key={option.value}
-                        className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
-                          ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
-                          : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
-                          }`}
-                      >
-                        <input
-                          type="radio"
-                          name="generation-mode"
-                          value={option.value}
-                          checked={isSelected}
-                          onChange={() => setGenerationMode(option.value)}
-                          className="sr-only"
-                        />
-                        <span>{option.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
+                Music Generation
+              </button>
+              <button
+                className={`pb-3 text-sm font-semibold transition-colors ${activeTab === 'visuals'
+                  ? 'border-b-2 border-white text-white'
+                  : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                onClick={() => setActiveTab('visuals')}
+              >
+                Visual Settings
+              </button>
+              <button
+                className={`pb-3 text-sm font-semibold transition-colors ${activeTab === 'queue'
+                  ? 'border-b-2 border-white text-white'
+                  : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                onClick={() => setActiveTab('queue')}
+              >
+                Queue
+              </button>
+            </div>
 
-              {generationMode !== 'parameters' && (
-                <div className="space-y-2">
-                  <label
-                    htmlFor="music-prompt"
-                    className="block text-sm font-semibold text-lofi-text"
-                  >
-                    Music prompt
-                  </label>
-                  <textarea
-                    id="music-prompt"
-                    rows={3}
-                    value={musicPrompt}
-                    onChange={(event) => {
-                      setMusicPrompt(event.target.value);
-                      if (musicPromptErrorMessage) {
-                        setMusicPromptErrorMessage(null);
-                      }
-                    }}
-                    className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                    placeholder="Describe the music you want..."
-                  />
-                </div>
-              )}
-
-              {generationMode !== 'text' && (
-                <div className="grid gap-4 md:grid-cols-3">
+            {activeTab === 'music' && (
+              <>
+                <section
+                  aria-label="Generation parameters"
+                  className="space-y-4 rounded-lg bg-lofi-panel p-5"
+                >
                   <fieldset
-                    data-testid="mood-control-card"
+                    role="radiogroup"
+                    aria-label="Generation mode"
                     className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
                   >
                     <legend className="text-sm font-semibold text-lofi-text">
-                      Mood
+                      Generation mode
                     </legend>
-                    <label htmlFor="mood" className="sr-only">
-                      Mood
-                    </label>
-                    <select
-                      id="mood"
-                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                      value={params.mood}
-                      onChange={(event) =>
-                        setParams((prev) => ({
-                          ...prev,
-                          mood: event.target.value as Mood
-                        }))
-                      }
-                    >
-                      <option value="chill">chill</option>
-                      <option value="melancholic">melancholic</option>
-                      <option value="upbeat">upbeat</option>
-                    </select>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {generationModeOptions.map((option) => {
+                        const isSelected = generationMode === option.value;
+                        return (
+                          <label
+                            key={option.value}
+                            className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
+                              ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                              : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="generation-mode"
+                              value={option.value}
+                              checked={isSelected}
+                              onChange={() => setGenerationMode(option.value)}
+                              className="sr-only"
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </fieldset>
 
-                  <fieldset
-                    data-testid="tempo-control-card"
-                    className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-                  >
-                    <legend className="text-sm font-semibold text-lofi-text">
-                      Tempo
-                    </legend>
-                    <label htmlFor="tempo" className="sr-only">
-                      Tempo (BPM)
+                  {generationMode !== 'parameters' && (
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="music-prompt"
+                        className="block text-sm font-semibold text-lofi-text"
+                      >
+                        Music prompt
+                      </label>
+                      <textarea
+                        id="music-prompt"
+                        rows={3}
+                        value={musicPrompt}
+                        onChange={(event) => {
+                          setMusicPrompt(event.target.value);
+                          if (musicPromptErrorMessage) {
+                            setMusicPromptErrorMessage(null);
+                          }
+                        }}
+                        className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                        placeholder="Describe the music you want..."
+                      />
+                    </div>
+                  )}
+
+                  {generationMode !== 'text' && (
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <fieldset
+                        data-testid="mood-control-card"
+                        className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+                      >
+                        <legend className="text-sm font-semibold text-lofi-text">
+                          Mood
+                        </legend>
+                        <label htmlFor="mood" className="sr-only">
+                          Mood
+                        </label>
+                        <select
+                          id="mood"
+                          className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                          value={params.mood}
+                          onChange={(event) =>
+                            setParams((prev) => ({
+                              ...prev,
+                              mood: event.target.value as Mood
+                            }))
+                          }
+                        >
+                          <option value="chill">chill</option>
+                          <option value="melancholic">melancholic</option>
+                          <option value="upbeat">upbeat</option>
+                        </select>
+                      </fieldset>
+
+                      <fieldset
+                        data-testid="tempo-control-card"
+                        className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+                      >
+                        <legend className="text-sm font-semibold text-lofi-text">
+                          Tempo
+                        </legend>
+                        <label htmlFor="tempo" className="sr-only">
+                          Tempo (BPM)
+                        </label>
+                        <input
+                          id="tempo"
+                          type="range"
+                          className="w-full cursor-pointer accent-lofi-accent outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                          min={60}
+                          max={120}
+                          value={params.tempo}
+                          onChange={(event) =>
+                            setParams((prev) => ({
+                              ...prev,
+                              tempo: Number(event.target.value)
+                            }))
+                          }
+                        />
+                        <output
+                          htmlFor="tempo"
+                          className="block text-sm text-stone-300"
+                        >
+                          {params.tempo} BPM
+                        </output>
+                      </fieldset>
+
+                      <fieldset
+                        data-testid="style-control-card"
+                        className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+                      >
+                        <legend className="text-sm font-semibold text-lofi-text">
+                          Style
+                        </legend>
+                        <label htmlFor="style" className="sr-only">
+                          Style
+                        </label>
+                        <select
+                          id="style"
+                          className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                          value={params.style}
+                          onChange={(event) =>
+                            setParams((prev) => ({
+                              ...prev,
+                              style: event.target.value as Style
+                            }))
+                          }
+                        >
+                          <option value="jazz">jazz</option>
+                          <option value="hip-hop">hip-hop</option>
+                          <option value="ambient">ambient</option>
+                        </select>
+                      </fieldset>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3">
+                    <label
+                      htmlFor="duration"
+                      className="block text-sm font-semibold text-lofi-text"
+                    >
+                      Duration (s)
                     </label>
                     <input
-                      id="tempo"
-                      type="range"
-                      className="w-full cursor-pointer accent-lofi-accent outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                      min={60}
-                      max={120}
-                      value={params.tempo}
-                      onChange={(event) =>
-                        setParams((prev) => ({
-                          ...prev,
-                          tempo: Number(event.target.value)
-                        }))
-                      }
+                      id="duration"
+                      type="number"
+                      min={DURATION_MIN_SECONDS}
+                      max={DURATION_MAX_SECONDS}
+                      step={1}
+                      value={durationInput}
+                      onChange={(event) => {
+                        setDurationInput(event.target.value);
+                        if (durationErrorMessage) {
+                          setDurationErrorMessage(null);
+                        }
+                      }}
+                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
                     />
-                    <output
-                      htmlFor="tempo"
-                      className="block text-sm text-stone-300"
-                    >
-                      {params.tempo} BPM
-                    </output>
-                  </fieldset>
+                  </div>
 
                   <fieldset
-                    data-testid="style-control-card"
+                    role="radiogroup"
+                    aria-label="Social format"
                     className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
                   >
                     <legend className="text-sm font-semibold text-lofi-text">
-                      Style
+                      Format
                     </legend>
-                    <label htmlFor="style" className="sr-only">
-                      Style
-                    </label>
-                    <select
-                      id="style"
-                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                      value={params.style}
-                      onChange={(event) =>
-                        setParams((prev) => ({
-                          ...prev,
-                          style: event.target.value as Style
-                        }))
-                      }
-                    >
-                      <option value="jazz">jazz</option>
-                      <option value="hip-hop">hip-hop</option>
-                      <option value="ambient">ambient</option>
-                    </select>
+                    <div className="grid gap-2">
+                      {socialFormatOptions.map((option) => {
+                        const isSelected = socialFormatId === option.id;
+                        return (
+                          <label
+                            key={option.id}
+                            className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
+                              ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                              : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              name="social-format"
+                              value={option.id}
+                              checked={isSelected}
+                              onChange={() => setSocialFormatId(option.id)}
+                              className="sr-only"
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </fieldset>
-                </div>
-              )}
-
-              <div className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3">
-                <label
-                  htmlFor="duration"
-                  className="block text-sm font-semibold text-lofi-text"
-                >
-                  Duration (s)
-                </label>
-                <input
-                  id="duration"
-                  type="number"
-                  min={DURATION_MIN_SECONDS}
-                  max={DURATION_MAX_SECONDS}
-                  step={1}
-                  value={durationInput}
-                  onChange={(event) => {
-                    setDurationInput(event.target.value);
-                    if (durationErrorMessage) {
-                      setDurationErrorMessage(null);
-                    }
-                  }}
-                  className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                />
-              </div>
-
-              <fieldset
-                role="radiogroup"
-                aria-label="Social format"
-                className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-              >
-                <legend className="text-sm font-semibold text-lofi-text">
-                  Format
-                </legend>
-                <div className="grid gap-2">
-                  {socialFormatOptions.map((option) => {
-                    const isSelected = socialFormatId === option.id;
-                    return (
-                      <label
-                        key={option.id}
-                        className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
-                          ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
-                          : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
-                          }`}
-                      >
-                        <input
-                          type="radio"
-                          name="social-format"
-                          value={option.id}
-                          checked={isSelected}
-                          onChange={() => setSocialFormatId(option.id)}
-                          className="sr-only"
-                        />
-                        <span>{option.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            </section>
+                </section>
+              </>
+            )}
 
             <section
               aria-label="Generation actions"
@@ -966,269 +1001,273 @@ export function App() {
               )}
             </section>
 
-            <section
-              aria-label="Generation queue"
-              className="space-y-3 rounded-lg bg-lofi-panel p-4"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
-                  Queue
-                </h2>
-                {playingEntryId !== null &&
-                  (() => {
-                    const idx = queueEntries.findIndex(
-                      (e) => e.id === playingEntryId
-                    );
-                    const position = idx >= 0 ? idx + 1 : 0;
-                    const total = queueEntries.length;
-                    return (
-                      <span
-                        aria-live="polite"
-                        className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-xs font-semibold text-lofi-accent"
-                      >
-                        Track {position} of {total}
-                      </span>
-                    );
-                  })()}
-              </div>
-              {queueEntries.length === 0 ? (
-                <p className="text-sm text-stone-300">No generations yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {queueEntries.map((entry, index) => {
-                    const statusLabel =
-                      entry.status[0].toUpperCase() + entry.status.slice(1);
-                    const isGenerating = entry.status === 'generating';
-                    const isCompleted = entry.status === 'completed';
-                    const isFailed = entry.status === 'failed';
-                    const isCurrentlyPlaying = entry.id === playingEntryId;
-                    const trackNumber = index + 1;
-
-                    return (
-                      <li
-                        key={entry.id}
-                        data-testid={`queue-entry-${entry.id}`}
-                        data-status={entry.status}
-                        data-playing={isCurrentlyPlaying ? 'true' : undefined}
-                        className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
-                          ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
-                          : ''
-                          } ${isGenerating
-                            ? 'border-lofi-accent/70 bg-stone-900/80'
-                            : isCompleted
-                              ? 'border-emerald-300/60 bg-emerald-500/10'
-                              : isFailed
-                                ? 'border-red-400/60 bg-red-950/30'
-                                : 'border-stone-600 bg-stone-900/40'
-                          }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-lofi-accentMuted">
-                              Track {trackNumber}
-                            </p>
-                            <p className="text-lofi-text">
-                              {isCurrentlyPlaying && (
-                                <span
-                                  className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
-                                  aria-hidden="true"
-                                >
-                                  ▶ Now playing
-                                </span>
-                              )}
-                              {buildQueueSummary(entry.params)}
-                            </p>
-                          </div>
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${isGenerating
-                              ? 'bg-lofi-accent/20 text-lofi-accent'
-                              : isCompleted
-                                ? 'bg-emerald-500/20 text-emerald-100'
-                                : isFailed
-                                  ? 'bg-red-500/20 text-red-100'
-                                  : 'bg-stone-700 text-stone-200'
-                              }`}
-                          >
-                            {isGenerating && (
-                              <span
-                                aria-hidden="true"
-                                className="h-3 w-3 animate-spin rounded-full border border-lofi-accent border-t-transparent"
-                              />
-                            )}
-                            {isCompleted && <span aria-hidden="true">✓</span>}
-                            {isFailed && <span aria-hidden="true">!</span>}
-                            {statusLabel}
-                          </span>
-                        </div>
-                        {isCompleted && entry.audioUrl && (
-                          <div className="mt-2 flex justify-end">
-                            <button
-                              type="button"
-                              aria-label={`Play generation ${entry.id}`}
-                              className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200"
-                              onClick={() => void handlePlayQueueEntry(entry)}
-                            >
-                              Play
-                            </button>
-                          </div>
-                        )}
-                        {entry.errorMessage && (
-                          <p className="mt-2 text-xs text-red-100">
-                            {entry.errorMessage}
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-
-            <section
-              aria-label="Visual prompt"
-              className="space-y-3 rounded-lg bg-lofi-panel p-4"
-            >
-              <div className="space-y-2">
-                <label
-                  htmlFor="visual-prompt"
-                  className="block text-sm font-semibold text-lofi-text"
-                >
-                  Image prompt
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm text-stone-200">
-                  <input
-                    type="checkbox"
-                    checked={useSamePromptForImage}
-                    onChange={(event) => {
-                      const nextChecked = event.target.checked;
-                      setUseSamePromptForImage(nextChecked);
-
-                      if (nextChecked) {
-                        setImagePromptBeforeSharedToggle(imagePrompt);
-                        setImagePrompt(musicPrompt);
-                      } else {
-                        setImagePrompt(imagePromptBeforeSharedToggle);
-                      }
-
-                      if (imagePromptErrorMessage) {
-                        setImagePromptErrorMessage(null);
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
-                  />
-                  <span>Use same prompt for image</span>
-                </label>
-              </div>
-
-              {!useSamePromptForImage && (
-                <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                  <input
-                    id="visual-prompt"
-                    type="text"
-                    value={imagePrompt}
-                    onChange={(event) => {
-                      setImagePrompt(event.target.value);
-                      if (imagePromptErrorMessage) {
-                        setImagePromptErrorMessage(null);
-                      }
-                    }}
-                    className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                    placeholder="Describe your lofi scene..."
-                  />
+            {activeTab === 'queue' && (
+              <section
+                aria-label="Generation queue"
+                className="space-y-3 rounded-lg bg-lofi-panel p-4"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                    Queue
+                  </h2>
+                  {playingEntryId !== null &&
+                    (() => {
+                      const idx = queueEntries.findIndex(
+                        (e) => e.id === playingEntryId
+                      );
+                      const position = idx >= 0 ? idx + 1 : 0;
+                      const total = queueEntries.length;
+                      return (
+                        <span
+                          aria-live="polite"
+                          className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-xs font-semibold text-lofi-accent"
+                        >
+                          Track {position} of {total}
+                        </span>
+                      );
+                    })()}
                 </div>
-              )}
+                {queueEntries.length === 0 ? (
+                  <p className="text-sm text-stone-300">No generations yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {queueEntries.map((entry, index) => {
+                      const statusLabel =
+                        entry.status[0].toUpperCase() + entry.status.slice(1);
+                      const isGenerating = entry.status === 'generating';
+                      const isCompleted = entry.status === 'completed';
+                      const isFailed = entry.status === 'failed';
+                      const isCurrentlyPlaying = entry.id === playingEntryId;
+                      const trackNumber = index + 1;
 
-              {useSamePromptForImage && (
-                <p className="text-sm text-stone-300">
-                  Image prompt will use the current music prompt.
-                </p>
-              )}
+                      return (
+                        <li
+                          key={entry.id}
+                          data-testid={`queue-entry-${entry.id}`}
+                          data-status={entry.status}
+                          data-playing={isCurrentlyPlaying ? 'true' : undefined}
+                          className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
+                            ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
+                            : ''
+                            } ${isGenerating
+                              ? 'border-lofi-accent/70 bg-stone-900/80'
+                              : isCompleted
+                                ? 'border-emerald-300/60 bg-emerald-500/10'
+                                : isFailed
+                                  ? 'border-red-400/60 bg-red-950/30'
+                                  : 'border-stone-600 bg-stone-900/40'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                                Track {trackNumber}
+                              </p>
+                              <p className="text-lofi-text">
+                                {isCurrentlyPlaying && (
+                                  <span
+                                    className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
+                                    aria-hidden="true"
+                                  >
+                                    ▶ Now playing
+                                  </span>
+                                )}
+                                {buildQueueSummary(entry.params)}
+                              </p>
+                            </div>
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${isGenerating
+                                ? 'bg-lofi-accent/20 text-lofi-accent'
+                                : isCompleted
+                                  ? 'bg-emerald-500/20 text-emerald-100'
+                                  : isFailed
+                                    ? 'bg-red-500/20 text-red-100'
+                                    : 'bg-stone-700 text-stone-200'
+                                }`}
+                            >
+                              {isGenerating && (
+                                <span
+                                  aria-hidden="true"
+                                  className="h-3 w-3 animate-spin rounded-full border border-lofi-accent border-t-transparent"
+                                />
+                              )}
+                              {isCompleted && <span aria-hidden="true">✓</span>}
+                              {isFailed && <span aria-hidden="true">!</span>}
+                              {statusLabel}
+                            </span>
+                          </div>
+                          {isCompleted && entry.audioUrl && (
+                            <div className="mt-2 flex justify-end">
+                              <button
+                                type="button"
+                                aria-label={`Play generation ${entry.id}`}
+                                className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200"
+                                onClick={() => void handlePlayQueueEntry(entry)}
+                              >
+                                Play
+                              </button>
+                            </div>
+                          )}
+                          {entry.errorMessage && (
+                            <p className="mt-2 text-xs text-red-100">
+                              {entry.errorMessage}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            )}
 
-              <div data-testid="visual-prompt-feedback" className="space-y-2">
-                {imagePromptErrorMessage && (
-                  <p role="alert" className="text-sm font-semibold text-red-100">
-                    {imagePromptErrorMessage}
+            {activeTab === 'visuals' && (
+              <section
+                aria-label="Visual prompt"
+                className="space-y-3 rounded-lg bg-lofi-panel p-4"
+              >
+                <div className="space-y-2">
+                  <label
+                    htmlFor="visual-prompt"
+                    className="block text-sm font-semibold text-lofi-text"
+                  >
+                    Image prompt
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm text-stone-200">
+                    <input
+                      type="checkbox"
+                      checked={useSamePromptForImage}
+                      onChange={(event) => {
+                        const nextChecked = event.target.checked;
+                        setUseSamePromptForImage(nextChecked);
+
+                        if (nextChecked) {
+                          setImagePromptBeforeSharedToggle(imagePrompt);
+                          setImagePrompt(musicPrompt);
+                        } else {
+                          setImagePrompt(imagePromptBeforeSharedToggle);
+                        }
+
+                        if (imagePromptErrorMessage) {
+                          setImagePromptErrorMessage(null);
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                    />
+                    <span>Use same prompt for image</span>
+                  </label>
+                </div>
+
+                {!useSamePromptForImage && (
+                  <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                    <input
+                      id="visual-prompt"
+                      type="text"
+                      value={imagePrompt}
+                      onChange={(event) => {
+                        setImagePrompt(event.target.value);
+                        if (imagePromptErrorMessage) {
+                          setImagePromptErrorMessage(null);
+                        }
+                      }}
+                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                      placeholder="Describe your lofi scene..."
+                    />
+                  </div>
+                )}
+
+                {useSamePromptForImage && (
+                  <p className="text-sm text-stone-300">
+                    Image prompt will use the current music prompt.
                   </p>
                 )}
-              </div>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="active-visualizer"
-                  className="block text-sm font-semibold text-lofi-text"
-                >
-                  Active visualizer
-                </label>
-                <select
-                  id="active-visualizer"
-                  value={activeVisualizerType}
-                  onChange={(event) =>
-                    setActiveVisualizerType(event.target.value as VisualizerType)
-                  }
-                  className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                >
-                  {visualizerOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <fieldset
-                aria-label="Post-processing effects"
-                className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-              >
-                <legend className="text-sm font-semibold text-lofi-text">
-                  Effects
-                </legend>
-                <div className="space-y-2">
-                  {effectOrder.map((effectType, index) => (
-                    <div
-                      key={effectType}
-                      data-testid={`effect-row-${effectType}`}
-                      className="flex items-center justify-between gap-2 rounded-md border border-stone-700/80 bg-stone-900/60 px-3 py-2 text-sm text-stone-200"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <input
-                          id={`effect-${effectType}`}
-                          type="checkbox"
-                          checked={enabledEffects[effectType]}
-                          onChange={(event) =>
-                            setEnabledEffects((prev) => ({
-                              ...prev,
-                              [effectType]: event.target.checked
-                            }))
-                          }
-                          className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
-                        />
-                        <label htmlFor={`effect-${effectType}`}>
-                          {effectType}
-                        </label>
-                      </span>
-                      <span className="inline-flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleMoveEffect(effectType, 'up')}
-                          disabled={index === 0}
-                          className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          Up
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveEffect(effectType, 'down')}
-                          disabled={index === effectOrder.length - 1}
-                          className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          Down
-                        </button>
-                      </span>
-                    </div>
-                  ))}
+                <div data-testid="visual-prompt-feedback" className="space-y-2">
+                  {imagePromptErrorMessage && (
+                    <p role="alert" className="text-sm font-semibold text-red-100">
+                      {imagePromptErrorMessage}
+                    </p>
+                  )}
                 </div>
-              </fieldset>
-            </section>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="active-visualizer"
+                    className="block text-sm font-semibold text-lofi-text"
+                  >
+                    Active visualizer
+                  </label>
+                  <select
+                    id="active-visualizer"
+                    value={activeVisualizerType}
+                    onChange={(event) =>
+                      setActiveVisualizerType(event.target.value as VisualizerType)
+                    }
+                    className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                  >
+                    {visualizerOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <fieldset
+                  aria-label="Post-processing effects"
+                  className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+                >
+                  <legend className="text-sm font-semibold text-lofi-text">
+                    Effects
+                  </legend>
+                  <div className="space-y-2">
+                    {effectOrder.map((effectType, index) => (
+                      <div
+                        key={effectType}
+                        data-testid={`effect-row-${effectType}`}
+                        className="flex items-center justify-between gap-2 rounded-md border border-stone-700/80 bg-stone-900/60 px-3 py-2 text-sm text-stone-200"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <input
+                            id={`effect-${effectType}`}
+                            type="checkbox"
+                            checked={enabledEffects[effectType]}
+                            onChange={(event) =>
+                              setEnabledEffects((prev) => ({
+                                ...prev,
+                                [effectType]: event.target.checked
+                              }))
+                            }
+                            className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                          />
+                          <label htmlFor={`effect-${effectType}`}>
+                            {effectType}
+                          </label>
+                        </span>
+                        <span className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleMoveEffect(effectType, 'up')}
+                            disabled={index === 0}
+                            className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Up
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveEffect(effectType, 'down')}
+                            disabled={index === effectOrder.length - 1}
+                            className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Down
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              </section>
+            )}
           </div>
 
           <div
