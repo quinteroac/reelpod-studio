@@ -1243,7 +1243,10 @@ export function App() {
             </section>
           </div>
 
-          <div className="space-y-6">
+          <div
+            data-testid="preview-column"
+            className="space-y-6 lg:sticky lg:top-10 lg:self-start"
+          >
             <section aria-label="Visual scene" className="rounded-lg bg-lofi-panel p-4">
               <div
                 data-testid="visual-canvas"
@@ -1263,6 +1266,7 @@ export function App() {
 
             {hasGeneratedTrack && (
               <section
+                data-testid="playback-controls-section"
                 aria-label="Playback controls"
                 className="grid gap-3 rounded-lg bg-lofi-panel p-4"
               >

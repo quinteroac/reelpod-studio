@@ -442,6 +442,108 @@ describe('App controls panel layout (US-001)', () => {
   });
 });
 
+describe('App right column preview and playback layout (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      (obj: Blob | MediaSource) => {
+        if ('type' in obj && obj.type === 'image/png') {
+          return 'blob:http://localhost/generated-image-url';
+        }
+
+        return 'blob:http://localhost/generated-audio-url';
+      }
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('keeps VisualScene in the right column and renders playback controls directly below it after generation', async () => {
+    render(<App />);
+
+    const previewColumn = screen.getByTestId('preview-column');
+    expect(within(previewColumn).getByRole('region', { name: 'Visual scene' })).toBeInTheDocument();
+    expect(
+      within(previewColumn).queryByRole('region', { name: 'Playback controls' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    const sectionsInOrder = Array.from(previewColumn.children).filter(
+      (child) => child.tagName === 'SECTION'
+    );
+    expect(sectionsInOrder.map((section) => section.getAttribute('aria-label'))).toEqual([
+      'Visual scene',
+      'Playback controls'
+    ]);
+
+    const playbackSection = within(previewColumn).getByRole('region', {
+      name: 'Playback controls'
+    });
+    expect(within(playbackSection).getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    expect(within(playbackSection).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    expect(within(playbackSection).getByLabelText('Seek')).toBeInTheDocument();
+  });
+
+  it('applies sticky top-aligned desktop classes to the right column', () => {
+    render(<App />);
+
+    const previewColumn = screen.getByTestId('preview-column');
+    expect(previewColumn.className).toContain('lg:sticky');
+    expect(previewColumn.className).toContain('lg:top-10');
+    expect(previewColumn.className).toContain('lg:self-start');
+  });
+
+  it('updates VisualScene aspect ratio based on selected social format', () => {
+    render(<App />);
+
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      (16 / 9).toFixed(4)
+    );
+
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'TikTok/Reels (9:16 · 1080×1920)' })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      (9 / 16).toFixed(4)
+    );
+
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'Instagram Square (1:1 · 1080×1080)' })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      '1.0000'
+    );
+  });
+
+  it('renders playback controls only when a track has been generated', async () => {
+    render(<App />);
+
+    expect(
+      screen.queryByTestId('playback-controls-section')
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playback-controls-section')).toBeInTheDocument();
+    });
+  });
+});
+
 describe('App effects toggles (US-002)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
