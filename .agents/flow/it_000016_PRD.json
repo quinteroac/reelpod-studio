@@ -1,0 +1,116 @@
+{
+  "goals": [
+    "Give the visual scene a prominent, persistent position on screen while the user interacts with controls.",
+    "Reduce scrolling by placing the video panel alongside the controls rather than below them.",
+    "Keep the existing warm lofi theme and all existing functionality unchanged."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Controls Panel in Left Column",
+      "description": "As a content creator, I want all generation controls stacked in a left column so that I can configure and queue tracks without losing sight of the visual scene.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "On wide screens (≥ 1024 px), the page header spans full-width above the grid, and the left column contains, in order: the Generation parameters section (mode, music prompt, mood/tempo/style, duration, format), the Generation actions section (Generate button + errors), the Generation queue section, and the Visual prompt section (image prompt, visualizer selector, effects list)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "None of the existing controls, labels, inputs, or interactive behaviours are removed or altered."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Visually verified in browser: left column renders all controls with no missing elements."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Video Panel and Playback Controls in Right Column",
+      "description": "As a content creator, I want the visual scene canvas and playback controls (Play, Pause, Seek) displayed in a right column so that I can preview and control playback while managing settings on the left.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "On wide screens (≥ 1024 px), the right column contains the `VisualScene` canvas followed immediately below by the playback controls section (Play, Pause, Seek slider)."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The right column is sticky / top-aligned so the video stays visible while the user scrolls the left column."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The `VisualScene` canvas preserves its aspect ratio based on the selected social format (16:9, 9:16, 1:1)."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "The playback controls section is only rendered when `hasGeneratedTrack` is true (unchanged behaviour)."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Visually verified in browser: right column shows the canvas and playback controls side-by-side with the left column."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Responsive Single-Column Fallback",
+      "description": "As a content creator on a narrow screen (tablet / mobile), I want the layout to collapse to a single column so that controls and the video panel remain usable on small viewports.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Below 1024 px viewport width, the layout stacks into a single column: controls on top, video panel and playback below."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "No horizontal overflow or clipped content occurs at 375 px, 768 px, and 1024 px breakpoints."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Visually verified in browser at a narrow viewport: single-column layout with no overflow."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "The top-level wrapper changes from `max-w-3xl` single-column to a two-column CSS grid or flexbox layout using Tailwind's `lg:grid-cols-[…]` or equivalent responsive utility."
+    },
+    {
+      "id": "FR-2",
+      "description": "The left column contains all existing sections except the `VisualScene` canvas and the playback controls section."
+    },
+    {
+      "id": "FR-3",
+      "description": "The `VisualScene` canvas (`data-testid=\"visual-canvas\"`) is moved out of the Visual prompt section and into the right column."
+    },
+    {
+      "id": "FR-4",
+      "description": "The playback controls section (`aria-label=\"Playback controls\"`) is placed directly below the canvas in the right column."
+    },
+    {
+      "id": "FR-5",
+      "description": "The right column uses `sticky top-0` (or equivalent) so the video panel stays in view while the user scrolls the left column."
+    },
+    {
+      "id": "FR-6",
+      "description": "No TypeScript types, state, event handlers, component props, or Tailwind theme tokens are changed — only JSX structure and layout class names."
+    },
+    {
+      "id": "FR-7",
+      "description": "The header (`<header>`) spans the full width above the two-column grid, outside and before the grid container."
+    }
+  ]
+}
