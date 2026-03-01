@@ -7,9 +7,6 @@
 
 
 ## Improvements
-- Generate music and image in one stepcc
-- Add music/video duration
-- Add video/image aspect ratio with upscale/refiner model (Social formats and resolutions)
 - Add effect and visualization selector
 
 ## Issues

@@ -250,12 +250,13 @@ class TestGenerateEndpoint:
     def test_task_failure_status_returns_500(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setattr(main.time, "sleep", lambda _seconds: None)
         def fake_urlopen(request, timeout=30):  # noqa: ANN001, ARG001
             if request.full_url.endswith("/release_task"):
                 return FakeHTTPResponse(json.dumps({"task_id": "task-123"}).encode("utf-8"))
             if request.full_url.endswith("/query_result"):
                 return FakeHTTPResponse(
-                    json.dumps({"status": 2, "result": json.dumps({"message": "failed"})}).encode("utf-8")
+                    json.dumps({"data": [{"status": 2, "result": json.dumps({"message": "failed"})}]}).encode("utf-8")
                 )
             raise AssertionError(f"Unexpected URL: {request.full_url}")
 
