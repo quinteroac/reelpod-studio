@@ -10,6 +10,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Literal
 from typing import Any
+from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
@@ -21,13 +22,14 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, StrictInt, StrictStr, field_validator
+from pydantic import BaseModel, Field, StrictInt, StrictStr, field_validator, model_validator
 
 MIN_TEMPO = 60
 MAX_TEMPO = 120
 
 INVALID_PAYLOAD_ERROR = (
-    f"Invalid payload. Expected {{ mood: string, tempo: number ({MIN_TEMPO}-{MAX_TEMPO}), style: string }}"
+    "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', "
+    f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), style?: string }}"
 )
 
 DEFAULT_ACESTEP_API_URL = "http://localhost:8001"
@@ -65,9 +67,22 @@ queue_stop_event = threading.Event()
 
 
 class GenerateRequestBody(BaseModel):
-    mood: StrictStr
-    tempo: StrictInt = Field(ge=MIN_TEMPO, le=MAX_TEMPO)
-    style: StrictStr
+    mode: Literal["text", "text+params", "text-and-parameters", "params", "parameters"] = "params"
+    prompt: Optional[StrictStr] = None
+    mood: StrictStr = "chill"
+    tempo: StrictInt = Field(default=80, ge=MIN_TEMPO, le=MAX_TEMPO)
+    style: StrictStr = "jazz"
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt_if_provided(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Value must be a non-empty string.")
+        return trimmed
 
     @field_validator("mood", "style")
     @classmethod
@@ -76,6 +91,12 @@ class GenerateRequestBody(BaseModel):
         if not trimmed:
             raise ValueError("Value must be a non-empty string.")
         return trimmed
+
+    @model_validator(mode="after")
+    def validate_prompt_for_mode(self) -> "GenerateRequestBody":
+        if self.mode in ("text", "text+params", "text-and-parameters") and self.prompt is None:
+            raise ValueError("prompt is required in text modes.")
+        return self
 
 
 class GenerateImageRequestBody(BaseModel):
@@ -96,7 +117,12 @@ async def handle_validation_error(_request: Any, _exc: RequestValidationError) -
 
 
 def build_prompt(body: GenerateRequestBody) -> str:
-    # Prompt template: "{mood} lofi {style}, {tempo} BPM"
+    if body.mode == "text":
+        return body.prompt or ""
+    if body.mode in ("text+params", "text-and-parameters"):
+        return f"{body.prompt or ''}, {body.mood}, {body.style}, {body.tempo} BPM"
+
+    # Prompt template for params mode: "{mood} lofi {style}, {tempo} BPM"
     return f"{body.mood} lofi {body.style}, {body.tempo} BPM"
 
 
@@ -238,11 +264,12 @@ def get_queue_item_snapshot(item_id: str) -> GenerationQueueItem | None:
 
 
 def enqueue_generation_request(body: GenerateRequestBody) -> GenerationQueueItem:
+    tempo = 80 if body.mode == "text" else body.tempo
     item = GenerationQueueItem(
         id=str(uuid4()),
         prompt=build_prompt(body),
         status="queued",
-        tempo=body.tempo,
+        tempo=tempo,
     )
     with queue_condition:
         queue_items[item.id] = item
