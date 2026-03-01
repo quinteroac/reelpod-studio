@@ -42,7 +42,8 @@
 
 ## Product Architecture
 - Browser frontend (React/Vite) + Python backend (FastAPI, port 8000) + ACEStep service (port 8001); Vite proxies `/api` to backend
-- Audio flow: User configures parameters → clicks Generate → `POST /api/generate` → FastAPI submits to ACEStep (`POST /release_task`), polls for completion (`POST /query_result`), fetches WAV → returns `StreamingResponse` to browser → HTML5 `<audio>` plays it
+- Backend layering: `backend/routes/` handles HTTP transport + exception mapping, `backend/services/` owns business logic/orchestration, `backend/repositories/` performs external I/O (ACEStep HTTP + image model/pipeline integration)
+- Audio flow: User configures parameters → clicks Generate → `POST /api/generate` → route delegates to audio service → service submits/polls/fetches through ACEStep repository → route returns `StreamingResponse` to browser → HTML5 `<audio>` plays it
 - ACEStep communication: submit/poll pattern via `urllib` — `ACESTEP_API_URL` env var (default `http://localhost:8001`)
 - Visual flow: `VisualScene` hosts R3F `<Canvas>` (orthographic camera, zoom 120) → renders image plane (or fallback SVG) + active visualizer + stacked effects; all driven by `audioCurrentTime` / `audioDuration` / `isPlaying` props for audio-reactive animation
 - Some visualizers replace the default image plane entirely (rain, scene-rain, glitch)
@@ -54,7 +55,10 @@
 - `src/components/effects/`: composer pattern — `EffectComposer` renders from `EffectType[]`; types: `zoom`, `flicker`, `vignette`, `filmGrain`, `chromaticAberration`, `scanLines`, `colorDrift`, `none`
 - `src/lib/visual-scene.ts`: pure math — `computeContainScale`, `computeWaveformPhase`, `buildWaveformPositions`
 - `src/api/constants.ts`: API endpoint constants (`/api/generate`)
-- `backend/main.py`: FastAPI app; `POST /api/generate` handler; communicates with ACEStep via HTTP submit/poll
+- `backend/main.py`: backend composition root — creates FastAPI app, registers routers/handlers, and wires startup/shutdown lifecycle hooks
+- `backend/routes/`: FastAPI route modules (`APIRouter`) that parse HTTP requests/responses and delegate work to services
+- `backend/services/`: business/domain orchestration layer (audio queue flow and image processing rules) with no direct external transport calls
+- `backend/repositories/`: external integration layer for ACEStep/image model I/O and adapter utilities used by services
 
 ## Implemented Capabilities
 <!-- Updated at the end of each iteration by bun nvst create project-context -->
