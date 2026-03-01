@@ -13,6 +13,27 @@ type VisualSceneProps = {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  effects: Array<
+    | 'zoom'
+    | 'flicker'
+    | 'vignette'
+    | 'filmGrain'
+    | 'chromaticAberration'
+    | 'scanLines'
+    | 'colorDrift'
+    | 'none'
+  >;
+  visualizerType:
+    | 'waveform'
+    | 'rain'
+    | 'scene-rain'
+    | 'starfield'
+    | 'aurora'
+    | 'circle-spectrum'
+    | 'glitch'
+    | 'smoke'
+    | 'contour'
+    | 'none';
 };
 
 const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
@@ -23,6 +44,8 @@ const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
     data-audio-duration={props.audioDuration.toFixed(2)}
     data-is-playing={props.isPlaying ? 'true' : 'false'}
     data-aspect-ratio={props.aspectRatio.toFixed(4)}
+    data-effects={props.effects.join(',')}
+    data-visualizer-type={props.visualizerType}
   />
 ));
 
@@ -139,6 +162,50 @@ describe('App unified generate flow (US-003)', () => {
         })
       });
     });
+  });
+
+  it('renders the visualizer selector in the Visual prompt section with all visualizer options', () => {
+    render(<App />);
+
+    const visualPromptSection = screen.getByRole('region', {
+      name: 'Visual prompt'
+    });
+    const selector = within(visualPromptSection).getByLabelText(
+      'Active visualizer'
+    ) as HTMLSelectElement;
+
+    expect(selector).toBeInTheDocument();
+    expect(Array.from(selector.options).map((option) => option.value)).toEqual([
+      'waveform',
+      'rain',
+      'scene-rain',
+      'starfield',
+      'aurora',
+      'circle-spectrum',
+      'glitch',
+      'smoke',
+      'contour',
+      'none'
+    ]);
+  });
+
+  it('defaults to glitch and updates the active visualizer immediately on selection change', () => {
+    render(<App />);
+
+    const selector = screen.getByLabelText(
+      'Active visualizer'
+    ) as HTMLSelectElement;
+    expect(selector.value).toBe('glitch');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-visualizer-type',
+      'glitch'
+    );
+
+    fireEvent.change(selector, { target: { value: 'waveform' } });
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-visualizer-type',
+      'waveform'
+    );
   });
 
   it('keeps Generate enabled while processing and transitions queue from Queued -> Generating -> Completed', async () => {
@@ -291,6 +358,183 @@ describe('App unified generate flow (US-003)', () => {
     );
     expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('App effects toggles (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
+      if ('type' in obj && obj.type === 'image/png') {
+        return 'blob:http://localhost/generated-image-url';
+      }
+
+      return 'blob:http://localhost/generated-audio-url';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('lists all 7 effect types and defaults to colorDrift only', () => {
+    render(<App />);
+
+    const expectedEffects = [
+      'zoom',
+      'flicker',
+      'vignette',
+      'filmGrain',
+      'chromaticAberration',
+      'scanLines',
+      'colorDrift'
+    ];
+
+    const effectSection = screen.getByRole('group', {
+      name: 'Post-processing effects'
+    });
+    const checkboxes = within(effectSection).getAllByRole('checkbox');
+    expect(checkboxes).toHaveLength(7);
+
+    expectedEffects.forEach((effect) => {
+      expect(within(effectSection).getByRole('checkbox', { name: effect })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('checkbox', { name: 'colorDrift' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'zoom' })).not.toBeChecked();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'colorDrift'
+    );
+  });
+
+  it('adds and removes effects from the active array immediately when toggled', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'zoom' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom,colorDrift'
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'colorDrift' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom'
+    );
+  });
+
+  it('passes active effects to VisualScene in fixed list order', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'scanLines' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'chromaticAberration' })
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'zoom' }));
+
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom,chromaticAberration,scanLines,colorDrift'
+    );
+  });
+});
+
+describe('App effect reorder (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
+      if ('type' in obj && obj.type === 'image/png') {
+        return 'blob:http://localhost/generated-image-url';
+      }
+
+      return 'blob:http://localhost/generated-audio-url';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('renders Up/Down buttons per effect row and disables first/last boundaries', () => {
+    render(<App />);
+
+    const rowZoom = screen.getByTestId('effect-row-zoom');
+    const rowColorDrift = screen.getByTestId('effect-row-colorDrift');
+
+    expect(within(rowZoom).getByRole('button', { name: 'Up' })).toBeDisabled();
+    expect(within(rowZoom).getByRole('button', { name: 'Down' })).toBeEnabled();
+    expect(within(rowColorDrift).getByRole('button', { name: 'Up' })).toBeEnabled();
+    expect(within(rowColorDrift).getByRole('button', { name: 'Down' })).toBeDisabled();
+  });
+
+  it('moves effects up and down and updates VisualScene effects immediately', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'vignette' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'vignette,filmGrain,colorDrift'
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Down'
+      })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'filmGrain,vignette,colorDrift'
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Up'
+      })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'vignette,filmGrain,colorDrift'
+    );
+  });
+
+  it('keeps enabled effect UI order aligned with effects passed to VisualScene', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'vignette' }));
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Down'
+      })
+    );
+    fireEvent.click(
+      within(screen.getByTestId('effect-row-vignette')).getByRole('button', {
+        name: 'Down'
+      })
+    );
+
+    const enabledEffectsInUiOrder = screen
+      .getAllByTestId(/effect-row-/)
+      .flatMap((row) => {
+        const checkbox = within(row).getByRole('checkbox') as HTMLInputElement;
+        if (!checkbox.checked) {
+          return [];
+        }
+
+        return [checkbox.id.replace('effect-', '')];
+      });
+
+    const sceneEffects =
+      screen.getByTestId('visual-scene').getAttribute('data-effects') ?? '';
+    expect(enabledEffectsInUiOrder).toEqual(sceneEffects.split(','));
   });
 });
 

@@ -25,10 +25,13 @@ import {
   GENERATE_ENDPOINT_PATH,
   GENERATE_IMAGE_ENDPOINT_PATH
 } from './api/constants';
+import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
+import type { VisualizerType } from './components/visualizers';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
+type ToggleableEffectType = Exclude<EffectType, 'none'>;
 
 interface QueueEntry {
   id: number;
@@ -80,6 +83,40 @@ const socialFormatOptions: ReadonlyArray<SocialFormatPreset> = [
   }
 ];
 const defaultSocialFormatId: SocialFormatId = 'youtube';
+const visualizerOptions: ReadonlyArray<{
+  value: VisualizerType;
+  label: string;
+}> = [
+  { value: 'waveform', label: 'waveform' },
+  { value: 'rain', label: 'rain' },
+  { value: 'scene-rain', label: 'scene-rain' },
+  { value: 'starfield', label: 'starfield' },
+  { value: 'aurora', label: 'aurora' },
+  { value: 'circle-spectrum', label: 'circle-spectrum' },
+  { value: 'glitch', label: 'glitch' },
+  { value: 'smoke', label: 'smoke' },
+  { value: 'contour', label: 'contour' },
+  { value: 'none', label: 'none' }
+];
+const effectOptions: ReadonlyArray<ToggleableEffectType> = [
+  'zoom',
+  'flicker',
+  'vignette',
+  'filmGrain',
+  'chromaticAberration',
+  'scanLines',
+  'colorDrift'
+];
+const defaultEffectOrder: ToggleableEffectType[] = [...effectOptions];
+const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
+  zoom: false,
+  flicker: false,
+  vignette: false,
+  filmGrain: false,
+  chromaticAberration: false,
+  scanLines: false,
+  colorDrift: true
+};
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
@@ -243,8 +280,16 @@ export function App() {
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
+  const [activeVisualizerType, setActiveVisualizerType] =
+    useState<VisualizerType>('glitch');
+  const [enabledEffects, setEnabledEffects] = useState<
+    Record<ToggleableEffectType, boolean>
+  >(defaultEnabledEffects);
+  const [effectOrder, setEffectOrder] =
+    useState<ToggleableEffectType[]>(defaultEffectOrder);
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
+  const activeEffects = effectOrder.filter((effect) => enabledEffects[effect]);
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
@@ -614,6 +659,29 @@ export function App() {
       setAudioCurrentTime(audio.currentTime);
       setAudioDuration(audio.duration);
     }
+  }
+
+  function handleMoveEffect(
+    effect: ToggleableEffectType,
+    direction: 'up' | 'down'
+  ): void {
+    setEffectOrder((prev) => {
+      const currentIndex = prev.indexOf(effect);
+      if (currentIndex === -1) {
+        return prev;
+      }
+
+      const targetIndex =
+        direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) {
+        return prev;
+      }
+
+      const next = [...prev];
+      const [movedEffect] = next.splice(currentIndex, 1);
+      next.splice(targetIndex, 0, movedEffect);
+      return next;
+    });
   }
 
   return (
@@ -1092,6 +1160,81 @@ export function App() {
             )}
           </div>
 
+          <div className="space-y-2">
+            <label
+              htmlFor="active-visualizer"
+              className="block text-sm font-semibold text-lofi-text"
+            >
+              Active visualizer
+            </label>
+            <select
+              id="active-visualizer"
+              value={activeVisualizerType}
+              onChange={(event) =>
+                setActiveVisualizerType(event.target.value as VisualizerType)
+              }
+              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+            >
+              {visualizerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <fieldset
+            aria-label="Post-processing effects"
+            className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+          >
+            <legend className="text-sm font-semibold text-lofi-text">
+              Effects
+            </legend>
+            <div className="space-y-2">
+              {effectOrder.map((effectType, index) => (
+                <div
+                  key={effectType}
+                  data-testid={`effect-row-${effectType}`}
+                  className="flex items-center justify-between gap-2 rounded-md border border-stone-700/80 bg-stone-900/60 px-3 py-2 text-sm text-stone-200"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <input
+                      id={`effect-${effectType}`}
+                      type="checkbox"
+                      checked={enabledEffects[effectType]}
+                      onChange={(event) =>
+                        setEnabledEffects((prev) => ({
+                          ...prev,
+                          [effectType]: event.target.checked
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                    />
+                    <label htmlFor={`effect-${effectType}`}>{effectType}</label>
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveEffect(effectType, 'up')}
+                      disabled={index === 0}
+                      className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveEffect(effectType, 'down')}
+                      disabled={index === effectOrder.length - 1}
+                      className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Down
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </fieldset>
+
           <div
             data-testid="visual-canvas"
             className="mx-auto flex w-full max-w-[760px] items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
@@ -1102,6 +1245,8 @@ export function App() {
               audioDuration={audioDuration}
               isPlaying={isPlaying}
               aspectRatio={selectedSocialFormat.aspectRatio}
+              visualizerType={activeVisualizerType}
+              effects={activeEffects}
             />
           </div>
         </section>

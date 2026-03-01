@@ -18,6 +18,8 @@ type VisualSceneProps = {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  visualizerType: VisualizerType;
+  effects: EffectType[];
 };
 
 type SceneRenderProps = {
@@ -69,7 +71,7 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
           {/* Dark overlay dims the image so the waveforms read clearly */}
           <mesh scale={[planeWidth, planeHeight, 1]} position={[0, 0, 0.05]}>
             <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial color="#000000" />
+            <meshBasicMaterial color="#000000" transparent opacity={0.45} />
           </mesh>
         </>
       )}
@@ -93,12 +95,10 @@ export function VisualScene({
   audioCurrentTime,
   audioDuration,
   isPlaying,
-  aspectRatio
+  aspectRatio,
+  visualizerType,
+  effects
 }: VisualSceneProps) {
-  // Available visualizers: 'waveform' | 'rain' | 'scene-rain' | 'starfield' | 'aurora' | 'circle-spectrum' | 'glitch' | 'smoke' | 'contour' | 'none'
-  const currentVisualizerType: VisualizerType = 'glitch';
-  // Available effects: 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'none'
-  const currentEffects: EffectType[] = ['colorDrift'];
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -140,8 +140,8 @@ export function VisualScene({
           audioCurrentTime={audioCurrentTime}
           audioDuration={audioDuration}
           isPlaying={isPlaying}
-          visualizerType={currentVisualizerType}
-          effects={currentEffects}
+          visualizerType={visualizerType}
+          effects={effects}
           onDerived={handleDerived}
         />
       </Canvas>

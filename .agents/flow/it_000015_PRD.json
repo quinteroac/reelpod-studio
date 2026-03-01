@@ -1,0 +1,148 @@
+{
+  "goals": [
+    "Replace hardcoded visualizer/effects values with reactive state driven by UI controls.",
+    "Let creators explore all 10 visualizers and 7 effects without a page reload.",
+    "Keep the new controls consistent with the existing warm lofi theme and panel layout."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Select Active Visualizer",
+      "description": "As a creator, I want to pick any visualizer from a list so that I can choose the animation style that best fits my content.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A labeled control (e.g. `<select>` or radio-button group) lists all 10 visualizer types: `waveform`, `rain`, `scene-rain`, `starfield`, `aurora`, `circle-spectrum`, `glitch`, `smoke`, `contour`, `none`."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The control is placed in the Visual Scene section of the page, above or below the canvas, within the existing `aria-label=\"Visual prompt\"` section."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Selecting a visualizer updates the canvas immediately without any page reload."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The selected visualizer is the one displayed in the R3F canvas (i.e. the hardcoded `currentVisualizerType` constant is removed and replaced by state)."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Default selection on load is `glitch` (preserves current behaviour)."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Visually verified in browser: switching between at least three visualizers updates the canvas live."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Toggle Effects On/Off",
+      "description": "As a creator, I want to enable or disable individual post-processing effects so that I can mix and match the look of my scene.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A section lists all 7 effect types: `zoom`, `flicker`, `vignette`, `filmGrain`, `chromaticAberration`, `scanLines`, `colorDrift`."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Each effect has a checkbox (or toggle button) that adds it to or removes it from the active effects array."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Toggling an effect updates the canvas immediately without a page reload."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "The active effects array passed to `EffectComposer` reflects exactly the enabled effects in the order they appear in the list."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Default state on load: only `colorDrift` is enabled (preserves current behaviour)."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "The hardcoded `currentEffects` constant is removed and replaced by state."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Visually verified in browser: enabling and disabling at least two effects shows the visual change on the canvas live."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Reorder Active Effects",
+      "description": "As a creator, I want to change the order of enabled effects in the stack so that I can control how the effects layer on top of each other.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Each effect row in the list has an \"Up\" button and a \"Down\" button."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Clicking \"Up\" moves the effect one position earlier in the effects array; clicking \"Down\" moves it one position later."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The \"Up\" button is disabled (or absent) for the first item; the \"Down\" button is disabled (or absent) for the last item."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Reordering updates the canvas immediately without a page reload."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "The order in the UI matches the order in which effects are passed to `EffectComposer`."
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC07",
+          "text": "Visually verified in browser: reordering two stackable effects (e.g. `filmGrain` and `vignette`) produces a visually different result on the canvas."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "`VisualScene` must accept `visualizerType: VisualizerType` and `effects: EffectType[]` as props instead of deriving them from internal constants."
+    },
+    {
+      "id": "FR-2",
+      "description": "The parent component (`App`) must own the `visualizerType` state (default `'glitch'`) and `effects` state (default `['colorDrift']`) and pass them down to `VisualScene`."
+    },
+    {
+      "id": "FR-3",
+      "description": "The visualizer selector and effects list controls must live inside the `aria-label=\"Visual prompt\"` section, below the canvas element, so the visual scene remains the focal point."
+    },
+    {
+      "id": "FR-4",
+      "description": "The visualizer selector must render all values of `VisualizerType` (sourced from the existing type union) so adding a new visualizer in future only requires updating the type, not the UI code."
+    },
+    {
+      "id": "FR-5",
+      "description": "The effects list must render all values of `EffectType` (sourced from the existing type union), excluding `'none'`, as individually toggleable rows."
+    },
+    {
+      "id": "FR-6",
+      "description": "Up/Down reorder buttons must be keyboard-accessible (focusable, activatable with Enter/Space)."
+    },
+    {
+      "id": "FR-7",
+      "description": "The new controls must follow existing Tailwind class patterns (`bg-lofi-panel`, `border-stone-600`, `text-lofi-text`, `focus-visible:ring-2 focus-visible:ring-lofi-accent`, etc.)."
+    }
+  ]
+}
