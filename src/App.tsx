@@ -687,7 +687,7 @@ export function App() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 text-lofi-text">
-      <div className="mx-auto w-full max-w-7xl min-w-0 space-y-6">
+      <div className="mx-auto w-full min-w-0 space-y-6">
         <header className="space-y-2">
           <h1 className="font-serif text-4xl font-bold text-lofi-text">
             ReelPod Studio
@@ -698,7 +698,7 @@ export function App() {
         </header>
         <div
           data-testid="studio-layout-grid"
-          className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] xl:items-start"
+          className="grid min-w-0 gap-6 xl:grid-cols-[3fr_7fr] xl:items-start"
         >
           <div data-testid="controls-column" className="min-w-0 space-y-6">
             <div className="flex gap-6 border-b border-stone-800">
@@ -943,6 +943,74 @@ export function App() {
                     </div>
                   </fieldset>
                 </section>
+                <section
+                  aria-label="Visual prompt"
+                  className="space-y-3 rounded-lg bg-lofi-panel p-4"
+                >
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="visual-prompt"
+                      className="block text-sm font-semibold text-lofi-text"
+                    >
+                      Image prompt
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-sm text-stone-200">
+                      <input
+                        type="checkbox"
+                        checked={useSamePromptForImage}
+                        onChange={(event) => {
+                          const nextChecked = event.target.checked;
+                          setUseSamePromptForImage(nextChecked);
+
+                          if (nextChecked) {
+                            setImagePromptBeforeSharedToggle(imagePrompt);
+                            setImagePrompt(musicPrompt);
+                          } else {
+                            setImagePrompt(imagePromptBeforeSharedToggle);
+                          }
+
+                          if (imagePromptErrorMessage) {
+                            setImagePromptErrorMessage(null);
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                      />
+                      <span>Use same prompt for image</span>
+                    </label>
+                  </div>
+
+                  {!useSamePromptForImage && (
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                      <input
+                        id="visual-prompt"
+                        type="text"
+                        value={imagePrompt}
+                        onChange={(event) => {
+                          setImagePrompt(event.target.value);
+                          if (imagePromptErrorMessage) {
+                            setImagePromptErrorMessage(null);
+                          }
+                        }}
+                        className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                        placeholder="Describe your lofi scene..."
+                      />
+                    </div>
+                  )}
+
+                  {useSamePromptForImage && (
+                    <p className="text-sm text-stone-300">
+                      Image prompt will use the current music prompt.
+                    </p>
+                  )}
+
+                  <div data-testid="visual-prompt-feedback" className="space-y-2">
+                    {imagePromptErrorMessage && (
+                      <p role="alert" className="text-sm font-semibold text-red-100">
+                        {imagePromptErrorMessage}
+                      </p>
+                    )}
+                  </div>
+                </section>
               </>
             )}
 
@@ -1123,72 +1191,9 @@ export function App() {
 
             {activeTab === 'visuals' && (
               <section
-                aria-label="Visual prompt"
+                aria-label="Visualizer settings"
                 className="space-y-3 rounded-lg bg-lofi-panel p-4"
               >
-                <div className="space-y-2">
-                  <label
-                    htmlFor="visual-prompt"
-                    className="block text-sm font-semibold text-lofi-text"
-                  >
-                    Image prompt
-                  </label>
-                  <label className="inline-flex items-center gap-2 text-sm text-stone-200">
-                    <input
-                      type="checkbox"
-                      checked={useSamePromptForImage}
-                      onChange={(event) => {
-                        const nextChecked = event.target.checked;
-                        setUseSamePromptForImage(nextChecked);
-
-                        if (nextChecked) {
-                          setImagePromptBeforeSharedToggle(imagePrompt);
-                          setImagePrompt(musicPrompt);
-                        } else {
-                          setImagePrompt(imagePromptBeforeSharedToggle);
-                        }
-
-                        if (imagePromptErrorMessage) {
-                          setImagePromptErrorMessage(null);
-                        }
-                      }}
-                      className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
-                    />
-                    <span>Use same prompt for image</span>
-                  </label>
-                </div>
-
-                {!useSamePromptForImage && (
-                  <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                    <input
-                      id="visual-prompt"
-                      type="text"
-                      value={imagePrompt}
-                      onChange={(event) => {
-                        setImagePrompt(event.target.value);
-                        if (imagePromptErrorMessage) {
-                          setImagePromptErrorMessage(null);
-                        }
-                      }}
-                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                      placeholder="Describe your lofi scene..."
-                    />
-                  </div>
-                )}
-
-                {useSamePromptForImage && (
-                  <p className="text-sm text-stone-300">
-                    Image prompt will use the current music prompt.
-                  </p>
-                )}
-
-                <div data-testid="visual-prompt-feedback" className="space-y-2">
-                  {imagePromptErrorMessage && (
-                    <p role="alert" className="text-sm font-semibold text-red-100">
-                      {imagePromptErrorMessage}
-                    </p>
-                  )}
-                </div>
 
                 <div className="space-y-2">
                   <label
@@ -1277,7 +1282,7 @@ export function App() {
             <section aria-label="Visual scene" className="rounded-lg bg-lofi-panel p-4">
               <div
                 data-testid="visual-canvas"
-                className="mx-auto flex w-full max-w-[760px] items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
+                className="mx-auto flex w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
               >
                 <VisualScene
                   imageUrl={visualImageUrl}

@@ -145,7 +145,6 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'neon city street at night' }
     });
@@ -179,7 +178,7 @@ describe('App unified generate flow (US-003)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const visualPromptSection = screen.getByRole('region', {
-      name: 'Visual prompt'
+      name: 'Visualizer settings'
     });
     const selector = within(visualPromptSection).getByLabelText(
       'Active visualizer'
@@ -304,7 +303,6 @@ describe('App unified generate flow (US-003)', () => {
   it('shows completed pair with image rendered and audio playback controls ready', async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'sunset highway with grainy film look' }
     });
@@ -365,7 +363,6 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: '   ' }
     });
@@ -417,6 +414,7 @@ describe('App controls panel layout (US-001)', () => {
       .map((section) => section.getAttribute('aria-label'));
     expect(sectionLabels).toEqual([
       'Generation parameters',
+      'Visual prompt',
       'Generation actions'
     ]);
   });
@@ -434,6 +432,7 @@ describe('App controls panel layout (US-001)', () => {
     expect(within(parametersSection).getByLabelText('Style')).toBeInTheDocument();
     expect(within(parametersSection).getByLabelText('Duration (s)')).toBeInTheDocument();
     expect(within(parametersSection).getByRole('radiogroup', { name: 'Social format' })).toBeInTheDocument();
+    expect(within(controlsColumn).getByLabelText('Image prompt')).toBeInTheDocument();
     expect(within(actionsSection).getByRole('button', { name: 'Generate' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -441,8 +440,7 @@ describe('App controls panel layout (US-001)', () => {
     expect(within(queueSection).getByText('No generations yet.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
-    const visualPromptSection = within(controlsColumn).getByRole('region', { name: 'Visual prompt' });
-    expect(within(visualPromptSection).getByLabelText('Image prompt')).toBeInTheDocument();
+    const visualPromptSection = within(controlsColumn).getByRole('region', { name: 'Visualizer settings' });
     expect(within(visualPromptSection).getByLabelText('Active visualizer')).toBeInTheDocument();
     expect(within(visualPromptSection).getByRole('group', { name: 'Post-processing effects' })).toBeInTheDocument();
 
@@ -771,7 +769,7 @@ describe('App responsive single-column fallback (US-003)', () => {
     const controlsColumn = screen.getByTestId('controls-column');
     const previewColumn = screen.getByTestId('preview-column');
 
-    expect(layoutGrid.className).toContain('xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]');
+    expect(layoutGrid.className).toContain('xl:grid-cols-[3fr_7fr]');
     expect(layoutGrid.className).not.toContain('lg:grid-cols-');
     expect(layoutGrid.firstElementChild).toBe(controlsColumn);
     expect(layoutGrid.lastElementChild).toBe(previewColumn);
@@ -826,8 +824,6 @@ describe('App shared prompt toggle (US-005)', () => {
     const musicPromptField = screen.getByLabelText('Music prompt');
     expect(musicPromptField).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
-
     const imagePromptField = screen.getByLabelText('Image prompt');
     const samePromptToggle = screen.getByRole('checkbox', {
       name: 'Use same prompt for image'
@@ -837,10 +833,8 @@ describe('App shared prompt toggle (US-005)', () => {
     expect(samePromptToggle).toBeVisible();
     expect(samePromptToggle).not.toBeChecked();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
     fireEvent.change(screen.getByLabelText('Music prompt'), { target: { value: 'dusty jazz trio' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     expect(screen.getByLabelText('Image prompt')).toHaveValue('lofi cafe at night, cinematic lighting');
   });
 
@@ -855,7 +849,6 @@ describe('App shared prompt toggle (US-005)', () => {
       target: { value: 'rainy midnight synthwave' }
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'old value that should be ignored' }
     });
@@ -884,7 +877,6 @@ describe('App shared prompt toggle (US-005)', () => {
   it('restores previous image prompt value when toggle is turned off', () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'neon alley in tokyo rain' }
     });
@@ -912,7 +904,6 @@ describe('App shared prompt toggle (US-005)', () => {
       target: { value: 'nostalgic vinyl crackle piano' }
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Use same prompt for image' })
     );
@@ -960,7 +951,6 @@ describe('App track-image pair binding (US-006)', () => {
   it('binds numbered track-image pairs, preserves prior pairs, and switches image with active playback', async () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'first scene' }
     });
@@ -980,7 +970,7 @@ describe('App track-image pair binding (US-006)', () => {
       'blob:http://localhost/generated-image-url-1'
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
       target: { value: 'second scene' }
     });

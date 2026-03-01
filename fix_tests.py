@@ -3,40 +3,34 @@ import re
 with open('src/App.test.tsx', 'r') as f:
     content = f.read()
 
-# For Visuals tab
-patterns_visuals = [
-    r"getByLabelText\('Image prompt'\)",
-    r"getByLabelText\('Active visualizer'\)",
-    r"name: 'Visual prompt'",
-    r"name: 'Post-processing effects'",
-    r"getByTestId\('effect-row"
-]
+# Replace any click to 'Visual Settings' right before querying for 'Image prompt'
+# In many places we added: fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
+# before image prompt changes.
+# Let's just remove that line if it's right before 'Image prompt' change.
 
-# For Queue tab
-patterns_queue = [
-    r"name: 'Generation queue'",
-    r"getByText\('No generations yet.'\)"
-]
+content = re.sub(
+    r"fireEvent\.click\(screen\.getByRole\('button', \{ name: 'Visual Settings' \}\)\);\s*fireEvent\.change\(screen\.getByLabelText\('Image prompt'\)",
+    "fireEvent.change(screen.getByLabelText('Image prompt')",
+    content
+)
 
-blocks = content.split("it('")
-for i in range(1, len(blocks)):
-    block = blocks[i]
-    needs_visuals = any(re.search(p, block) for p in patterns_visuals)
-    needs_queue = any(re.search(p, block) for p in patterns_queue)
-    
-    if needs_visuals or needs_queue:
-        # We find the render(<App />); and insert clicks
-        if "render(<App />);" in block:
-            injection = "render(<App />);\n"
-            if needs_visuals:
-                injection += "    fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));\n"
-            if needs_queue:
-                injection += "    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));\n"
-            
-            # Avoid duplicate injections
-            if "fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));" not in block and "fireEvent.click(screen.getByRole('button', { name: 'Queue' }));" not in block:
-                blocks[i] = block.replace("render(<App />);\n", injection)
+# For the unified Generation request test:
+# "const visualPromptSection = screen.getByRole('region', {\n      name: 'Visual prompt'\n    });"
+# wait, 'Visual prompt' changed to 'Visualizer settings', and Image Prompt is now in 'Image prompt' section.
+content = content.replace("'Visual prompt'", "'Visualizer settings'")
+
+# But we also have a new section 'Image prompt' in Music tab.
+# Let's fix sectionLabels array test
+content = content.replace(
+    "['Generation parameters', 'Generation actions']",
+    "['Generation parameters', 'Image prompt', 'Generation actions']"
+)
+
+content = content.replace(
+    "      'Generation parameters',\n      'Generation actions'\n    ]);",
+    "      'Generation parameters',\n      'Image prompt',\n      'Generation actions'\n    ]);"
+)
+
 
 with open('src/App.test.tsx', 'w') as f:
-    f.write("it('".join(blocks))
-
+    f.write(content)
