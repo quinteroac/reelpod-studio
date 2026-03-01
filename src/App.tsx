@@ -3,6 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
 type GenerationMode = 'text' | 'text-and-parameters' | 'parameters';
+type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
+
+interface SocialFormatPreset {
+  id: SocialFormatId;
+  label: string;
+  aspectRatio: number;
+  width: number;
+  height: number;
+}
 
 interface GenerationParams {
   mood: Mood;
@@ -43,6 +52,30 @@ const generationModeOptions: ReadonlyArray<{
   { value: 'text-and-parameters', label: 'Text + Parameters' },
   { value: 'parameters', label: 'Parameters' }
 ];
+const socialFormatOptions: ReadonlyArray<SocialFormatPreset> = [
+  {
+    id: 'youtube',
+    label: 'YouTube (16:9 · 1920×1080)',
+    aspectRatio: 16 / 9,
+    width: 1920,
+    height: 1080
+  },
+  {
+    id: 'tiktok-reels',
+    label: 'TikTok/Reels (9:16 · 1080×1920)',
+    aspectRatio: 9 / 16,
+    width: 1080,
+    height: 1920
+  },
+  {
+    id: 'instagram-square',
+    label: 'Instagram Square (1:1 · 1080×1080)',
+    aspectRatio: 1,
+    width: 1080,
+    height: 1080
+  }
+];
+const defaultSocialFormatId: SocialFormatId = 'youtube';
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
@@ -128,13 +161,17 @@ async function requestGeneratedAudio(
   return URL.createObjectURL(blob);
 }
 
-async function requestGeneratedImage(prompt: string): Promise<string> {
+async function requestGeneratedImage(
+  prompt: string,
+  targetWidth: number,
+  targetHeight: number
+): Promise<string> {
   const response = await fetch(GENERATE_IMAGE_ENDPOINT_PATH, {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify({ prompt })
+    body: JSON.stringify({ prompt, targetWidth, targetHeight })
   });
 
   if (!response.ok) {
@@ -192,6 +229,8 @@ export function App() {
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
+  const [socialFormatId, setSocialFormatId] =
+    useState<SocialFormatId>(defaultSocialFormatId);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
   const [seekPosition, setSeekPosition] = useState(SEEK_MIN);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -200,6 +239,9 @@ export function App() {
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
+  const selectedSocialFormat =
+    socialFormatOptions.find((option) => option.id === socialFormatId) ??
+    socialFormatOptions[0];
 
   const stopSeekPolling = useCallback((): void => {
     if (seekPollRef.current !== null) {
@@ -504,7 +546,11 @@ export function App() {
     setVisualErrorMessage(null);
     setIsGeneratingImage(true);
     try {
-      const nextVisualUrl = await requestGeneratedImage(trimmedPrompt);
+      const nextVisualUrl = await requestGeneratedImage(
+        trimmedPrompt,
+        selectedSocialFormat.width,
+        selectedSocialFormat.height
+      );
 
       if (visualUrlRef.current) {
         URL.revokeObjectURL(visualUrlRef.current);
@@ -717,6 +763,42 @@ export function App() {
               className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
             />
           </div>
+
+          <fieldset
+            role="radiogroup"
+            aria-label="Social format"
+            className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+          >
+            <legend className="text-sm font-semibold text-lofi-text">
+              Format
+            </legend>
+            <div className="grid gap-2">
+              {socialFormatOptions.map((option) => {
+                const isSelected = socialFormatId === option.id;
+                return (
+                  <label
+                    key={option.id}
+                    className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${
+                      isSelected
+                        ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
+                        : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                    } ${isGeneratingImage ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="social-format"
+                      value={option.id}
+                      checked={isSelected}
+                      onChange={() => setSocialFormatId(option.id)}
+                      disabled={isGeneratingImage}
+                      className="sr-only"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
         </section>
 
         <section
@@ -942,13 +1024,14 @@ export function App() {
 
           <div
             data-testid="visual-canvas"
-            className="flex h-[min(60vh,420px)] w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
+            className="mx-auto flex w-full max-w-[760px] items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
           >
             <VisualScene
               imageUrl={visualImageUrl}
               audioCurrentTime={audioCurrentTime}
               audioDuration={audioDuration}
               isPlaying={isPlaying}
+              aspectRatio={selectedSocialFormat.aspectRatio}
             />
           </div>
         </section>

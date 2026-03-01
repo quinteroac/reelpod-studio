@@ -22,7 +22,15 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, StrictInt, StrictStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 MIN_TEMPO = 60
 MAX_TEMPO = 120
@@ -111,6 +119,10 @@ class GenerateRequestBody(BaseModel):
 
 class GenerateImageRequestBody(BaseModel):
     prompt: StrictStr
+    target_width: StrictInt = Field(default=IMAGE_SIZE, ge=1, alias="targetWidth")
+    target_height: StrictInt = Field(default=IMAGE_SIZE, ge=1, alias="targetHeight")
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("prompt")
     @classmethod
@@ -480,8 +492,8 @@ def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
     try:
         result = image_pipeline(
             prompt=body.prompt,
-            width=IMAGE_SIZE,
-            height=IMAGE_SIZE,
+            width=body.target_width,
+            height=body.target_height,
             num_inference_steps=IMAGE_NUM_INFERENCE_STEPS,
         )
         images = getattr(result, "images", None)

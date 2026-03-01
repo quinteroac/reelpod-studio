@@ -461,6 +461,29 @@ class TestGenerateImageEndpoint:
             {"prompt": "city sunset", "width": 1024, "height": 1024},
         ]
 
+    def test_generate_image_uses_requested_target_resolution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen_calls: list[dict[str, object]] = []
+
+        class Pipeline:
+            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
+                seen_calls.append({"prompt": prompt, "width": width, "height": height})
+                return FakeImageResult([FakeImage()])
+
+        monkeypatch.setattr(main, "load_image_pipeline", lambda: Pipeline())
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            response = test_client.post(
+                "/api/generate-image",
+                json={"prompt": "vertical neon alley", "targetWidth": 1080, "targetHeight": 1920},
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "image/png"
+
+        assert seen_calls == [
+            {"prompt": "vertical neon alley", "width": 1080, "height": 1920},
+        ]
+
     def test_model_load_failure_returns_500_with_meaningful_message(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

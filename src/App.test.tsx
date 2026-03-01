@@ -12,6 +12,7 @@ type VisualSceneProps = {
   audioCurrentTime: number;
   audioDuration: number;
   isPlaying: boolean;
+  aspectRatio: number;
 };
 
 const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
@@ -21,6 +22,7 @@ const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
     data-audio-current-time={props.audioCurrentTime.toFixed(2)}
     data-audio-duration={props.audioDuration.toFixed(2)}
     data-is-playing={props.isPlaying ? 'true' : 'false'}
+    data-aspect-ratio={props.aspectRatio.toFixed(4)}
   />
 ));
 
@@ -512,6 +514,30 @@ describe('App generation flow', () => {
     expect(promptInput.type).toBe('text');
   });
 
+  it('renders format presets for YouTube, TikTok/Reels, and Instagram Square', () => {
+    render(<App />);
+
+    const formatGroup = screen.getByRole('radiogroup', {
+      name: 'Social format'
+    });
+
+    expect(
+      within(formatGroup).getByRole('radio', {
+        name: 'YouTube (16:9 · 1920×1080)'
+      })
+    ).toBeVisible();
+    expect(
+      within(formatGroup).getByRole('radio', {
+        name: 'TikTok/Reels (9:16 · 1080×1920)'
+      })
+    ).toBeVisible();
+    expect(
+      within(formatGroup).getByRole('radio', {
+        name: 'Instagram Square (1:1 · 1080×1080)'
+      })
+    ).toBeVisible();
+  });
+
   it('uses Generate Image to request an image from the prompt and render it in the visual scene', async () => {
     const imageUrl = 'blob:http://localhost/generated-visual-url';
     vi.spyOn(URL, 'createObjectURL').mockReturnValue(imageUrl);
@@ -529,7 +555,11 @@ describe('App generation flow', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt: 'anime city in rain at dusk' })
+        body: JSON.stringify({
+          prompt: 'anime city in rain at dusk',
+          targetWidth: 1920,
+          targetHeight: 1080
+        })
       });
     });
     expect(URL.createObjectURL).toHaveBeenCalled();
@@ -538,7 +568,7 @@ describe('App generation flow', () => {
       imageUrl
     );
     expect(screen.getByTestId('visual-canvas').className).toContain(
-      'h-[min(60vh,420px)]'
+      'max-w-[760px]'
     );
   });
 
@@ -605,14 +635,53 @@ describe('App generation flow', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/generate-image', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'lofi diner at midnight' })
+      body: JSON.stringify({
+        prompt: 'lofi diner at midnight',
+        targetWidth: 1920,
+        targetHeight: 1080
+      })
     });
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/generate-image', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'retro subway station rain' })
+      body: JSON.stringify({
+        prompt: 'retro subway station rain',
+        targetWidth: 1920,
+        targetHeight: 1080
+      })
     });
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(firstImageUrl);
+  });
+
+  it('updates image target resolution and visual viewport ratio when selecting a different format', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'TikTok/Reels (9:16 · 1080×1920)' })
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      '0.5625'
+    );
+
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'vertical neon city' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt: 'vertical neon city',
+          targetWidth: 1080,
+          targetHeight: 1920
+        })
+      });
+    });
   });
 
   it('revokes the active generated image blob URL on unmount', async () => {
@@ -814,6 +883,10 @@ describe('App generation flow', () => {
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-is-playing',
       'false'
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      '1.7778'
     );
   });
 

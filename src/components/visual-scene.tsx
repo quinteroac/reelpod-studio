@@ -17,9 +17,17 @@ type VisualSceneProps = {
   audioCurrentTime: number;
   audioDuration: number;
   isPlaying: boolean;
+  aspectRatio: number;
 };
 
-type SceneContentProps = VisualSceneProps & {
+type SceneRenderProps = {
+  imageUrl: string | null;
+  audioCurrentTime: number;
+  audioDuration: number;
+  isPlaying: boolean;
+};
+
+type SceneContentProps = SceneRenderProps & {
   visualizerType: VisualizerType;
   effects: EffectType[];
   onDerived: (planeWidth: number, planeHeight: number) => void;
@@ -80,7 +88,13 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
   );
 }
 
-export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlaying }: VisualSceneProps) {
+export function VisualScene({
+  imageUrl,
+  audioCurrentTime,
+  audioDuration,
+  isPlaying,
+  aspectRatio
+}: VisualSceneProps) {
   // Available visualizers: 'waveform' | 'rain' | 'scene-rain' | 'starfield' | 'aurora' | 'circle-spectrum' | 'glitch' | 'smoke' | 'contour' | 'none'
   const currentVisualizerType: VisualizerType = 'glitch';
   // Available effects: 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'none'
@@ -100,7 +114,11 @@ export function VisualScene({ imageUrl, audioCurrentTime, audioDuration, isPlayi
   );
 
   return (
-    <div data-testid="visual-scene" className="relative h-full w-full">
+    <div
+      data-testid="visual-scene"
+      className="relative w-full"
+      style={{ aspectRatio: `${aspectRatio}` }}
+    >
       {/* Invisible DOM overlay elements for test queries — no visual impact */}
       <div
         ref={imagePlaneOverlayRef}
