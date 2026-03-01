@@ -293,3 +293,125 @@ describe('App unified generate flow (US-003)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('App shared prompt toggle (US-005)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
+      if ('type' in obj && obj.type === 'image/png') {
+        return 'blob:http://localhost/generated-image-url';
+      }
+
+      return 'blob:http://localhost/generated-audio-url';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('defaults to independent music and image prompts and shows the toggle', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+
+    const musicPromptField = screen.getByLabelText('Music prompt');
+    const imagePromptField = screen.getByLabelText('Image prompt');
+    const samePromptToggle = screen.getByRole('checkbox', {
+      name: 'Use same prompt for image'
+    });
+
+    expect(musicPromptField).toBeInTheDocument();
+    expect(imagePromptField).toBeInTheDocument();
+    expect(samePromptToggle).toBeVisible();
+    expect(samePromptToggle).not.toBeChecked();
+
+    fireEvent.change(musicPromptField, { target: { value: 'dusty jazz trio' } });
+    expect(imagePromptField).toHaveValue('lofi cafe at night, cinematic lighting');
+  });
+
+  it('hides image prompt and uses music prompt for image generation in text mode when enabled', async () => {
+    const fetchMock = mockPairedFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: 'rainy midnight synthwave' }
+    });
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'old value that should be ignored' }
+    });
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Use same prompt for image' })
+    );
+
+    expect(screen.queryByLabelText('Image prompt')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt: 'rainy midnight synthwave',
+          targetWidth: 1920,
+          targetHeight: 1080
+        })
+      });
+    });
+  });
+
+  it('restores previous image prompt value when toggle is turned off', () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'neon alley in tokyo rain' }
+    });
+
+    const samePromptToggle = screen.getByRole('checkbox', {
+      name: 'Use same prompt for image'
+    });
+    fireEvent.click(samePromptToggle);
+    expect(screen.queryByLabelText('Image prompt')).not.toBeInTheDocument();
+
+    fireEvent.click(samePromptToggle);
+    expect(screen.getByLabelText('Image prompt')).toHaveValue(
+      'neon alley in tokyo rain'
+    );
+  });
+
+  it('uses music prompt for image generation in text + parameters mode when enabled', async () => {
+    const fetchMock = mockPairedFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: 'nostalgic vinyl crackle piano' }
+    });
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Use same prompt for image' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt: 'nostalgic vinyl crackle piano',
+          targetWidth: 1920,
+          targetHeight: 1080
+        })
+      });
+    });
+  });
+});

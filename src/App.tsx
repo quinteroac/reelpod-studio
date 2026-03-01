@@ -232,6 +232,9 @@ export function App() {
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
+  const [useSamePromptForImage, setUseSamePromptForImage] = useState(false);
+  const [imagePromptBeforeSharedToggle, setImagePromptBeforeSharedToggle] =
+    useState(imagePrompt);
   const [socialFormatId, setSocialFormatId] =
     useState<SocialFormatId>(defaultSocialFormatId);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
@@ -477,12 +480,6 @@ export function App() {
     }
 
     setDurationErrorMessage(null);
-    const trimmedImagePrompt = imagePrompt.trim();
-    if (!trimmedImagePrompt) {
-      setImagePromptErrorMessage('Please enter an image prompt.');
-      return;
-    }
-
     const nextParams: GenerationParams = {
       ...params,
       duration: parsedDuration
@@ -490,42 +487,52 @@ export function App() {
 
     const requiresPrompt =
       generationMode === 'text' || generationMode === 'text-and-parameters';
+    const trimmedMusicPrompt = musicPrompt.trim();
     if (requiresPrompt) {
-      const trimmedPrompt = musicPrompt.trim();
-      if (!trimmedPrompt) {
+      if (!trimmedMusicPrompt) {
         setMusicPromptErrorMessage(MUSIC_PROMPT_REQUIRED_ERROR);
         return;
       }
 
       setMusicPromptErrorMessage(null);
+    }
 
-      if (generationMode === 'text') {
-        const nextEntry: QueueEntry = {
-          id: queueIdRef.current++,
-          params: {
-            ...nextParams,
-            mode: 'text',
-            prompt: trimmedPrompt,
-            tempo: TEXT_MODE_DEFAULT_TEMPO
-          },
-          imagePrompt: trimmedImagePrompt,
-          targetWidth: selectedSocialFormat.width,
-          targetHeight: selectedSocialFormat.height,
-          status: 'queued',
-          errorMessage: null,
-          audioUrl: null,
-          imageUrl: null
-        };
-        setQueueEntries((prev) => [...prev, nextEntry]);
-        return;
-      }
+    const trimmedImagePrompt = useSamePromptForImage
+      ? trimmedMusicPrompt
+      : imagePrompt.trim();
+    if (!trimmedImagePrompt) {
+      setImagePromptErrorMessage('Please enter an image prompt.');
+      return;
+    }
 
+    if (requiresPrompt && generationMode === 'text') {
+      const nextEntry: QueueEntry = {
+        id: queueIdRef.current++,
+        params: {
+          ...nextParams,
+          mode: 'text',
+          prompt: trimmedMusicPrompt,
+          tempo: TEXT_MODE_DEFAULT_TEMPO
+        },
+        imagePrompt: trimmedImagePrompt,
+        targetWidth: selectedSocialFormat.width,
+        targetHeight: selectedSocialFormat.height,
+        status: 'queued',
+        errorMessage: null,
+        audioUrl: null,
+        imageUrl: null
+      };
+      setQueueEntries((prev) => [...prev, nextEntry]);
+      return;
+    }
+
+    if (requiresPrompt && generationMode === 'text-and-parameters') {
       const nextEntry: QueueEntry = {
         id: queueIdRef.current++,
         params: {
           ...nextParams,
           mode: 'text-and-parameters',
-          prompt: trimmedPrompt
+          prompt: trimmedMusicPrompt
         },
         imagePrompt: trimmedImagePrompt,
         targetWidth: selectedSocialFormat.width,
@@ -1015,27 +1022,61 @@ export function App() {
           aria-label="Visual prompt"
           className="space-y-3 rounded-lg bg-lofi-panel p-4"
         >
-          <label
-            htmlFor="visual-prompt"
-            className="block text-sm font-semibold text-lofi-text"
-          >
-            Image prompt
-          </label>
-          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <input
-              id="visual-prompt"
-              type="text"
-              value={imagePrompt}
-              onChange={(event) => {
-                setImagePrompt(event.target.value);
-                if (imagePromptErrorMessage) {
-                  setImagePromptErrorMessage(null);
-                }
-              }}
-              className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-              placeholder="Describe your lofi scene..."
-            />
+          <div className="space-y-2">
+            <label
+              htmlFor="visual-prompt"
+              className="block text-sm font-semibold text-lofi-text"
+            >
+              Image prompt
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-stone-200">
+              <input
+                type="checkbox"
+                checked={useSamePromptForImage}
+                onChange={(event) => {
+                  const nextChecked = event.target.checked;
+                  setUseSamePromptForImage(nextChecked);
+
+                  if (nextChecked) {
+                    setImagePromptBeforeSharedToggle(imagePrompt);
+                    setImagePrompt(musicPrompt);
+                  } else {
+                    setImagePrompt(imagePromptBeforeSharedToggle);
+                  }
+
+                  if (imagePromptErrorMessage) {
+                    setImagePromptErrorMessage(null);
+                  }
+                }}
+                className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+              />
+              <span>Use same prompt for image</span>
+            </label>
           </div>
+
+          {!useSamePromptForImage && (
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                id="visual-prompt"
+                type="text"
+                value={imagePrompt}
+                onChange={(event) => {
+                  setImagePrompt(event.target.value);
+                  if (imagePromptErrorMessage) {
+                    setImagePromptErrorMessage(null);
+                  }
+                }}
+                className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                placeholder="Describe your lofi scene..."
+              />
+            </div>
+          )}
+
+          {useSamePromptForImage && (
+            <p className="text-sm text-stone-300">
+              Image prompt will use the current music prompt.
+            </p>
+          )}
 
           <div data-testid="visual-prompt-feedback" className="space-y-2">
             {imagePromptErrorMessage && (
