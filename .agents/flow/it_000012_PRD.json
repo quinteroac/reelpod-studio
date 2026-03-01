@@ -1,0 +1,192 @@
+{
+  "goals": [
+    "Allow creators to describe music in their own words via a free-form text prompt.",
+    "Let creators combine natural language with structured parameters for richer control.",
+    "Preserve the existing parameters-only path without any regression.",
+    "Keep the UI change minimal and consistent with the warm lofi theme."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Generation Mode Selector",
+      "description": "As a creator, I want to choose a generation mode (Text, Text + Parameters, or Parameters) before clicking Generate so that I can control whether my request is driven by free-form description, structured controls, or both.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A segmented control / radio group with three labeled options is rendered inside the"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The selected mode is reflected in the UI immediately on click."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The mode selector is disabled while a generation is in progress (`status === 'loading'`)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Visually verified in browser: all three mode labels are visible and selectable."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Text-Only Generation",
+      "description": "As a creator, I want to type a free-form music description and generate audio without touching the mood/style/tempo controls so that I can express exactly the sound I have in mind.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "When mode is \"Text\", a textarea / text input labeled **\"Music prompt\"** is shown"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "When mode is \"Text\", the mood, style, and tempo parameter controls are hidden."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Clicking Generate with an empty prompt shows an inline validation error (\"Please"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Clicking Generate with a non-empty prompt enqueues a request; the backend uses the"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "The queue entry summary displays a truncated version of the text prompt (≤ 60 chars,"
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "A completed generation plays back without errors."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Visually verified in browser: text input visible, parameter controls hidden, audio"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Text + Parameters Generation",
+      "description": "As a creator, I want to combine a free-form prompt with mood/style/tempo parameters so that I can blend descriptive intent with structured musical constraints.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "When mode is \"Text + Params\", both the \"Music prompt\" text input and the"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Clicking Generate with an empty prompt shows an inline validation error and does not"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Clicking Generate with a non-empty prompt sends a request where the backend"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "`bpm` sent to ACEStep is the user-selected `tempo` value."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "The queue entry summary shows both the truncated prompt and the parameter values."
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "A completed generation plays back without errors."
+        },
+        {
+          "id": "US-003-AC07",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC08",
+          "text": "Visually verified in browser: both text input and parameter controls visible."
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Parameters-Only Generation (Backward-Compatible)",
+      "description": "As a creator, I want to generate music using only the existing mood/style/tempo controls (the current default) so that my existing workflow is unaffected.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "When mode is \"Params\" (default on load), no text input is shown."
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "Generation behaves identically to the pre-iteration behavior: prompt built as"
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "Existing tests pass without modification."
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-004-AC05",
+          "text": "Visually verified in browser: parameter controls visible, text input hidden."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "** Add `GenerationMode = 'text' | 'text+params' | 'params'` type to"
+    },
+    {
+      "id": "FR-2",
+      "description": "** Render a mode selector (e.g., three-button toggle) inside the"
+    },
+    {
+      "id": "FR-3",
+      "description": "** Show the \"Music prompt\" text input (`<textarea>` or `<input type=\"text\">`)"
+    },
+    {
+      "id": "FR-4",
+      "description": "** Show the mood/tempo/style fieldsets only when mode is `'params'` or"
+    },
+    {
+      "id": "FR-5",
+      "description": "** Validate that the music prompt is non-empty before enqueuing in text-based"
+    },
+    {
+      "id": "FR-6",
+      "description": "** Extend `GenerationParams` (frontend) with optional `prompt?: string` and"
+    },
+    {
+      "id": "FR-7",
+      "description": "** In text mode, always send `tempo: 80` (the ACEStep default) in the request"
+    },
+    {
+      "id": "FR-8",
+      "description": "** Update `buildQueueSummary` to render the prompt (truncated to 60 chars) for"
+    },
+    {
+      "id": "FR-9",
+      "description": "** Extend `GenerateRequestBody` in `backend/main.py` with:"
+    },
+    {
+      "id": "FR-10",
+      "description": "** Update `build_prompt(body)` in `backend/main.py` to branch by mode:"
+    },
+    {
+      "id": "FR-11",
+      "description": "** Update `INVALID_PAYLOAD_ERROR` constant and the 422 error message in the"
+    },
+    {
+      "id": "FR-12",
+      "description": "** `mood` and `style` fields in `GenerateRequestBody` become optional (with"
+    }
+  ]
+}

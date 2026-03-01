@@ -4,12 +4,12 @@
   "phases": {
     "define": {
       "requirement_definition": {
-        "status": "pending",
-        "file": null
+        "status": "approved",
+        "file": "it_000012_product-requirement-document.md"
       },
       "prd_generation": {
-        "status": "pending",
-        "file": null
+        "status": "completed",
+        "file": "it_000012_PRD.json"
       }
     },
     "prototype": {
@@ -54,7 +54,8 @@
       }
     }
   },
-  "last_updated": "2026-02-28T23:55:27.992Z",
+  "last_updated": "2026-03-01T00:06:30.886Z",
+  "updated_by": "nvst:approve-requirement",
   "history": [
     {
       "iteration": "000001",
