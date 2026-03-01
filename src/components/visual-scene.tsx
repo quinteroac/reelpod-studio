@@ -71,7 +71,7 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
           {/* Dark overlay dims the image so the waveforms read clearly */}
           <mesh scale={[planeWidth, planeHeight, 1]} position={[0, 0, 0.05]}>
             <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial color="#000000" />
+            <meshBasicMaterial color="#000000" transparent opacity={0.45} />
           </mesh>
         </>
       )}
