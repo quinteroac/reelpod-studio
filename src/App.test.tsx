@@ -415,3 +415,105 @@ describe('App shared prompt toggle (US-005)', () => {
     });
   });
 });
+
+describe('App track-image pair binding (US-006)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+
+    const mockAudio = createMockAudio();
+    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+
+    let imageUrlIndex = 0;
+    let audioUrlIndex = 0;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      (obj: Blob | MediaSource) => {
+        if ('type' in obj && obj.type === 'image/png') {
+          imageUrlIndex += 1;
+          return `blob:http://localhost/generated-image-url-${imageUrlIndex}`;
+        }
+
+        audioUrlIndex += 1;
+        return `blob:http://localhost/generated-audio-url-${audioUrlIndex}`;
+      }
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('binds numbered track-image pairs, preserves prior pairs, and switches image with active playback', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'first scene' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    expect(screen.getByText('Track 1')).toBeInTheDocument();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-image-url',
+      'blob:http://localhost/generated-image-url-1'
+    );
+
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'second scene' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    expect(screen.getByText('Track 2')).toBeInTheDocument();
+    expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+      'data-status',
+      'completed'
+    );
+    expect(
+      screen.getByRole('button', { name: 'Play generation 1' })
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Play generation 2' })
+    ).toBeVisible();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-image-url',
+      'blob:http://localhost/generated-image-url-1'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-image-url',
+        'blob:http://localhost/generated-image-url-2'
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-image-url',
+        'blob:http://localhost/generated-image-url-1'
+      );
+    });
+  });
+});

@@ -391,11 +391,11 @@ export function App() {
                 : item
             )
           );
-          setVisualImageUrl(imageUrl);
 
           const isPlayingAudio = audioRef.current && !audioRef.current.paused;
           if (!isPlayingAudio) {
             setPlayingEntryId(entry.id);
+            setVisualImageUrl(imageUrl);
             await playAudioFromUrl(audioUrl, {
               entryId: entry.id,
               onEnded: createQueueOnEnded(entry)
@@ -932,13 +932,14 @@ export function App() {
             <p className="text-sm text-stone-300">No generations yet.</p>
           ) : (
             <ul className="space-y-2">
-              {queueEntries.map((entry) => {
+              {queueEntries.map((entry, index) => {
                 const statusLabel =
                   entry.status[0].toUpperCase() + entry.status.slice(1);
                 const isGenerating = entry.status === 'generating';
                 const isCompleted = entry.status === 'completed';
                 const isFailed = entry.status === 'failed';
                 const isCurrentlyPlaying = entry.id === playingEntryId;
+                const trackNumber = index + 1;
 
                 return (
                   <li
@@ -961,17 +962,22 @@ export function App() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-lofi-text">
-                        {isCurrentlyPlaying && (
-                          <span
-                            className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
-                            aria-hidden="true"
-                          >
-                            ▶ Now playing
-                          </span>
-                        )}
-                        {buildQueueSummary(entry.params)}
-                      </p>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                          Track {trackNumber}
+                        </p>
+                        <p className="text-lofi-text">
+                          {isCurrentlyPlaying && (
+                            <span
+                              className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
+                              aria-hidden="true"
+                            >
+                              ▶ Now playing
+                            </span>
+                          )}
+                          {buildQueueSummary(entry.params)}
+                        </p>
+                      </div>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
                           isGenerating
