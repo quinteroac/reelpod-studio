@@ -33,9 +33,13 @@ type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
 interface QueueEntry {
   id: number;
   params: GenerationParams;
+  imagePrompt: string;
+  targetWidth: number;
+  targetHeight: number;
   status: QueueEntryStatus;
   errorMessage: string | null;
   audioUrl: string | null;
+  imageUrl: string | null;
 }
 
 const defaultParams: GenerationParams = {
@@ -202,7 +206,7 @@ async function requestGeneratedImage(
 export function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const generatedAudioUrlsRef = useRef<string[]>([]);
-  const visualUrlRef = useRef<string | null>(null);
+  const generatedImageUrlsRef = useRef<string[]>([]);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [generationMode, setGenerationMode] = useState<GenerationMode>(
@@ -221,11 +225,10 @@ export function App() {
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [visualErrorMessage, setVisualErrorMessage] = useState<string | null>(
-    null
-  );
+  const [imagePromptErrorMessage, setImagePromptErrorMessage] = useState<
+    string | null
+  >(null);
   const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
@@ -269,11 +272,10 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      if (visualUrlRef.current) {
-        URL.revokeObjectURL(visualUrlRef.current);
-      }
       generatedAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      generatedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       generatedAudioUrlsRef.current = [];
+      generatedImageUrlsRef.current = [];
       stopSeekPolling();
     };
   }, [stopSeekPolling]);
@@ -328,6 +330,9 @@ export function App() {
           .find((e) => e.status === 'completed' && e.audioUrl);
         if (next?.audioUrl) {
           setPlayingEntryId(next.id);
+          if (next.imageUrl) {
+            setVisualImageUrl(next.imageUrl);
+          }
           void playAudioFromUrl(next.audioUrl, {
             entryId: next.id,
             onEnded: createQueueOnEnded(next)
@@ -352,26 +357,75 @@ export function App() {
       );
 
       try {
-        const audioUrl = await requestGeneratedAudio(entry.params);
-        generatedAudioUrlsRef.current.push(audioUrl);
-
-        setQueueEntries((prev) =>
-          prev.map((item) =>
-            item.id === entry.id
-              ? { ...item, status: 'completed', errorMessage: null, audioUrl }
-              : item
+        const [audioResult, imageResult] = await Promise.allSettled([
+          requestGeneratedAudio(entry.params),
+          requestGeneratedImage(
+            entry.imagePrompt,
+            entry.targetWidth,
+            entry.targetHeight
           )
-        );
+        ]);
 
-        const isPlayingAudio = audioRef.current && !audioRef.current.paused;
-        if (!isPlayingAudio) {
-          setPlayingEntryId(entry.id);
-          await playAudioFromUrl(audioUrl, {
-            entryId: entry.id,
-            onEnded: createQueueOnEnded(entry)
-          });
+        if (
+          audioResult.status === 'fulfilled' &&
+          imageResult.status === 'fulfilled'
+        ) {
+          const audioUrl = audioResult.value;
+          const imageUrl = imageResult.value;
+          generatedAudioUrlsRef.current.push(audioUrl);
+          generatedImageUrlsRef.current.push(imageUrl);
+
+          setQueueEntries((prev) =>
+            prev.map((item) =>
+              item.id === entry.id
+                ? {
+                    ...item,
+                    status: 'completed',
+                    errorMessage: null,
+                    audioUrl,
+                    imageUrl
+                  }
+                : item
+            )
+          );
+          setVisualImageUrl(imageUrl);
+
+          const isPlayingAudio = audioRef.current && !audioRef.current.paused;
+          if (!isPlayingAudio) {
+            setPlayingEntryId(entry.id);
+            await playAudioFromUrl(audioUrl, {
+              entryId: entry.id,
+              onEnded: createQueueOnEnded(entry)
+            });
+          } else {
+            setStatus('success');
+          }
         } else {
-          setStatus('success');
+          if (audioResult.status === 'fulfilled') {
+            URL.revokeObjectURL(audioResult.value);
+          }
+          if (imageResult.status === 'fulfilled') {
+            URL.revokeObjectURL(imageResult.value);
+          }
+
+          const audioError =
+            audioResult.status === 'rejected'
+              ? getErrorMessage(audioResult.reason)
+              : null;
+          const imageError =
+            imageResult.status === 'rejected'
+              ? getErrorMessage(imageResult.reason)
+              : null;
+          const message =
+            audioError && imageError
+              ? `Could not generate pair: audio failed (${audioError}); image failed (${imageError})`
+              : audioError
+                ? `Could not generate pair: audio failed (${audioError})`
+                : imageError
+                  ? `Could not generate pair: image failed (${imageError})`
+                  : 'Could not generate pair: Unknown error';
+
+          throw new Error(message);
         }
       } catch (error) {
         const message = getErrorMessage(error);
@@ -384,7 +438,8 @@ export function App() {
                   ...item,
                   status: 'failed',
                   errorMessage: message,
-                  audioUrl: null
+                  audioUrl: null,
+                  imageUrl: null
                 }
               : item
           )
@@ -409,6 +464,7 @@ export function App() {
 
   function handleGenerate(): void {
     setErrorMessage(null);
+    setImagePromptErrorMessage(null);
     const parsedDuration = Number(durationInput);
     const hasValidDuration =
       Number.isInteger(parsedDuration) &&
@@ -421,6 +477,12 @@ export function App() {
     }
 
     setDurationErrorMessage(null);
+    const trimmedImagePrompt = imagePrompt.trim();
+    if (!trimmedImagePrompt) {
+      setImagePromptErrorMessage('Please enter an image prompt.');
+      return;
+    }
+
     const nextParams: GenerationParams = {
       ...params,
       duration: parsedDuration
@@ -446,9 +508,13 @@ export function App() {
             prompt: trimmedPrompt,
             tempo: TEXT_MODE_DEFAULT_TEMPO
           },
+          imagePrompt: trimmedImagePrompt,
+          targetWidth: selectedSocialFormat.width,
+          targetHeight: selectedSocialFormat.height,
           status: 'queued',
           errorMessage: null,
-          audioUrl: null
+          audioUrl: null,
+          imageUrl: null
         };
         setQueueEntries((prev) => [...prev, nextEntry]);
         return;
@@ -461,9 +527,13 @@ export function App() {
           mode: 'text-and-parameters',
           prompt: trimmedPrompt
         },
+        imagePrompt: trimmedImagePrompt,
+        targetWidth: selectedSocialFormat.width,
+        targetHeight: selectedSocialFormat.height,
         status: 'queued',
         errorMessage: null,
-        audioUrl: null
+        audioUrl: null,
+        imageUrl: null
       };
       setQueueEntries((prev) => [...prev, nextEntry]);
       return;
@@ -473,9 +543,13 @@ export function App() {
     const nextEntry: QueueEntry = {
       id: queueIdRef.current++,
       params: nextParams,
+      imagePrompt: trimmedImagePrompt,
+      targetWidth: selectedSocialFormat.width,
+      targetHeight: selectedSocialFormat.height,
       status: 'queued',
       errorMessage: null,
-      audioUrl: null
+      audioUrl: null,
+      imageUrl: null
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
@@ -486,6 +560,9 @@ export function App() {
     }
 
     setPlayingEntryId(entry.id);
+    if (entry.imageUrl) {
+      setVisualImageUrl(entry.imageUrl);
+    }
     try {
       await playAudioFromUrl(entry.audioUrl, {
         entryId: entry.id,
@@ -529,43 +606,6 @@ export function App() {
       audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
       setAudioCurrentTime(audio.currentTime);
       setAudioDuration(audio.duration);
-    }
-  }
-
-  async function handleGenerateImage(): Promise<void> {
-    if (isGeneratingImage) {
-      return;
-    }
-
-    const trimmedPrompt = imagePrompt.trim();
-    if (!trimmedPrompt) {
-      setVisualErrorMessage('Please enter an image prompt.');
-      return;
-    }
-
-    setVisualErrorMessage(null);
-    setIsGeneratingImage(true);
-    try {
-      const nextVisualUrl = await requestGeneratedImage(
-        trimmedPrompt,
-        selectedSocialFormat.width,
-        selectedSocialFormat.height
-      );
-
-      if (visualUrlRef.current) {
-        URL.revokeObjectURL(visualUrlRef.current);
-      }
-
-      visualUrlRef.current = nextVisualUrl;
-      setVisualImageUrl(nextVisualUrl);
-    } catch (error) {
-      setVisualErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Could not generate image: Unknown error'
-      );
-    } finally {
-      setIsGeneratingImage(false);
     }
   }
 
@@ -782,7 +822,7 @@ export function App() {
                       isSelected
                         ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
                         : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
-                    } ${isGeneratingImage ? 'cursor-not-allowed opacity-60' : ''}`}
+                    } ${status === 'loading' ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <input
                       type="radio"
@@ -790,7 +830,7 @@ export function App() {
                       value={option.id}
                       checked={isSelected}
                       onChange={() => setSocialFormatId(option.id)}
-                      disabled={isGeneratingImage}
+                      disabled={status === 'loading'}
                       className="sr-only"
                     />
                     <span>{option.label}</span>
@@ -986,38 +1026,21 @@ export function App() {
               id="visual-prompt"
               type="text"
               value={imagePrompt}
-              onChange={(event) => setImagePrompt(event.target.value)}
+              onChange={(event) => {
+                setImagePrompt(event.target.value);
+                if (imagePromptErrorMessage) {
+                  setImagePromptErrorMessage(null);
+                }
+              }}
               className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
               placeholder="Describe your lofi scene..."
             />
-            <button
-              type="button"
-              onClick={() => void handleGenerateImage()}
-              disabled={isGeneratingImage}
-              className="rounded-md bg-lofi-accent px-4 py-2 text-sm font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Generate Image
-            </button>
           </div>
 
           <div data-testid="visual-prompt-feedback" className="space-y-2">
-            {isGeneratingImage && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
-              >
-                <span
-                  aria-hidden="true"
-                  className="h-4 w-4 animate-spin rounded-full border-2 border-lofi-accent border-t-transparent"
-                />
-                <span>Generating image...</span>
-              </div>
-            )}
-
-            {visualErrorMessage && (
+            {imagePromptErrorMessage && (
               <p role="alert" className="text-sm font-semibold text-red-100">
-                {visualErrorMessage}
+                {imagePromptErrorMessage}
               </p>
             )}
           </div>
