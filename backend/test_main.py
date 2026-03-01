@@ -85,7 +85,24 @@ class TestBuildPrompt:
 
     def test_prompt_template_documented_in_source(self) -> None:
         source = Path(__file__).parent.joinpath("main.py").read_text(encoding="utf-8")
-        assert '# Prompt template: "{mood} lofi {style}, {tempo} BPM"' in source
+        assert '# Prompt template for params mode: "{mood} lofi {style}, {tempo} BPM"' in source
+
+    def test_text_mode_prompt_uses_user_text_verbatim(self) -> None:
+        body = main.GenerateRequestBody(mode="text", prompt="  crunchy drums with vinyl hiss  ")
+        assert main.build_prompt(body) == "crunchy drums with vinyl hiss"
+
+    def test_text_and_params_mode_combines_prompt_with_selected_parameters(self) -> None:
+        body = main.GenerateRequestBody(
+            mode="text-and-parameters",
+            prompt="  dreamy guitar loop  ",
+            mood="melancholic",
+            tempo=102,
+            style="ambient",
+        )
+        assert (
+            main.build_prompt(body)
+            == "dreamy guitar loop, melancholic, ambient, 102 BPM"
+        )
 
 
 class TestAceStepApiConfiguration:
@@ -243,7 +260,14 @@ class TestGenerateEndpoint:
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 30, "style": "jazz"})
         assert response.status_code == 422
         assert response.json() == {
-            "error": "Invalid payload. Expected { mood: string, tempo: number (60-120), style: string }"
+            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), style?: string }"
+        }
+
+    def test_text_mode_without_prompt_returns_422(self, client: TestClient) -> None:
+        response = client.post("/api/generate", json={"mode": "text"})
+        assert response.status_code == 422
+        assert response.json() == {
+            "error": "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', prompt?: string, mood?: string, tempo?: number (60-120), style?: string }"
         }
 
 
@@ -258,6 +282,38 @@ class TestGenerationQueue:
         assert snapshot is not None
         assert snapshot.status == "queued"
         assert list(main.queue_order) == [item.id]
+
+    def test_text_mode_queue_item_uses_default_bpm_80(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
+        item = main.enqueue_generation_request(
+            main.GenerateRequestBody(mode="text", prompt="slow nostalgic tape wobble", tempo=110)
+        )
+
+        snapshot = main.get_queue_item_snapshot(item.id)
+        assert snapshot is not None
+        assert snapshot.status == "queued"
+        assert snapshot.prompt == "slow nostalgic tape wobble"
+        assert snapshot.tempo == 80
+
+    def test_text_and_parameters_queue_item_uses_selected_tempo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
+        item = main.enqueue_generation_request(
+            main.GenerateRequestBody(
+                mode="text-and-parameters",
+                prompt="neon midnight groove",
+                mood="upbeat",
+                tempo=112,
+                style="hip-hop",
+            )
+        )
+
+        snapshot = main.get_queue_item_snapshot(item.id)
+        assert snapshot is not None
+        assert snapshot.status == "queued"
+        assert snapshot.prompt == "neon midnight groove, upbeat, hip-hop, 112 BPM"
+        assert snapshot.tempo == 112
 
     def test_queue_worker_processes_one_item_at_a_time_and_uses_submit_poll_flow(
         self, monkeypatch: pytest.MonkeyPatch

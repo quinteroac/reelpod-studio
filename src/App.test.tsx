@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type VisualSceneProps = {
@@ -39,7 +45,10 @@ function createMockAudio(): HTMLAudioElement {
 function createWavBlobResponse(status = 200): Response {
   if (status >= 200 && status < 300) {
     const blob = new Blob(['fake-wav-data'], { type: 'audio/wav' });
-    return new Response(blob, { status, headers: { 'content-type': 'audio/wav' } });
+    return new Response(blob, {
+      status,
+      headers: { 'content-type': 'audio/wav' }
+    });
   }
   return new Response(JSON.stringify({ error: 'generation failed' }), {
     status,
@@ -50,7 +59,10 @@ function createWavBlobResponse(status = 200): Response {
 function createImageBlobResponse(status = 200): Response {
   if (status >= 200 && status < 300) {
     const blob = new Blob(['fake-image-bytes'], { type: 'image/png' });
-    return new Response(blob, { status, headers: { 'content-type': 'image/png' } });
+    return new Response(blob, {
+      status,
+      headers: { 'content-type': 'image/png' }
+    });
   }
   return new Response(JSON.stringify({ error: 'image generation failed' }), {
     status,
@@ -58,7 +70,11 @@ function createImageBlobResponse(status = 200): Response {
   });
 }
 
-function createErrorResponse(message: string, status = 500, field = 'error'): Response {
+function createErrorResponse(
+  message: string,
+  status = 500,
+  field = 'error'
+): Response {
   return new Response(JSON.stringify({ [field]: message }), {
     status,
     headers: { 'content-type': 'application/json' }
@@ -67,7 +83,12 @@ function createErrorResponse(message: string, status = 500, field = 'error'): Re
 
 function mockGenerateFetch(): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
     if (url.endsWith('/api/generate-image')) {
       return createImageBlobResponse();
     }
@@ -83,8 +104,10 @@ describe('App generation flow', () => {
     visualSceneSpy.mockClear();
     mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockGenerateFetch());
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-audio-url');
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue(
+      'blob:http://localhost/fake-audio-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
   });
 
@@ -95,7 +118,9 @@ describe('App generation flow', () => {
     expect(screen.getByTestId('tempo-control-card')).toHaveTextContent('Tempo');
     expect(screen.getByTestId('style-control-card')).toHaveTextContent('Style');
 
-    const parametersSection = screen.getByRole('region', { name: 'Generation parameters' });
+    const parametersSection = screen.getByRole('region', {
+      name: 'Generation parameters'
+    });
     expect(parametersSection.className).toContain('space-y-4');
 
     const layoutGrid = screen.getByTestId('mood-control-card').parentElement;
@@ -103,6 +128,292 @@ describe('App generation flow', () => {
     expect(layoutGrid?.className).toContain('grid');
     expect(layoutGrid?.className).toContain('gap-4');
     expect(layoutGrid?.className).toContain('md:grid-cols-3');
+  });
+
+  it('renders a generation mode selector with Text, Text + Parameters, and Parameters options inside generation parameters', () => {
+    render(<App />);
+
+    const parametersSection = screen.getByRole('region', {
+      name: 'Generation parameters'
+    });
+    const modeGroup = within(parametersSection).getByRole('radiogroup', {
+      name: 'Generation mode'
+    });
+
+    expect(
+      within(modeGroup).getByRole('radio', { name: 'Text' })
+    ).toBeVisible();
+    expect(
+      within(modeGroup).getByRole('radio', { name: 'Text + Parameters' })
+    ).toBeVisible();
+    expect(
+      within(modeGroup).getByRole('radio', { name: 'Parameters' })
+    ).toBeVisible();
+  });
+
+  it('updates generation mode selection immediately when a mode is clicked', () => {
+    render(<App />);
+
+    const textMode = screen.getByRole('radio', {
+      name: 'Text'
+    }) as HTMLInputElement;
+    const textAndParamsMode = screen.getByRole('radio', {
+      name: 'Text + Parameters'
+    }) as HTMLInputElement;
+    const paramsMode = screen.getByRole('radio', {
+      name: 'Parameters'
+    }) as HTMLInputElement;
+
+    expect(paramsMode.checked).toBe(true);
+    expect(textMode.checked).toBe(false);
+    expect(textAndParamsMode.checked).toBe(false);
+
+    fireEvent.click(textMode);
+    expect(textMode.checked).toBe(true);
+    expect(textAndParamsMode.checked).toBe(false);
+    expect(paramsMode.checked).toBe(false);
+
+    fireEvent.click(paramsMode);
+    expect(paramsMode.checked).toBe(true);
+    expect(textMode.checked).toBe(false);
+    expect(textAndParamsMode.checked).toBe(false);
+  });
+
+  it('defaults to Parameters mode, hides music prompt, and generates with params-only payload', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    const paramsMode = screen.getByRole('radio', {
+      name: 'Parameters'
+    }) as HTMLInputElement;
+    const textMode = screen.getByRole('radio', {
+      name: 'Text'
+    }) as HTMLInputElement;
+    const textAndParamsMode = screen.getByRole('radio', {
+      name: 'Text + Parameters'
+    }) as HTMLInputElement;
+
+    expect(paramsMode.checked).toBe(true);
+    expect(textMode.checked).toBe(false);
+    expect(textAndParamsMode.checked).toBe(false);
+    expect(screen.queryByLabelText('Music prompt')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mood: 'chill', tempo: 80, style: 'jazz' })
+      });
+    });
+  });
+
+  it('shows both Music prompt and parameter controls in Text + Parameters mode', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+
+    expect(screen.getByLabelText('Music prompt')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mood')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tempo (BPM)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Style')).toBeInTheDocument();
+  });
+
+  it('shows a Music prompt input and hides parameter controls in Text mode', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+
+    expect(screen.getByLabelText('Music prompt')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Mood')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Tempo (BPM)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Style')).not.toBeInTheDocument();
+  });
+
+  it('shows inline validation for empty text prompt and does not enqueue a generation', () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: '   ' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Please enter a music prompt.'
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
+  });
+
+  it('shows inline validation for empty text + parameters prompt and does not enqueue a generation', () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: '   ' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Please enter a music prompt.'
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
+  });
+
+  it('uses text prompt verbatim with tempo 80 and renders truncated queue summary in Text mode', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    const longPrompt =
+      'A dreamy late-night lo-fi groove with dusty drums and warm electric piano chords drifting in the rain';
+    const expectedSummary = `${longPrompt.slice(0, 57)}...`;
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: longPrompt }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mood: 'chill',
+          tempo: 80,
+          style: 'jazz',
+          mode: 'text',
+          prompt: longPrompt
+        })
+      });
+    });
+
+    expect(screen.getByTestId('queue-entry-1')).toHaveTextContent(
+      expectedSummary
+    );
+    expect(screen.getByTestId('queue-entry-1')).not.toHaveTextContent('Mood:');
+  });
+
+  it('uses text + parameters payload and renders queue summary with prompt and selected params', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    const longPrompt =
+      'Velvet keys and soft drums with nocturnal ambience drifting over city rain';
+    const expectedSummary = `${longPrompt.slice(0, 57)}... · Mood: upbeat · Tempo: 110 BPM · Style: hip-hop`;
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: longPrompt }
+    });
+    fireEvent.change(screen.getByLabelText('Mood'), {
+      target: { value: 'upbeat' }
+    });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), {
+      target: { value: '110' }
+    });
+    fireEvent.change(screen.getByLabelText('Style'), {
+      target: { value: 'hip-hop' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mood: 'upbeat',
+          tempo: 110,
+          style: 'hip-hop',
+          mode: 'text-and-parameters',
+          prompt: longPrompt
+        })
+      });
+    });
+
+    expect(screen.getByTestId('queue-entry-1')).toHaveTextContent(
+      expectedSummary
+    );
+  });
+
+  it('plays completed text + parameters generation without errors', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: 'Night bus rhythm with dusty drums and mellow bass' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(mockAudio.play).toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('plays completed text-mode generation without errors', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: 'Warm tape hiss and mellow Rhodes' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(mockAudio.play).toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('Please enter a music prompt.')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('disables the generation mode selector while track generation is in progress', async () => {
+    let resolveFetch: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generating track...')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Text' })).toBeDisabled();
+      expect(
+        screen.getByRole('radio', { name: 'Text + Parameters' })
+      ).toBeDisabled();
+      expect(screen.getByRole('radio', { name: 'Parameters' })).toBeDisabled();
+    });
+
+    resolveFetch?.(createWavBlobResponse());
+
+    await waitFor(() => {
+      expect(screen.queryByText('Generating track...')).not.toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Text' })).toBeEnabled();
+      expect(
+        screen.getByRole('radio', { name: 'Text + Parameters' })
+      ).toBeEnabled();
+      expect(screen.getByRole('radio', { name: 'Parameters' })).toBeEnabled();
+    });
   });
 
   it('uses prominent generate button and visible hover/focus states for interactive controls', () => {
@@ -131,8 +442,12 @@ describe('App generation flow', () => {
   it('removes the image upload input and shows an image prompt input in its place', () => {
     render(<App />);
 
-    expect(screen.queryByLabelText('Upload visual image')).not.toBeInTheDocument();
-    const promptInput = screen.getByLabelText('Image prompt') as HTMLInputElement;
+    expect(
+      screen.queryByLabelText('Upload visual image')
+    ).not.toBeInTheDocument();
+    const promptInput = screen.getByLabelText(
+      'Image prompt'
+    ) as HTMLInputElement;
     expect(promptInput).toBeInTheDocument();
     expect(promptInput.type).toBe('text');
   });
@@ -145,7 +460,9 @@ describe('App generation flow', () => {
 
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), { target: { value: 'anime city in rain at dusk' } });
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'anime city in rain at dusk' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
     await waitFor(() => {
@@ -156,16 +473,25 @@ describe('App generation flow', () => {
       });
     });
     expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', imageUrl);
-    expect(screen.getByTestId('visual-canvas').className).toContain('h-[min(60vh,420px)]');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-image-url',
+      imageUrl
+    );
+    expect(screen.getByTestId('visual-canvas').className).toContain(
+      'h-[min(60vh,420px)]'
+    );
   });
 
   it('keeps the image prompt editable after a successful image generation', async () => {
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/generated-visual-url');
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue(
+      'blob:http://localhost/generated-visual-url'
+    );
 
     render(<App />);
 
-    const promptInput = screen.getByLabelText('Image prompt') as HTMLInputElement;
+    const promptInput = screen.getByLabelText(
+      'Image prompt'
+    ) as HTMLInputElement;
     fireEvent.change(promptInput, { target: { value: 'first neon alley' } });
     fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
@@ -192,18 +518,28 @@ describe('App generation flow', () => {
     render(<App />);
 
     const promptInput = screen.getByLabelText('Image prompt');
-    fireEvent.change(promptInput, { target: { value: 'lofi diner at midnight' } });
+    fireEvent.change(promptInput, {
+      target: { value: 'lofi diner at midnight' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', firstImageUrl);
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-image-url',
+        firstImageUrl
+      );
     });
 
-    fireEvent.change(promptInput, { target: { value: 'retro subway station rain' } });
+    fireEvent.change(promptInput, {
+      target: { value: 'retro subway station rain' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', secondImageUrl);
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-image-url',
+        secondImageUrl
+      );
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/generate-image', {
@@ -220,16 +556,22 @@ describe('App generation flow', () => {
   });
 
   it('revokes the active generated image blob URL on unmount', async () => {
-    const generatedImageUrl = 'blob:http://localhost/generated-visual-url-cleanup';
+    const generatedImageUrl =
+      'blob:http://localhost/generated-visual-url-cleanup';
     vi.spyOn(URL, 'createObjectURL').mockReturnValue(generatedImageUrl);
 
     const { unmount } = render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), { target: { value: 'city rooftop sunrise haze' } });
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: 'city rooftop sunrise haze' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', generatedImageUrl);
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-image-url',
+        generatedImageUrl
+      );
     });
 
     unmount();
@@ -238,23 +580,34 @@ describe('App generation flow', () => {
 
   it('shows loading while image generation is in progress and ignores duplicate Generate Image clicks', async () => {
     let resolveImageFetch: ((value: Response) => void) | undefined;
-    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (url.endsWith('/api/generate-image')) {
-        return new Promise<Response>((resolve) => {
-          resolveImageFetch = resolve;
-        });
-      }
-      return createWavBlobResponse();
-    });
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url.endsWith('/api/generate-image')) {
+          return new Promise<Response>((resolve) => {
+            resolveImageFetch = resolve;
+          });
+        }
+        return createWavBlobResponse();
+      });
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    const generateImageButton = screen.getByRole('button', { name: 'Generate Image' });
+    const generateImageButton = screen.getByRole('button', {
+      name: 'Generate Image'
+    });
     fireEvent.click(generateImageButton);
 
-    const status = screen.getByText('Generating image...').closest('[role="status"]');
+    const status = screen
+      .getByText('Generating image...')
+      .closest('[role="status"]');
     expect(status).not.toBeNull();
     expect(generateImageButton).toBeDisabled();
 
@@ -271,20 +624,29 @@ describe('App generation flow', () => {
 
   it('hides image loading indicator after an image generation error', async () => {
     let resolveImageFetch: ((value: Response) => void) | undefined;
-    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (url.endsWith('/api/generate-image')) {
-        return new Promise<Response>((resolve) => {
-          resolveImageFetch = resolve;
-        });
-      }
-      return createWavBlobResponse();
-    });
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url.endsWith('/api/generate-image')) {
+          return new Promise<Response>((resolve) => {
+            resolveImageFetch = resolve;
+          });
+        }
+        return createWavBlobResponse();
+      });
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    const generateImageButton = screen.getByRole('button', { name: 'Generate Image' });
+    const generateImageButton = screen.getByRole('button', {
+      name: 'Generate Image'
+    });
     fireEvent.click(generateImageButton);
     expect(screen.getByText('Generating image...')).toBeInTheDocument();
     expect(generateImageButton).toBeDisabled();
@@ -292,9 +654,13 @@ describe('App generation flow', () => {
     resolveImageFetch?.(createErrorResponse('image generation failed'));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('image generation failed');
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'image generation failed'
+      );
     });
-    expect(screen.getByTestId('visual-prompt-feedback')).toContainElement(screen.getByRole('alert'));
+    expect(screen.getByTestId('visual-prompt-feedback')).toContainElement(
+      screen.getByRole('alert')
+    );
     expect(screen.queryByText('Generating image...')).not.toBeInTheDocument();
     expect(generateImageButton).toBeEnabled();
 
@@ -305,28 +671,39 @@ describe('App generation flow', () => {
   it('clears the image error message when a new generation request is submitted', async () => {
     let secondRequestResolver: ((value: Response) => void) | undefined;
     let imageRequestCount = 0;
-    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (url.endsWith('/api/generate-image')) {
-        imageRequestCount += 1;
-        if (imageRequestCount === 1) {
-          return createErrorResponse('image generation failed');
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url.endsWith('/api/generate-image')) {
+          imageRequestCount += 1;
+          if (imageRequestCount === 1) {
+            return createErrorResponse('image generation failed');
+          }
+          return new Promise<Response>((resolve) => {
+            secondRequestResolver = resolve;
+          });
         }
-        return new Promise<Response>((resolve) => {
-          secondRequestResolver = resolve;
-        });
-      }
-      return createWavBlobResponse();
-    });
+        return createWavBlobResponse();
+      });
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    const generateImageButton = screen.getByRole('button', { name: 'Generate Image' });
+    const generateImageButton = screen.getByRole('button', {
+      name: 'Generate Image'
+    });
     fireEvent.click(generateImageButton);
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('image generation failed');
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'image generation failed'
+      );
     });
 
     fireEvent.click(generateImageButton);
@@ -345,27 +722,50 @@ describe('App generation flow', () => {
   it('shows a clear error when generating image with an empty prompt and keeps fallback state', () => {
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Image prompt'), {
+      target: { value: '   ' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate Image' }));
 
-    expect(screen.getByText('Please enter an image prompt.')).toBeInTheDocument();
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
+    expect(
+      screen.getByText('Please enter an image prompt.')
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-image-url',
+      ''
+    );
   });
 
   it('renders the visual scene with fallback state before any image generation', () => {
     render(<App />);
 
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '0.00');
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '0.00');
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-image-url',
+      ''
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-current-time',
+      '0.00'
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-duration',
+      '0.00'
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-is-playing',
+      'false'
+    );
   });
 
   it('keeps player hidden until a track is generated successfully', async () => {
     render(<App />);
 
-    expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Play' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Pause' })
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seek')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
@@ -383,9 +783,15 @@ describe('App generation flow', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'upbeat' } });
-    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '110' } });
-    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'hip-hop' } });
+    fireEvent.change(screen.getByLabelText('Mood'), {
+      target: { value: 'upbeat' }
+    });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), {
+      target: { value: '110' }
+    });
+    fireEvent.change(screen.getByLabelText('Style'), {
+      target: { value: 'hip-hop' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -407,7 +813,9 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(globalThis.Audio).toHaveBeenCalledWith('blob:http://localhost/fake-audio-url');
+      expect(globalThis.Audio).toHaveBeenCalledWith(
+        'blob:http://localhost/fake-audio-url'
+      );
     });
     expect(mockAudio.play).toHaveBeenCalled();
   });
@@ -472,13 +880,19 @@ describe('App generation flow', () => {
     fireEvent.change(seek, { target: { value: '50' } });
     expect(seek.value).toBe('50');
     expect(mockAudio.currentTime).toBe(15);
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '15.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-current-time',
+      '15.00'
+    );
 
     // Seek to 100%
     fireEvent.change(seek, { target: { value: '100' } });
     expect(seek.value).toBe('100');
     expect(mockAudio.currentTime).toBe(30);
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '30.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-current-time',
+      '30.00'
+    );
   });
 
   it('clamps manual seek values to the supported range', async () => {
@@ -516,7 +930,9 @@ describe('App generation flow', () => {
     fireEvent.click(generate);
     fireEvent.click(generate);
 
-    const status = screen.getByText('Generating track...').closest('[role="status"]');
+    const status = screen
+      .getByText('Generating track...')
+      .closest('[role="status"]');
     expect(status).not.toBeNull();
     const statusElement = status as HTMLElement;
     expect(statusElement).toHaveTextContent('Generating track...');
@@ -557,30 +973,48 @@ describe('App generation flow', () => {
 
     render(<App />);
 
-    expect(screen.getByRole('region', { name: 'Generation queue' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'Generation queue' })
+    ).toBeInTheDocument();
     expect(screen.getByText('No generations yet.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'upbeat' } });
-    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '110' } });
-    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'hip-hop' } });
+    fireEvent.change(screen.getByLabelText('Mood'), {
+      target: { value: 'upbeat' }
+    });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), {
+      target: { value: '110' }
+    });
+    fireEvent.change(screen.getByLabelText('Style'), {
+      target: { value: 'hip-hop' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
       const firstEntry = screen.getByTestId('queue-entry-1');
-      expect(firstEntry).toHaveTextContent('Mood: upbeat · Tempo: 110 BPM · Style: hip-hop');
+      expect(firstEntry).toHaveTextContent(
+        'Mood: upbeat · Tempo: 110 BPM · Style: hip-hop'
+      );
       expect(firstEntry).toHaveAttribute('data-status', 'generating');
       expect(firstEntry).toHaveTextContent('Generating');
       expect(firstEntry.querySelector('.animate-spin')).not.toBeNull();
     });
 
-    fireEvent.change(screen.getByLabelText('Mood'), { target: { value: 'chill' } });
-    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), { target: { value: '80' } });
-    fireEvent.change(screen.getByLabelText('Style'), { target: { value: 'jazz' } });
+    fireEvent.change(screen.getByLabelText('Mood'), {
+      target: { value: 'chill' }
+    });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), {
+      target: { value: '80' }
+    });
+    fireEvent.change(screen.getByLabelText('Style'), {
+      target: { value: 'jazz' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
       const secondEntry = screen.getByTestId('queue-entry-2');
-      expect(secondEntry).toHaveTextContent('Mood: chill · Tempo: 80 BPM · Style: jazz');
+      expect(secondEntry).toHaveTextContent(
+        'Mood: chill · Tempo: 80 BPM · Style: jazz'
+      );
       expect(secondEntry).toHaveAttribute('data-status', 'queued');
       expect(secondEntry).toHaveTextContent('Queued');
     });
@@ -588,10 +1022,18 @@ describe('App generation flow', () => {
     resolveFirstFetch?.(createWavBlobResponse());
 
     await waitFor(() => {
-      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
       expect(screen.getByTestId('queue-entry-1')).toHaveTextContent('✓');
-      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
-      expect(screen.getByTestId('queue-entry-2')).toHaveTextContent('Completed');
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(screen.getByTestId('queue-entry-2')).toHaveTextContent(
+        'Completed'
+      );
     });
   });
 
@@ -606,17 +1048,29 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
-      expect(screen.getByRole('button', { name: 'Play generation 1' })).toBeInTheDocument();
-      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
-      expect(screen.getByRole('button', { name: 'Play generation 2' })).toBeInTheDocument();
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(
+        screen.getByRole('button', { name: 'Play generation 1' })
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(
+        screen.getByRole('button', { name: 'Play generation 2' })
+      ).toBeInTheDocument();
     });
   });
 
   it('loads and starts playback for the selected completed queue entry', async () => {
     const firstTrackUrl = 'blob:http://localhost/queue-track-1';
     const secondTrackUrl = 'blob:http://localhost/queue-track-2';
-    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce(firstTrackUrl).mockReturnValueOnce(secondTrackUrl);
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce(firstTrackUrl)
+      .mockReturnValueOnce(secondTrackUrl);
 
     render(<App />);
 
@@ -624,8 +1078,14 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
-      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
     });
 
     const audioCtor = globalThis.Audio as ReturnType<typeof vi.fn>;
@@ -635,21 +1095,34 @@ describe('App generation flow', () => {
     await waitFor(() => {
       expect(audioCtor.mock.calls.length).toBe(audioCallCountBeforeReplay + 1);
       expect(audioCtor.mock.calls.at(-1)?.[0]).toBe(firstTrackUrl);
-      expect(mockAudio.play).toHaveBeenCalledTimes(audioCallCountBeforeReplay + 1);
+      expect(mockAudio.play).toHaveBeenCalledTimes(
+        audioCallCountBeforeReplay + 1
+      );
     });
   });
 
   it('drives visual scene timing from the selected queue track during replay', async () => {
     const firstTrackUrl = 'blob:http://localhost/queue-track-1';
     const secondTrackUrl = 'blob:http://localhost/queue-track-2';
-    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce(firstTrackUrl).mockReturnValueOnce(secondTrackUrl);
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce(firstTrackUrl)
+      .mockReturnValueOnce(secondTrackUrl);
 
     const firstAudio = createMockAudio();
-    Object.defineProperty(firstAudio, 'duration', { value: 40, configurable: true });
+    Object.defineProperty(firstAudio, 'duration', {
+      value: 40,
+      configurable: true
+    });
     const secondAudio = createMockAudio();
-    Object.defineProperty(secondAudio, 'duration', { value: 20, configurable: true });
+    Object.defineProperty(secondAudio, 'duration', {
+      value: 20,
+      configurable: true
+    });
     const replayAudio = createMockAudio();
-    Object.defineProperty(replayAudio, 'duration', { value: 40, configurable: true });
+    Object.defineProperty(replayAudio, 'duration', {
+      value: 40,
+      configurable: true
+    });
     const audioInstances = [firstAudio, secondAudio, replayAudio];
 
     vi.spyOn(globalThis, 'Audio').mockImplementation(
@@ -662,23 +1135,41 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
-      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
       // The visual scene still reflects the first played track (duration 40)
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '40.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-audio-duration',
+        '40.00'
+      );
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     // Wait for the pause to be processed
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-is-playing',
+      'false'
+    );
 
     // Manually play the second track to ensure visual scene updates correctly.
     // This shifts 'secondAudio' (duration 20) from the mock array.
     fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '20.00');
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-audio-duration',
+        '20.00'
+      );
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-is-playing',
+        'true'
+      );
     });
 
     // Pause the second track
@@ -689,17 +1180,30 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Play generation 1' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '40.00');
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-audio-duration',
+        '40.00'
+      );
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-is-playing',
+        'true'
+      );
     });
 
-    fireEvent.change(screen.getByLabelText('Seek'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Seek'), {
+      target: { value: '50' }
+    });
     expect(replayAudio.currentTime).toBe(20);
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '20.00');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-current-time',
+      '20.00'
+    );
   });
 
   it('marks failed queue entries with an error indicator and message', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(createErrorResponse('Audio generation failed'));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createErrorResponse('Audio generation failed')
+    );
 
     render(<App />);
 
@@ -744,7 +1248,11 @@ describe('App generation flow', () => {
 
   it('surfaces backend detail field for non-standard 500 payloads', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      createErrorResponse('Internal server error while generating audio', 500, 'detail')
+      createErrorResponse(
+        'Internal server error while generating audio',
+        500,
+        'detail'
+      )
     );
 
     render(<App />);
@@ -752,19 +1260,25 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Internal server error while generating audio');
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Internal server error while generating audio'
+      );
     });
   });
 
   it('on network failure shows error message from fetch failure', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Failed to reach backend'));
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new Error('Failed to reach backend')
+    );
 
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Failed to reach backend');
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Failed to reach backend'
+      );
     });
   });
 
@@ -795,7 +1309,9 @@ describe('App generation flow', () => {
     render(<App />);
     // If App still depended on Strudel, it would either fail to render
     // or require a controller prop. The absence of the prop confirms removal.
-    expect(screen.getByRole('button', { name: 'Generate' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Generate' })
+    ).toBeInTheDocument();
   });
 
   // AC01 extra: verifies requestGeneratedAudio creates blob URL
@@ -807,19 +1323,26 @@ describe('App generation flow', () => {
       expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     });
 
-    const blobArg = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0][0] as Blob;
+    const blobArg = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Blob;
     expect(blobArg.size).toBeGreaterThan(0);
     expect(blobArg.type).toBe('audio/wav');
   });
 
   it('drives animation duration from the generated audio duration', async () => {
-    Object.defineProperty(mockAudio, 'duration', { value: 42, configurable: true });
+    Object.defineProperty(mockAudio, 'duration', {
+      value: 42,
+      configurable: true
+    });
 
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-duration', '42.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-audio-duration',
+        '42.00'
+      );
     });
   });
 
@@ -828,15 +1351,24 @@ describe('App generation flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-is-playing',
+        'true'
+      );
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-is-playing',
+      'false'
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'true');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-is-playing',
+        'true'
+      );
     });
   });
 
@@ -848,16 +1380,24 @@ describe('App generation flow', () => {
       expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
     });
 
-    const endedListener = (mockAudio.addEventListener as ReturnType<typeof vi.fn>).mock.calls.find(
-      (call) => call[0] === 'ended'
-    )?.[1] as (() => void) | undefined;
+    const endedListener = (
+      mockAudio.addEventListener as ReturnType<typeof vi.fn>
+    ).mock.calls.find((call) => call[0] === 'ended')?.[1] as
+      | (() => void)
+      | undefined;
 
     expect(endedListener).toBeDefined();
     endedListener?.();
 
     await waitFor(() => {
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-is-playing', 'false');
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-audio-current-time', '30.00');
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-is-playing',
+        'false'
+      );
+      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+        'data-audio-current-time',
+        '30.00'
+      );
       expect(screen.getByLabelText('Seek')).toHaveValue('100');
     });
   });
