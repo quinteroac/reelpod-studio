@@ -60,18 +60,28 @@ function clampSeekPosition(position: number): number {
   return Math.min(Math.max(position, SEEK_MIN), SEEK_MAX);
 }
 
+function truncatePromptSummary(prompt: string): string {
+  const normalizedPrompt = prompt.trim().replace(/\s+/g, ' ');
+  if (normalizedPrompt.length <= TEXT_PROMPT_MAX_SUMMARY_CHARS) {
+    return normalizedPrompt;
+  }
+
+  return `${normalizedPrompt.slice(0, TEXT_PROMPT_MAX_SUMMARY_CHARS - 3)}...`;
+}
+
 function buildQueueSummary(params: GenerationParams): string {
-  if (
-    params.mode === 'text' &&
-    typeof params.prompt === 'string' &&
-    params.prompt.trim().length > 0
-  ) {
-    const normalizedPrompt = params.prompt.trim().replace(/\s+/g, ' ');
-    if (normalizedPrompt.length <= TEXT_PROMPT_MAX_SUMMARY_CHARS) {
-      return normalizedPrompt;
+  const promptText = typeof params.prompt === 'string' ? params.prompt : null;
+  const hasPrompt = promptText !== null && promptText.trim().length > 0;
+  const hasTextMode = params.mode === 'text';
+  const hasTextAndParamsMode = params.mode === 'text-and-parameters';
+
+  if (hasPrompt && (hasTextMode || hasTextAndParamsMode)) {
+    const truncatedPrompt = truncatePromptSummary(promptText);
+    if (hasTextMode) {
+      return truncatedPrompt;
     }
 
-    return `${normalizedPrompt.slice(0, TEXT_PROMPT_MAX_SUMMARY_CHARS - 3)}...`;
+    return `${truncatedPrompt} · Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
   }
 
   return `Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
@@ -154,7 +164,7 @@ export function App() {
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [generationMode, setGenerationMode] = useState<GenerationMode>(
-    'text-and-parameters'
+    'parameters'
   );
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
@@ -347,7 +357,9 @@ export function App() {
   function handleGenerate(): void {
     setErrorMessage(null);
 
-    if (generationMode === 'text') {
+    const requiresPrompt =
+      generationMode === 'text' || generationMode === 'text-and-parameters';
+    if (requiresPrompt) {
       const trimmedPrompt = musicPrompt.trim();
       if (!trimmedPrompt) {
         setMusicPromptErrorMessage(MUSIC_PROMPT_REQUIRED_ERROR);
@@ -355,13 +367,30 @@ export function App() {
       }
 
       setMusicPromptErrorMessage(null);
+
+      if (generationMode === 'text') {
+        const nextEntry: QueueEntry = {
+          id: queueIdRef.current++,
+          params: {
+            ...params,
+            mode: 'text',
+            prompt: trimmedPrompt,
+            tempo: TEXT_MODE_DEFAULT_TEMPO
+          },
+          status: 'queued',
+          errorMessage: null,
+          audioUrl: null
+        };
+        setQueueEntries((prev) => [...prev, nextEntry]);
+        return;
+      }
+
       const nextEntry: QueueEntry = {
         id: queueIdRef.current++,
         params: {
           ...params,
-          mode: 'text',
-          prompt: trimmedPrompt,
-          tempo: TEXT_MODE_DEFAULT_TEMPO
+          mode: 'text-and-parameters',
+          prompt: trimmedPrompt
         },
         status: 'queued',
         errorMessage: null,
@@ -519,7 +548,7 @@ export function App() {
             </div>
           </fieldset>
 
-          {generationMode === 'text' && (
+          {generationMode !== 'parameters' && (
             <div className="space-y-2">
               <label
                 htmlFor="music-prompt"

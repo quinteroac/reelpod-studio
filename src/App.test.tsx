@@ -164,9 +164,9 @@ describe('App generation flow', () => {
       name: 'Parameters'
     }) as HTMLInputElement;
 
-    expect(textAndParamsMode.checked).toBe(true);
+    expect(paramsMode.checked).toBe(true);
     expect(textMode.checked).toBe(false);
-    expect(paramsMode.checked).toBe(false);
+    expect(textAndParamsMode.checked).toBe(false);
 
     fireEvent.click(textMode);
     expect(textMode.checked).toBe(true);
@@ -177,6 +177,17 @@ describe('App generation flow', () => {
     expect(paramsMode.checked).toBe(true);
     expect(textMode.checked).toBe(false);
     expect(textAndParamsMode.checked).toBe(false);
+  });
+
+  it('shows both Music prompt and parameter controls in Text + Parameters mode', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+
+    expect(screen.getByLabelText('Music prompt')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mood')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tempo (BPM)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Style')).toBeInTheDocument();
   });
 
   it('shows a Music prompt input and hides parameter controls in Text mode', () => {
@@ -196,6 +207,24 @@ describe('App generation flow', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: '   ' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Please enter a music prompt.'
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
+  });
+
+  it('shows inline validation for empty text + parameters prompt and does not enqueue a generation', () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
     fireEvent.change(screen.getByLabelText('Music prompt'), {
       target: { value: '   ' }
     });
@@ -241,6 +270,65 @@ describe('App generation flow', () => {
       expectedSummary
     );
     expect(screen.getByTestId('queue-entry-1')).not.toHaveTextContent('Mood:');
+  });
+
+  it('uses text + parameters payload and renders queue summary with prompt and selected params', async () => {
+    const fetchMock = mockGenerateFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+
+    const longPrompt =
+      'Velvet keys and soft drums with nocturnal ambience drifting over city rain';
+    const expectedSummary = `${longPrompt.slice(0, 57)}... · Mood: upbeat · Tempo: 110 BPM · Style: hip-hop`;
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: longPrompt }
+    });
+    fireEvent.change(screen.getByLabelText('Mood'), {
+      target: { value: 'upbeat' }
+    });
+    fireEvent.change(screen.getByLabelText('Tempo (BPM)'), {
+      target: { value: '110' }
+    });
+    fireEvent.change(screen.getByLabelText('Style'), {
+      target: { value: 'hip-hop' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mood: 'upbeat',
+          tempo: 110,
+          style: 'hip-hop',
+          mode: 'text-and-parameters',
+          prompt: longPrompt
+        })
+      });
+    });
+
+    expect(screen.getByTestId('queue-entry-1')).toHaveTextContent(
+      expectedSummary
+    );
+  });
+
+  it('plays completed text + parameters generation without errors', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
+    fireEvent.change(screen.getByLabelText('Music prompt'), {
+      target: { value: 'Night bus rhythm with dusty drums and mellow bass' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(mockAudio.play).toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('plays completed text-mode generation without errors', async () => {

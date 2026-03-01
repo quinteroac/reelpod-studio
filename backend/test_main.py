@@ -91,6 +91,19 @@ class TestBuildPrompt:
         body = main.GenerateRequestBody(mode="text", prompt="  crunchy drums with vinyl hiss  ")
         assert main.build_prompt(body) == "crunchy drums with vinyl hiss"
 
+    def test_text_and_params_mode_combines_prompt_with_selected_parameters(self) -> None:
+        body = main.GenerateRequestBody(
+            mode="text-and-parameters",
+            prompt="  dreamy guitar loop  ",
+            mood="melancholic",
+            tempo=102,
+            style="ambient",
+        )
+        assert (
+            main.build_prompt(body)
+            == "dreamy guitar loop, melancholic, ambient, 102 BPM"
+        )
+
 
 class TestAceStepApiConfiguration:
     def test_api_url_defaults_to_localhost(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -281,6 +294,26 @@ class TestGenerationQueue:
         assert snapshot.status == "queued"
         assert snapshot.prompt == "slow nostalgic tape wobble"
         assert snapshot.tempo == 80
+
+    def test_text_and_parameters_queue_item_uses_selected_tempo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(main, "ensure_queue_worker_running", lambda: None)
+        item = main.enqueue_generation_request(
+            main.GenerateRequestBody(
+                mode="text-and-parameters",
+                prompt="neon midnight groove",
+                mood="upbeat",
+                tempo=112,
+                style="hip-hop",
+            )
+        )
+
+        snapshot = main.get_queue_item_snapshot(item.id)
+        assert snapshot is not None
+        assert snapshot.status == "queued"
+        assert snapshot.prompt == "neon midnight groove, upbeat, hip-hop, 112 BPM"
+        assert snapshot.tempo == 112
 
     def test_queue_worker_processes_one_item_at_a_time_and_uses_submit_poll_flow(
         self, monkeypatch: pytest.MonkeyPatch
