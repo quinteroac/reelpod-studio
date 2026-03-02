@@ -355,11 +355,13 @@ export function App() {
       audioDuration,
       isPlaying,
       aspectRatio: selectedSocialFormat.aspectRatio,
+      outputWidth: selectedSocialFormat.width,
+      outputHeight: selectedSocialFormat.height,
       visualizerType: activeVisualizerType,
       effects: activeEffects.length > 0 ? activeEffects : ['none'],
       backgroundColor: '#000000',
       showPlaceholderCopy: false,
-      fullBleed: true
+      fullBleed: false
     };
     liveMirrorStateRef.current = nextState;
 
@@ -375,6 +377,8 @@ export function App() {
     audioDuration,
     isPlaying,
     selectedSocialFormat.aspectRatio,
+    selectedSocialFormat.width,
+    selectedSocialFormat.height,
     activeVisualizerType,
     activeEffects
   ]);

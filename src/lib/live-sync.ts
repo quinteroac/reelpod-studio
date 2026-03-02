@@ -10,6 +10,8 @@ export interface LiveMirrorState {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  outputWidth: number;
+  outputHeight: number;
   visualizerType: VisualizerType;
   effects: EffectType[];
   backgroundColor: string;
@@ -27,11 +29,13 @@ export const DEFAULT_LIVE_MIRROR_STATE: LiveMirrorState = {
   audioDuration: 0,
   isPlaying: false,
   aspectRatio: 16 / 9,
+  outputWidth: 1920,
+  outputHeight: 1080,
   visualizerType: 'none',
   effects: ['none'],
   backgroundColor: '#000000',
   showPlaceholderCopy: false,
-  fullBleed: true
+  fullBleed: false
 };
 
 export function createLiveMirrorChannel(): BroadcastChannel | null {
@@ -54,6 +58,8 @@ export function isLiveMirrorMessage(value: unknown): value is LiveMirrorMessage 
     typeof candidate.audioDuration === 'number' &&
     typeof candidate.isPlaying === 'boolean' &&
     typeof candidate.aspectRatio === 'number' &&
+    typeof candidate.outputWidth === 'number' &&
+    typeof candidate.outputHeight === 'number' &&
     typeof candidate.visualizerType === 'string' &&
     Array.isArray(candidate.effects) &&
     typeof candidate.backgroundColor === 'string' &&

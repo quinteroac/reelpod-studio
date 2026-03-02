@@ -119,11 +119,13 @@ describe('LivePage', () => {
       audioDuration: 60,
       isPlaying: true,
       aspectRatio: 9 / 16,
+      outputWidth: 1080,
+      outputHeight: 1920,
       visualizerType: 'glitch',
       effects: ['zoom', 'colorDrift'],
       backgroundColor: '#000000',
       showPlaceholderCopy: false,
-      fullBleed: true,
+      fullBleed: false,
       sentAt: Date.now()
     });
 

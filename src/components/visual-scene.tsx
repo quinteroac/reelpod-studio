@@ -143,7 +143,7 @@ export function VisualScene({
         className="pointer-events-none absolute hidden"
       />
 
-      <Canvas orthographic camera={{ position: [0, 0, 4], zoom: 120 }}>
+      <Canvas orthographic camera={{ position: [0, 0, 4], zoom: 120 }} gl={{ preserveDrawingBuffer: true }}>
         <color attach="background" args={[backgroundColor]} />
         <SceneContent
           imageUrl={imageUrl}
