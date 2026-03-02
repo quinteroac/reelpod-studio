@@ -42,7 +42,7 @@ export function LivePage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-black" data-testid="live-page">
+    <main className="fixed inset-0 m-0 overflow-hidden bg-black" data-testid="live-page">
       <VisualScene
         imageUrl={mirroredState.imageUrl}
         audioCurrentTime={mirroredState.audioCurrentTime}

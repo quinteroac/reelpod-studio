@@ -107,4 +107,61 @@ describe('VisualScene', () => {
       aspectRatio: `${9 / 16}`
     });
   });
+
+  it('fills the full container when fullBleed is enabled', () => {
+    render(
+      <VisualScene
+        imageUrl={null}
+        audioCurrentTime={0}
+        audioDuration={0}
+        isPlaying={false}
+        aspectRatio={16 / 9}
+        visualizerType="none"
+        effects={['none']}
+        fullBleed={true}
+      />
+    );
+
+    expect(screen.getByTestId('visual-scene')).toHaveClass('h-full', 'w-full', 'overflow-hidden');
+    expect(screen.getByTestId('visual-scene')).toHaveStyle({
+      width: '100%',
+      height: '100%'
+    });
+  });
+
+  it('recomputes image plane contain scale when viewport dimensions change', () => {
+    useLoaderMock.mockReturnValue({ image: { width: 1600, height: 800 } });
+    useThreeMock.mockReturnValue({ viewport: { width: 8, height: 4.5 } });
+
+    const { rerender } = render(
+      <VisualScene
+        imageUrl="blob:http://localhost/my-upload"
+        audioCurrentTime={0}
+        audioDuration={30}
+        isPlaying={true}
+        aspectRatio={16 / 9}
+        visualizerType="waveform"
+        effects={['none']}
+      />
+    );
+
+    expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-width', '8.000');
+    expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-height', '4.000');
+
+    useThreeMock.mockReturnValue({ viewport: { width: 4, height: 8 } });
+    rerender(
+      <VisualScene
+        imageUrl="blob:http://localhost/my-upload"
+        audioCurrentTime={0}
+        audioDuration={30}
+        isPlaying={true}
+        aspectRatio={16 / 9}
+        visualizerType="waveform"
+        effects={['none']}
+      />
+    );
+
+    expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-width', '4.000');
+    expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-height', '2.000');
+  });
 });

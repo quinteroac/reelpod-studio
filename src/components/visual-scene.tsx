@@ -122,11 +122,11 @@ export function VisualScene({
   return (
     <div
       data-testid="visual-scene"
-      className={fullBleed ? 'relative h-screen w-screen' : 'relative w-full'}
+      className={fullBleed ? 'relative h-full w-full overflow-hidden' : 'relative w-full'}
       style={{
-        aspectRatio: `${aspectRatio}`,
-        width: fullBleed ? '100vw' : `min(100%, 70vh * ${aspectRatio})`,
-        height: fullBleed ? '100vh' : undefined
+        aspectRatio: fullBleed ? undefined : `${aspectRatio}`,
+        width: fullBleed ? '100%' : `min(100%, 70vh * ${aspectRatio})`,
+        height: fullBleed ? '100%' : undefined
       }}
     >
       {/* Invisible DOM overlay elements for test queries — no visual impact */}

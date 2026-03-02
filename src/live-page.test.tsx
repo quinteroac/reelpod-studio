@@ -72,7 +72,13 @@ describe('LivePage', () => {
   it('renders only the canvas shell on a black background', () => {
     render(<LivePage />);
 
-    expect(screen.getByTestId('live-page')).toHaveClass('bg-black');
+    expect(screen.getByTestId('live-page')).toHaveClass(
+      'fixed',
+      'inset-0',
+      'm-0',
+      'overflow-hidden',
+      'bg-black'
+    );
     expect(screen.getByTestId('visual-scene')).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Generate' })
