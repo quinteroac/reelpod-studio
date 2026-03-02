@@ -20,6 +20,9 @@ type VisualSceneProps = {
   aspectRatio: number;
   visualizerType: VisualizerType;
   effects: EffectType[];
+  backgroundColor?: string;
+  showPlaceholderCopy?: boolean;
+  fullBleed?: boolean;
 };
 
 type SceneRenderProps = {
@@ -97,7 +100,10 @@ export function VisualScene({
   isPlaying,
   aspectRatio,
   visualizerType,
-  effects
+  effects,
+  backgroundColor = '#18120f',
+  showPlaceholderCopy = true,
+  fullBleed = false
 }: VisualSceneProps) {
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -116,10 +122,11 @@ export function VisualScene({
   return (
     <div
       data-testid="visual-scene"
-      className="relative w-full"
+      className={fullBleed ? 'relative h-screen w-screen' : 'relative w-full'}
       style={{
         aspectRatio: `${aspectRatio}`,
-        width: `min(100%, 70vh * ${aspectRatio})`
+        width: fullBleed ? '100vw' : `min(100%, 70vh * ${aspectRatio})`,
+        height: fullBleed ? '100vh' : undefined
       }}
     >
       {/* Invisible DOM overlay elements for test queries — no visual impact */}
@@ -137,7 +144,7 @@ export function VisualScene({
       />
 
       <Canvas orthographic camera={{ position: [0, 0, 4], zoom: 120 }}>
-        <color attach="background" args={['#18120f']} />
+        <color attach="background" args={[backgroundColor]} />
         <SceneContent
           imageUrl={imageUrl}
           audioCurrentTime={audioCurrentTime}
@@ -149,7 +156,7 @@ export function VisualScene({
         />
       </Canvas>
 
-      {!imageUrl && (
+      {showPlaceholderCopy && !imageUrl && (
         <p
           data-testid="visual-placeholder-copy"
           className="pointer-events-none absolute inset-x-0 bottom-4 px-4 text-center text-sm text-lofi-accentMuted"
