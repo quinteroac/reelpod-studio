@@ -1,0 +1,128 @@
+{
+  "goals": [
+    "Provide a distraction-free, full-viewport visual output page at `/live`",
+    "Mirror the main app's visual state (image, visualizer, effects, audio timing) in real-time across tabs",
+    "Enable creators to stream by sharing the `/live` tab while working in the main app tab"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Navigate to /live route",
+      "description": "As a creator, I want to open `/live` in a new browser tab so that I get a dedicated page showing only the visual canvas.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A `/live` route exists and renders without errors"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The page shows only the R3F canvas — no parameter controls, no audio player, no header/branding, no other UI chrome"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The page has a dark/black background (no white flashes on load)"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Real-time canvas mirroring across tabs",
+      "description": "As a creator, I want the `/live` page to mirror the visual state of the main app in real-time so that viewers see exactly what I see while I compose.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "When audio plays in the main app, the `/live` tab receives and displays the current playback time and duration"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The `/live` tab renders the same image (or fallback SVG) as the main app"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The `/live` tab renders the same active visualizer and effects as the main app"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Visual updates appear on the `/live` tab with no perceptible delay (< 100ms)"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "When audio is paused/stopped in the main app, the `/live` tab reflects the paused state"
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Cross-tab communication uses `BroadcastChannel` API (or equivalent mechanism)"
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Visually verified in browser"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Full-viewport auto-resize canvas",
+      "description": "As a creator, I want the `/live` canvas to fill the entire browser viewport and auto-resize so that it looks clean when screen-sharing a tab.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The canvas fills 100% of the viewport width and height (no scrollbars, no margins)"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Resizing the browser window causes the canvas to adapt immediately"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The visual content scales correctly (maintains aspect ratio of the image plane within the full canvas)"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Visually verified in browser"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Add client-side routing to the app (e.g. `react-router-dom`) with at least two routes: `/` (main app) and `/live` (live page)"
+    },
+    {
+      "id": "FR-2",
+      "description": "The `/live` route renders a `VisualScene` component (or equivalent R3F Canvas) with no surrounding UI"
+    },
+    {
+      "id": "FR-3",
+      "description": "The main app broadcasts visual state (audioCurrentTime, audioDuration, isPlaying, image data/URL, visualizer type, effect types) via `BroadcastChannel` on every relevant state change"
+    },
+    {
+      "id": "FR-4",
+      "description": "The `/live` page listens on the same `BroadcastChannel` and feeds received state into its `VisualScene` as props"
+    },
+    {
+      "id": "FR-5",
+      "description": "The `/live` page canvas uses `width: 100vw; height: 100vh` styling with no body margin/padding"
+    },
+    {
+      "id": "FR-6",
+      "description": "No audio playback occurs on the `/live` page — it is visual-only"
+    }
+  ]
+}
