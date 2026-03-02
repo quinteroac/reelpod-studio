@@ -1,5 +1,4 @@
 ## New Features
-- Create Studio Mode (Playlist visuals and music creation ) 
 - Create Live/Record Mode (Streaming mode or Record as video mode)
 - Tiktok integration
 - YouTube Integration

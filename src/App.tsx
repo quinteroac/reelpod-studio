@@ -1171,9 +1171,18 @@ export function App() {
                 className="space-y-3 rounded-lg bg-lofi-panel p-4"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
-                    Queue
-                  </h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                      Queue
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => window.open('/live', '_blank', 'noopener,noreferrer')}
+                      className="rounded bg-lofi-accent px-2 py-1 text-xs font-semibold text-stone-950 transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text outline-none"
+                    >
+                      Go Live
+                    </button>
+                  </div>
                   {playingEntryId !== null &&
                     (() => {
                       const idx = queueEntries.findIndex(
