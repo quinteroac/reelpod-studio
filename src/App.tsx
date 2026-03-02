@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
@@ -28,6 +28,12 @@ import {
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
+import {
+  DEFAULT_LIVE_MIRROR_STATE,
+  LIVE_MIRROR_INTERVAL_MS,
+  type LiveMirrorState,
+  createLiveMirrorChannel
+} from './lib/live-sync';
 
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
@@ -290,7 +296,12 @@ export function App() {
     useState<ToggleableEffectType[]>(defaultEffectOrder);
   const seekPollRef = useRef<number | null>(null);
   const queueEntriesRef = useRef<QueueEntry[]>([]);
-  const activeEffects = effectOrder.filter((effect) => enabledEffects[effect]);
+  const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
+  const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
+  const activeEffects = useMemo(
+    () => effectOrder.filter((effect) => enabledEffects[effect]),
+    [effectOrder, enabledEffects]
+  );
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
@@ -318,6 +329,95 @@ export function App() {
   useEffect(() => {
     queueEntriesRef.current = queueEntries;
   }, [queueEntries]);
+
+  useEffect(() => {
+    const channel = createLiveMirrorChannel();
+    liveMirrorChannelRef.current = channel;
+    if (!channel) {
+      return;
+    }
+
+    channel.postMessage({
+      ...liveMirrorStateRef.current,
+      sentAt: Date.now()
+    });
+
+    return () => {
+      channel.close();
+      liveMirrorChannelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextState: LiveMirrorState = {
+      imageUrl: visualImageUrl,
+      audioCurrentTime,
+      audioDuration,
+      isPlaying,
+      aspectRatio: selectedSocialFormat.aspectRatio,
+      outputWidth: selectedSocialFormat.width,
+      outputHeight: selectedSocialFormat.height,
+      visualizerType: activeVisualizerType,
+      effects: activeEffects.length > 0 ? activeEffects : ['none'],
+      backgroundColor: '#000000',
+      showPlaceholderCopy: false,
+      fullBleed: false
+    };
+    liveMirrorStateRef.current = nextState;
+
+    if (liveMirrorChannelRef.current) {
+      liveMirrorChannelRef.current.postMessage({
+        ...nextState,
+        sentAt: Date.now()
+      });
+    }
+  }, [
+    visualImageUrl,
+    audioCurrentTime,
+    audioDuration,
+    isPlaying,
+    selectedSocialFormat.aspectRatio,
+    selectedSocialFormat.width,
+    selectedSocialFormat.height,
+    activeVisualizerType,
+    activeEffects
+  ]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const audio = audioRef.current;
+      const channel = liveMirrorChannelRef.current;
+      if (!audio || !channel) {
+        return;
+      }
+
+      const nextState = {
+        ...liveMirrorStateRef.current,
+        audioCurrentTime: isFinite(audio.currentTime)
+          ? audio.currentTime
+          : liveMirrorStateRef.current.audioCurrentTime,
+        audioDuration:
+          audio.duration && isFinite(audio.duration)
+            ? audio.duration
+            : liveMirrorStateRef.current.audioDuration,
+        isPlaying: true
+      };
+      liveMirrorStateRef.current = nextState;
+
+      channel.postMessage({
+        ...nextState,
+        sentAt: Date.now()
+      });
+    }, LIVE_MIRROR_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isPlaying]);
 
   useEffect(() => {
     return () => {
@@ -1075,9 +1175,18 @@ export function App() {
                 className="space-y-3 rounded-lg bg-lofi-panel p-4"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
-                    Queue
-                  </h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                      Queue
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => window.open('/live', '_blank', 'noopener,noreferrer')}
+                      className="rounded bg-lofi-accent px-2 py-1 text-xs font-semibold text-stone-950 transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text outline-none"
+                    >
+                      Go Live
+                    </button>
+                  </div>
                   {playingEntryId !== null &&
                     (() => {
                       const idx = queueEntries.findIndex(
