@@ -1,6 +1,6 @@
 /* eslint-disable react/no-unknown-property */
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeContainScale } from '../lib/visual-scene';
 import { EffectComposer, type EffectType } from './effects';
@@ -47,7 +47,59 @@ type SceneContentProps = SceneRenderProps & {
 };
 
 function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audioDuration, isPlaying, visualizerType, effects, onDerived }: SceneContentProps) {
-  const imageTexture = useLoader(THREE.TextureLoader, imageUrl ?? FALLBACK_VISUAL_DATA_URI);
+  const fallbackTexture = useLoader(THREE.TextureLoader, FALLBACK_VISUAL_DATA_URI);
+  const [loadedImageTexture, setLoadedImageTexture] = useState<THREE.Texture | null>(null);
+  const loadedImageUrlRef = useRef<string | null>(null);
+  const loadedTextureRef = useRef<THREE.Texture | null>(null);
+  loadedTextureRef.current = loadedImageTexture;
+
+  useEffect(() => {
+    return () => loadedTextureRef.current?.dispose();
+  }, []);
+
+  useEffect(() => {
+    if (!imageUrl || imageUrl === FALLBACK_VISUAL_DATA_URI) {
+      setLoadedImageTexture((prev) => {
+        if (prev) {
+          prev.dispose();
+        }
+        return null;
+      });
+      loadedImageUrlRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      imageUrl,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose();
+          return;
+        }
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        setLoadedImageTexture((prev) => {
+          loadedImageUrlRef.current = imageUrl;
+          if (prev) prev.dispose();
+          return tex;
+        });
+      },
+      undefined,
+      () => {
+        if (!cancelled) loadedImageUrlRef.current = null;
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  const imageTexture = imageUrl && imageUrl !== FALLBACK_VISUAL_DATA_URI
+    ? (loadedImageTexture ?? fallbackTexture)
+    : fallbackTexture;
+
   const videoTexture = useMemo(() => {
     if (!videoElement || !videoUrl) {
       return null;

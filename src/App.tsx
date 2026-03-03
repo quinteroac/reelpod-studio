@@ -320,7 +320,10 @@ export function App() {
 
   useEffect(() => {
     const nextState: LiveMirrorState = {
-      imageUrl: visualImageUrl,
+      imageUrl:
+        activeVideoUrl != null
+          ? liveMirrorStateRef.current.imageUrl
+          : visualImageUrl,
       audioCurrentTime,
       audioDuration,
       isPlaying,
@@ -342,6 +345,7 @@ export function App() {
       });
     }
   }, [
+    activeVideoUrl,
     visualImageUrl,
     audioCurrentTime,
     audioDuration,
@@ -352,6 +356,53 @@ export function App() {
     activeVisualizerType,
     activeEffects
   ]);
+
+  // When we have active video, capture current frame as data URL and send to live tab
+  // (blob URLs don't work cross-tab, so /live can't use the video element directly)
+  useEffect(() => {
+    if (!activeVideoUrl || !liveMirrorChannelRef.current) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const video = videoPlaybackRef.current;
+      const channel = liveMirrorChannelRef.current;
+      if (!video || !channel || video.readyState < 2) {
+        return;
+      }
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (w <= 0 || h <= 0) {
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return;
+      }
+      ctx.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const nextState: LiveMirrorState = {
+        ...liveMirrorStateRef.current,
+        imageUrl: dataUrl,
+        audioCurrentTime: isFinite(video.currentTime) ? video.currentTime : liveMirrorStateRef.current.audioCurrentTime,
+        audioDuration:
+          video.duration != null && isFinite(video.duration)
+            ? video.duration
+            : liveMirrorStateRef.current.audioDuration,
+        isPlaying: !video.paused
+      };
+      liveMirrorStateRef.current = nextState;
+      channel.postMessage({
+        ...nextState,
+        sentAt: Date.now()
+      });
+    }, LIVE_MIRROR_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [activeVideoUrl]);
 
   useEffect(() => {
     if (!isPlaying) {
