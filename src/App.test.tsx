@@ -66,48 +66,34 @@ function createMockAudio(): HTMLAudioElement {
   } as unknown as HTMLAudioElement;
 }
 
-function createAudioResponse(status = 200): Response {
+function createVideoResponse(status = 200): Response {
   if (status >= 200 && status < 300) {
-    return new Response(new Blob(['fake-wav-data'], { type: 'audio/wav' }), {
+    return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
       status,
-      headers: { 'content-type': 'audio/wav' }
+      headers: { 'content-type': 'video/mp4' }
     });
   }
 
-  return new Response(JSON.stringify({ error: 'audio generation failed' }), {
+  return new Response(JSON.stringify({ error: 'video generation failed' }), {
     status,
     headers: { 'content-type': 'application/json' }
   });
 }
 
-function createImageResponse(status = 200): Response {
-  if (status >= 200 && status < 300) {
-    return new Response(new Blob(['fake-image-data'], { type: 'image/png' }), {
-      status,
-      headers: { 'content-type': 'image/png' }
-    });
-  }
-
-  return new Response(JSON.stringify({ error: 'image generation failed' }), {
-    status,
-    headers: { 'content-type': 'application/json' }
+function createUnexpectedContentTypeResponse(): Response {
+  return new Response(new Blob(['fake-content'], { type: 'audio/wav' }), {
+    status: 200,
+    headers: { 'content-type': 'audio/wav' }
   });
 }
 
-function mockPairedFetch(): ReturnType<typeof vi.fn> {
+function mockVideoFetch(): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
-    const url =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-
-    if (url.endsWith('/api/generate-image')) {
-      return createImageResponse();
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponse();
     }
-
-    return createAudioResponse();
+    throw new Error(`Unexpected endpoint called: ${url}`);
   });
 }
 
@@ -127,20 +113,16 @@ describe('App unified generate flow (US-003)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
-    vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
-      if ('type' in obj && obj.type === 'image/png') {
-        return 'blob:http://localhost/generated-image-url';
-      }
-
-      return 'blob:http://localhost/generated-audio-url';
-    });
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
-  it('triggers both audio and image generation from one Generate click', async () => {
-    const fetchMock = mockPairedFetch();
+  it('posts one unified generation request and includes image prompt fields', async () => {
+    const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
@@ -158,18 +140,13 @@ describe('App unified generate flow (US-003)', () => {
           mood: 'chill',
           tempo: 80,
           style: 'jazz',
-          duration: 40
-        })
-      });
-      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          prompt: 'neon city street at night',
+          duration: 40,
+          imagePrompt: 'neon city street at night',
           targetWidth: 1920,
           targetHeight: 1080
         })
       });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -220,18 +197,17 @@ describe('App unified generate flow (US-003)', () => {
   });
 
   it('keeps Generate enabled while processing and transitions queue from Queued -> Generating -> Completed', async () => {
-    let resolveAudio: ((value: Response) => void) | undefined;
+    let resolveVideo: ((value: Response) => void) | undefined;
 
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(
         () =>
           new Promise<Response>((resolve) => {
-            resolveAudio = resolve;
+            resolveVideo = resolve;
           })
       )
-      .mockImplementationOnce(async () => createImageResponse())
-      .mockImplementation(async () => createAudioResponse());
+      .mockImplementation(async () => createVideoResponse());
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
@@ -254,7 +230,7 @@ describe('App unified generate flow (US-003)', () => {
       expect(second).toHaveTextContent('Queued');
     });
 
-    resolveAudio?.(createAudioResponse());
+    resolveVideo?.(createVideoResponse());
 
     await waitFor(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -269,21 +245,8 @@ describe('App unified generate flow (US-003)', () => {
     });
   });
 
-  it('marks queue entry as failed and shows descriptive error when audio generation fails', async () => {
-    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url.endsWith('/api/generate-image')) {
-        return createImageResponse();
-      }
-
-      return createAudioResponse(500);
-    });
+  it('marks queue entry as failed and shows descriptive error when generation fails', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => createVideoResponse(500));
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
@@ -296,11 +259,11 @@ describe('App unified generate flow (US-003)', () => {
       const entry = screen.getByTestId('queue-entry-1');
       expect(entry).toHaveAttribute('data-status', 'failed');
       expect(entry).toHaveTextContent('Failed');
-      expect(entry).toHaveTextContent('audio generation failed');
+      expect(entry).toHaveTextContent('video generation failed');
     });
   });
 
-  it('shows completed pair with image rendered and audio playback controls ready', async () => {
+  it('shows completed generation with playback controls ready', async () => {
     render(<App />);
 
     fireEvent.change(screen.getByLabelText('Image prompt'), {
@@ -316,29 +279,13 @@ describe('App unified generate flow (US-003)', () => {
       );
     });
 
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
-      'data-image-url',
-      'blob:http://localhost/generated-image-url'
-    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
   });
 
-  it('does not commit pair when image generation fails', async () => {
-    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url.endsWith('/api/generate-image')) {
-        return createImageResponse(500);
-      }
-
-      return createAudioResponse();
-    });
+  it('does not commit generation when request fails', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => createVideoResponse(500));
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
@@ -350,7 +297,7 @@ describe('App unified generate flow (US-003)', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
       const entry = screen.getByTestId('queue-entry-1');
       expect(entry).toHaveAttribute('data-status', 'failed');
-      expect(entry).toHaveTextContent('image generation failed');
+      expect(entry).toHaveTextContent('video generation failed');
     });
 
     expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
@@ -358,7 +305,7 @@ describe('App unified generate flow (US-003)', () => {
   });
 
   it('validates image prompt before enqueueing a unified generation request', () => {
-    const fetchMock = mockPairedFetch();
+    const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
@@ -375,6 +322,55 @@ describe('App unified generate flow (US-003)', () => {
     expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('fails with a clear error when /api/generate does not return video/mp4', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => createUnexpectedContentTypeResponse()
+    );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not generate video: Expected video/mp4 response'
+      );
+    });
+  });
+
+  it('revokes the previous video object URL before creating a new one', async () => {
+    const createObjectURLSpy = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/generated-video-url-1')
+      .mockReturnValueOnce('blob:http://localhost/generated-video-url-2');
+    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute('data-status', 'completed');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
+
+    await waitFor(() => {
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(2);
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith(
+        'blob:http://localhost/generated-video-url-1'
+      );
+    });
+  });
 });
 
 describe('App controls panel layout (US-001)', () => {
@@ -384,7 +380,7 @@ describe('App controls panel layout (US-001)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
       (obj: Blob | MediaSource) => {
@@ -392,7 +388,7 @@ describe('App controls panel layout (US-001)', () => {
           return 'blob:http://localhost/generated-image-url';
         }
 
-        return 'blob:http://localhost/generated-audio-url';
+        return 'blob:http://localhost/generated-video-url';
       }
     );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
@@ -462,7 +458,7 @@ describe('App right column preview and playback layout (US-002)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
       (obj: Blob | MediaSource) => {
@@ -470,7 +466,7 @@ describe('App right column preview and playback layout (US-002)', () => {
           return 'blob:http://localhost/generated-image-url';
         }
 
-        return 'blob:http://localhost/generated-audio-url';
+        return 'blob:http://localhost/generated-video-url';
       }
     );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
@@ -565,14 +561,14 @@ describe('App effects toggles (US-002)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
       if ('type' in obj && obj.type === 'image/png') {
         return 'blob:http://localhost/generated-image-url';
       }
 
-      return 'blob:http://localhost/generated-audio-url';
+      return 'blob:http://localhost/generated-video-url';
     });
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
@@ -650,14 +646,14 @@ describe('App effect reorder (US-003)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
       if ('type' in obj && obj.type === 'image/png') {
         return 'blob:http://localhost/generated-image-url';
       }
 
-      return 'blob:http://localhost/generated-audio-url';
+      return 'blob:http://localhost/generated-video-url';
     });
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
@@ -748,7 +744,7 @@ describe('App responsive single-column fallback (US-003)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
       (obj: Blob | MediaSource) => {
@@ -756,7 +752,7 @@ describe('App responsive single-column fallback (US-003)', () => {
           return 'blob:http://localhost/generated-image-url';
         }
 
-        return 'blob:http://localhost/generated-audio-url';
+        return 'blob:http://localhost/generated-video-url';
       }
     );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
@@ -804,14 +800,14 @@ describe('App shared prompt toggle (US-005)', () => {
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
       if ('type' in obj && obj.type === 'image/png') {
         return 'blob:http://localhost/generated-image-url';
       }
 
-      return 'blob:http://localhost/generated-audio-url';
+      return 'blob:http://localhost/generated-video-url';
     });
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
@@ -838,8 +834,8 @@ describe('App shared prompt toggle (US-005)', () => {
     expect(screen.getByLabelText('Image prompt')).toHaveValue('lofi cafe at night, cinematic lighting');
   });
 
-  it('hides image prompt and uses music prompt for image generation in text mode when enabled', async () => {
-    const fetchMock = mockPairedFetch();
+  it('hides image prompt and sends the music prompt as imagePrompt in text mode when enabled', async () => {
+    const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
@@ -862,15 +858,23 @@ describe('App shared prompt toggle (US-005)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          prompt: 'rainy midnight synthwave',
-          targetWidth: 1920,
-          targetHeight: 1080
-        })
-      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(requestInit.method).toBe('POST');
+    expect(requestInit.headers).toEqual({ 'content-type': 'application/json' });
+    const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      mode: 'text',
+      prompt: 'rainy midnight synthwave',
+      mood: 'chill',
+      tempo: 80,
+      style: 'jazz',
+      duration: 40,
+      imagePrompt: 'rainy midnight synthwave',
+      targetWidth: 1920,
+      targetHeight: 1080
     });
   });
 
@@ -893,8 +897,8 @@ describe('App shared prompt toggle (US-005)', () => {
     );
   });
 
-  it('uses music prompt for image generation in text + parameters mode when enabled', async () => {
-    const fetchMock = mockPairedFetch();
+  it('uses music prompt as imagePrompt in text + parameters mode when enabled', async () => {
+    const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
@@ -910,45 +914,47 @@ describe('App shared prompt toggle (US-005)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/generate-image', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          prompt: 'nostalgic vinyl crackle piano',
-          targetWidth: 1920,
-          targetHeight: 1080
-        })
-      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(requestInit.method).toBe('POST');
+    expect(requestInit.headers).toEqual({ 'content-type': 'application/json' });
+    const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      mode: 'text-and-parameters',
+      prompt: 'nostalgic vinyl crackle piano',
+      mood: 'chill',
+      tempo: 80,
+      style: 'jazz',
+      duration: 40,
+      imagePrompt: 'nostalgic vinyl crackle piano',
+      targetWidth: 1920,
+      targetHeight: 1080
     });
   });
 });
 
-describe('App track-image pair binding (US-006)', () => {
+describe('App queue playback binding (US-006)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
 
     const mockAudio = createMockAudio();
     vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(mockPairedFetch());
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
-    let imageUrlIndex = 0;
-    let audioUrlIndex = 0;
+    let videoUrlIndex = 0;
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
-      (obj: Blob | MediaSource) => {
-        if ('type' in obj && obj.type === 'image/png') {
-          imageUrlIndex += 1;
-          return `blob:http://localhost/generated-image-url-${imageUrlIndex}`;
-        }
-
-        audioUrlIndex += 1;
-        return `blob:http://localhost/generated-audio-url-${audioUrlIndex}`;
+      () => {
+        videoUrlIndex += 1;
+        return `blob:http://localhost/generated-video-url-${videoUrlIndex}`;
       }
     );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
-  it('binds numbered track-image pairs, preserves prior pairs, and switches image with active playback', async () => {
+  it('binds numbered track queue entries, preserves prior entries, and switches active playback', async () => {
     render(<App />);
 
     fireEvent.change(screen.getByLabelText('Image prompt'), {
@@ -965,10 +971,7 @@ describe('App track-image pair binding (US-006)', () => {
     });
 
     expect(screen.getByText('Track 1')).toBeInTheDocument();
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
-      'data-image-url',
-      'blob:http://localhost/generated-image-url-1'
-    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
 
     fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
     fireEvent.change(screen.getByLabelText('Image prompt'), {
@@ -995,10 +998,6 @@ describe('App track-image pair binding (US-006)', () => {
     expect(
       screen.getByRole('button', { name: 'Play generation 2' })
     ).toBeVisible();
-    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
-      'data-image-url',
-      'blob:http://localhost/generated-image-url-1'
-    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
 
@@ -1006,10 +1005,6 @@ describe('App track-image pair binding (US-006)', () => {
       expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
         'data-playing',
         'true'
-      );
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
-        'data-image-url',
-        'blob:http://localhost/generated-image-url-2'
       );
     });
 
@@ -1020,10 +1015,6 @@ describe('App track-image pair binding (US-006)', () => {
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-playing',
         'true'
-      );
-      expect(screen.getByTestId('visual-scene')).toHaveAttribute(
-        'data-image-url',
-        'blob:http://localhost/generated-image-url-1'
       );
     });
   });

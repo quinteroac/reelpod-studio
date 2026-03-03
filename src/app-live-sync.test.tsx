@@ -85,17 +85,10 @@ function createMockAudio() {
   return audio as unknown as HTMLAudioElement;
 }
 
-function createAudioResponse(): Response {
-  return new Response(new Blob(['fake-wav-data'], { type: 'audio/wav' }), {
+function createVideoResponse(): Response {
+  return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
     status: 200,
-    headers: { 'content-type': 'audio/wav' }
-  });
-}
-
-function createImageResponse(): Response {
-  return new Response(new Blob(['fake-image-data'], { type: 'image/png' }), {
-    status: 200,
-    headers: { 'content-type': 'image/png' }
+    headers: { 'content-type': 'video/mp4' }
   });
 }
 
@@ -143,22 +136,16 @@ describe('App live mirror sync (US-002)', () => {
               ? input.toString()
               : input.url;
 
-        if (url.endsWith('/api/generate-image')) {
-          return createImageResponse();
+        if (url.endsWith('/api/generate')) {
+          return createVideoResponse();
         }
 
-        return createAudioResponse();
+        throw new Error(`Unexpected endpoint called: ${url}`);
       }
     );
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
-      (obj: Blob | MediaSource) => {
-        if ('type' in obj && obj.type === 'image/png') {
-          return 'blob:http://localhost/generated-image-url';
-        }
-
-        return 'blob:http://localhost/generated-audio-url';
-      }
+      () => 'blob:http://localhost/generated-video-url'
     );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   });
