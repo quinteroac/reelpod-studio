@@ -19,3 +19,11 @@ class AudioNotReadyError(RuntimeError):
 
 class ImageGenerationFailedError(RuntimeError):
     pass
+
+
+class VideoGenerationFailedError(RuntimeError):
+    pass
+
+
+class VideoGenerationTimeoutError(RuntimeError):
+    pass

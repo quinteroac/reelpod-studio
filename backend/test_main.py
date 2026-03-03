@@ -1,36 +1,27 @@
 from __future__ import annotations
 
 import io
-import json
 import time
 import tomllib
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
+from models.errors import (
+    AudioGenerationFailedError,
+    ImageGenerationFailedError,
+    VideoGenerationFailedError,
+    VideoGenerationTimeoutError,
+)
 from models.schemas import GenerateRequestBody
 from repositories import acestep_repository, image_repository
-from services import audio_service, image_service
+from services import audio_service, image_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
-
-
-class FakeHTTPResponse:
-    def __init__(self, body: bytes):
-        self._body = body
-
-    def read(self) -> bytes:
-        return self._body
-
-    def __enter__(self) -> "FakeHTTPResponse":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        return False
+MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
 
 
 class FakeImageResult:
@@ -92,46 +83,37 @@ class TestBackendDependencies:
         assert 'name = "ace-step"' not in lockfile
         assert "github.com/ace-step/ACE-Step.git" not in lockfile
 
+    def test_pyproject_includes_ffmpeg_python(self) -> None:
+        pyproject_path = Path(__file__).parent.joinpath("pyproject.toml")
+        project = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        dependencies = project["project"]["dependencies"]
+        assert "ffmpeg-python>=0.2.0" in dependencies
+
+    def test_readme_documents_ffmpeg_binary_dependency(self) -> None:
+        readme_path = Path(__file__).resolve().parents[1].joinpath("README.md")
+        content = readme_path.read_text(encoding="utf-8")
+        assert "ffmpeg" in content
+        assert "libx264" in content
+        assert "AAC" in content
+
 
 class TestGenerateEndpoint:
-    def test_generate_calls_release_query_and_audio_endpoints(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ACESTEP_API_URL", "http://localhost:9000")
-        monkeypatch.setattr(acestep_repository.time, "sleep", lambda _seconds: None)
+    def test_generate_returns_video_mp4(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: dict[str, object] = {}
 
-        seen_release_payloads: list[dict[str, object]] = []
-        query_call_count = 0
-        audio_urls: list[str] = []
+        def fake_generate_video_mp4_for_request(body):  # noqa: ANN001
+            seen["mode"] = body.mode
+            seen["mood"] = body.mood
+            seen["tempo"] = body.tempo
+            seen["duration"] = body.duration
+            seen["style"] = body.style
+            return MP4_HEADER
 
-        def fake_urlopen(request, timeout=30):  # noqa: ANN001, ARG001
-            nonlocal query_call_count
-            url = request.full_url
-            method = request.get_method()
-            if url.endswith("/release_task"):
-                assert method == "POST"
-                payload = json.loads(request.data.decode("utf-8"))
-                seen_release_payloads.append(payload)
-                return FakeHTTPResponse(json.dumps({"task_id": "task-123"}).encode("utf-8"))
-            if url.endswith("/query_result"):
-                assert method == "POST"
-                payload = json.loads(request.data.decode("utf-8"))
-                assert payload == {"task_id_list": ["task-123"]}
-                query_call_count += 1
-                if query_call_count == 1:
-                    return FakeHTTPResponse(json.dumps({"data": [{"status": 0}]}).encode("utf-8"))
-                return FakeHTTPResponse(
-                    json.dumps(
-                        {"data": [{"status": 1, "result": json.dumps({"file": "/v1/audio?path=out.wav"})}]}
-                    ).encode("utf-8")
-                )
-            if "/v1/audio?path=out.wav" in url:
-                assert method == "GET"
-                audio_urls.append(url)
-                return FakeHTTPResponse(WAV_HEADER)
-            raise AssertionError(f"Unexpected URL: {url}")
-
-        monkeypatch.setattr(acestep_repository, "urlopen", fake_urlopen)
+        monkeypatch.setattr(
+            video_service,
+            "generate_video_mp4_for_request",
+            fake_generate_video_mp4_for_request,
+        )
 
         response = client.post(
             "/api/generate",
@@ -139,41 +121,59 @@ class TestGenerateEndpoint:
         )
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "audio/wav"
-        assert response.content.startswith(b"RIFF")
-        assert query_call_count == 2
-        assert audio_urls == ["http://localhost:9000/v1/audio?path=out.wav"]
-        assert seen_release_payloads == [
-            {
-                "prompt": "warm lofi hip-hop, 95 BPM",
-                "lyrics": "",
-                "bpm": 95,
-                "audio_duration": 95,
-                "inference_steps": 20,
-                "audio_format": "wav",
-                "thinking": True,
-            }
-        ]
+        assert response.headers["content-type"] == "video/mp4"
+        assert response.content == MP4_HEADER
+        assert seen == {
+            "mode": "params",
+            "mood": "warm",
+            "tempo": 95,
+            "duration": 95,
+            "style": "hip-hop",
+        }
 
     def test_connection_error_returns_500(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def raise_url_error(*args, **kwargs):  # noqa: ANN002, ANN003
-            raise URLError("connection refused")
+        def raise_video_generation_error(*args, **kwargs):  # noqa: ANN002, ANN003
+            raise VideoGenerationFailedError("video pipeline failed")
 
-        monkeypatch.setattr(acestep_repository, "urlopen", raise_url_error)
+        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_video_generation_error)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 500
-        assert response.json() == {"error": "Audio generation failed"}
+        assert response.json() == {"error": "video pipeline failed"}
 
-    def test_non_ok_status_returns_500(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        def raise_http_error(request, timeout=30):  # noqa: ANN001, ARG001
-            raise HTTPError(request.full_url, 502, "Bad Gateway", hdrs=None, fp=None)
+    def test_timeout_returns_504(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        def raise_timeout(*args, **kwargs):  # noqa: ANN002, ANN003
+            raise VideoGenerationTimeoutError("Video generation timed out")
 
-        monkeypatch.setattr(acestep_repository, "urlopen", raise_http_error)
+        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_timeout)
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert response.status_code == 504
+        assert response.json() == {"error": "Video generation timed out"}
+
+    def test_audio_failure_returns_json_error_not_mp4(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def raise_audio_failure(*args, **kwargs):  # noqa: ANN002, ANN003
+            raise AudioGenerationFailedError("Audio generation failed")
+
+        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_audio_failure)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 500
+        assert response.headers["content-type"].startswith("application/json")
         assert response.json() == {"error": "Audio generation failed"}
+
+    def test_image_failure_returns_json_error_not_mp4(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def raise_image_failure(*args, **kwargs):  # noqa: ANN002, ANN003
+            raise ImageGenerationFailedError("Image generation failed: model unavailable")
+
+        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_image_failure)
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        assert response.status_code == 500
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json() == {"error": "Image generation failed: model unavailable"}
 
     def test_validation_error_returns_422(self, client: TestClient) -> None:
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 30, "style": "jazz"})
