@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type VisualSceneProps = {
   imageUrl: string | null;
+  videoUrl?: string | null;
+  videoElement?: HTMLVideoElement | null;
   audioCurrentTime: number;
   audioDuration: number;
   isPlaying: boolean;
@@ -40,6 +42,8 @@ const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
   <div
     data-testid="visual-scene"
     data-image-url={props.imageUrl ?? ''}
+    data-has-video-element={props.videoElement ? 'true' : 'false'}
+    data-video-url={props.videoUrl ?? ''}
     data-audio-current-time={props.audioCurrentTime.toFixed(2)}
     data-audio-duration={props.audioDuration.toFixed(2)}
     data-is-playing={props.isPlaying ? 'true' : 'false'}
@@ -55,15 +59,19 @@ vi.mock('./components/visual-scene', () => ({
 
 import { App } from './App';
 
-function createMockAudio(): HTMLAudioElement {
-  return {
-    play: vi.fn().mockResolvedValue(undefined),
-    pause: vi.fn(),
-    addEventListener: vi.fn(),
-    src: '',
-    currentTime: 0,
-    duration: 30
-  } as unknown as HTMLAudioElement;
+function mockVideoPlaybackApi(): void {
+  vi
+    .spyOn(HTMLMediaElement.prototype, 'play')
+    .mockImplementation(async function playMock(this: HTMLMediaElement) {
+      Object.defineProperty(this, 'paused', { configurable: true, value: false });
+      if (!Number.isFinite(this.duration) || this.duration <= 0) {
+        Object.defineProperty(this, 'duration', { configurable: true, value: 30 });
+      }
+      return undefined;
+    });
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function pauseMock(this: HTMLMediaElement) {
+    Object.defineProperty(this, 'paused', { configurable: true, value: true });
+  });
 }
 
 function createVideoResponse(status = 200): Response {
@@ -110,9 +118,7 @@ describe('App unified generate flow (US-003)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
@@ -284,6 +290,67 @@ describe('App unified generate flow (US-003)', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
   });
 
+  it('binds generated MP4 playback to the canvas video texture and keeps audio unmuted', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    expect(playbackVideo.muted).toBe(false);
+    expect(playbackVideo.src).toContain('blob:http://localhost/generated-video-url');
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-video-url',
+      'blob:http://localhost/generated-video-url'
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-has-video-element',
+      'true'
+    );
+  });
+
+  it('uses the video element for play/pause/seek and updates audio timing props from video time', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    Object.defineProperty(playbackVideo, 'duration', {
+      configurable: true,
+      value: 40
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Seek'), { target: { value: '50' } });
+    expect(playbackVideo.currentTime).toBe(20);
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-current-time',
+      '20.00'
+    );
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-audio-duration',
+      '40.00'
+    );
+  });
+
   it('does not commit generation when request fails', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => createVideoResponse(500));
 
@@ -377,9 +444,7 @@ describe('App controls panel layout (US-001)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
@@ -455,9 +520,7 @@ describe('App right column preview and playback layout (US-002)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
@@ -558,9 +621,7 @@ describe('App effects toggles (US-002)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
@@ -643,9 +704,7 @@ describe('App effect reorder (US-003)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
@@ -741,9 +800,7 @@ describe('App responsive single-column fallback (US-003)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
@@ -797,9 +854,7 @@ describe('App shared prompt toggle (US-005)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation((obj: Blob | MediaSource) => {
@@ -939,9 +994,7 @@ describe('App queue playback binding (US-006)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
-
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
 
     let videoUrlIndex = 0;

@@ -41,6 +41,8 @@ describe('VisualScene', () => {
     render(
       <VisualScene
         imageUrl="blob:http://localhost/my-upload"
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={8}
         audioDuration={32}
         isPlaying={false}
@@ -54,13 +56,44 @@ describe('VisualScene', () => {
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-has-image', 'true');
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-width', '8.000');
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-height', '4.500');
+    expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-texture-source', 'image');
     expect(useLoaderMock).toHaveBeenCalledWith(expect.any(Function), 'blob:http://localhost/my-upload');
+  });
+
+  it('renders MP4 video texture on the image plane when playback video element is provided', () => {
+    const videoElement = document.createElement('video');
+    Object.defineProperty(videoElement, 'videoWidth', {
+      configurable: true,
+      value: 1280
+    });
+    Object.defineProperty(videoElement, 'videoHeight', {
+      configurable: true,
+      value: 720
+    });
+
+    render(
+      <VisualScene
+        imageUrl={null}
+        videoUrl="blob:http://localhost/generated-video"
+        videoElement={videoElement}
+        audioCurrentTime={2}
+        audioDuration={30}
+        isPlaying={true}
+        aspectRatio={16 / 9}
+        visualizerType="waveform"
+        effects={['colorDrift']}
+      />
+    );
+
+    expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-texture-source', 'video');
   });
 
   it('shows a visible waveform overlay in the scene', () => {
     render(
       <VisualScene
         imageUrl="blob:http://localhost/my-upload"
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={16}
         audioDuration={32}
         isPlaying={true}
@@ -77,6 +110,8 @@ describe('VisualScene', () => {
     render(
       <VisualScene
         imageUrl={null}
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={0}
         audioDuration={0}
         isPlaying={false}
@@ -94,6 +129,8 @@ describe('VisualScene', () => {
     render(
       <VisualScene
         imageUrl={null}
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={0}
         audioDuration={0}
         isPlaying={false}
@@ -112,6 +149,8 @@ describe('VisualScene', () => {
     render(
       <VisualScene
         imageUrl={null}
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={0}
         audioDuration={0}
         isPlaying={false}
@@ -136,6 +175,8 @@ describe('VisualScene', () => {
     const { rerender } = render(
       <VisualScene
         imageUrl="blob:http://localhost/my-upload"
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={0}
         audioDuration={30}
         isPlaying={true}
@@ -152,6 +193,8 @@ describe('VisualScene', () => {
     rerender(
       <VisualScene
         imageUrl="blob:http://localhost/my-upload"
+        videoUrl={null}
+        videoElement={null}
         audioCurrentTime={0}
         audioDuration={30}
         isPlaying={true}

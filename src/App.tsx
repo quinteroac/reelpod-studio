@@ -220,7 +220,9 @@ async function requestGeneratedVideo(
 }
 
 export function App() {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoPlaybackRef = useRef<HTMLVideoElement | null>(null);
+  const [videoPlaybackElement, setVideoPlaybackElement] =
+    useState<HTMLVideoElement | null>(null);
   const activeVideoObjectUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
@@ -244,6 +246,7 @@ export function App() {
     string | null
   >(null);
   const [visualImageUrl] = useState<string | null>(null);
+  const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
@@ -287,11 +290,11 @@ export function App() {
   const startSeekPolling = useCallback((): void => {
     stopSeekPolling();
     seekPollRef.current = window.setInterval(() => {
-      const audio = audioRef.current;
-      if (audio && audio.duration && isFinite(audio.duration)) {
-        setAudioCurrentTime(audio.currentTime);
-        setAudioDuration(audio.duration);
-        const pct = (audio.currentTime / audio.duration) * SEEK_MAX;
+      const video = videoPlaybackRef.current;
+      if (video && video.duration && isFinite(video.duration)) {
+        setAudioCurrentTime(video.currentTime);
+        setAudioDuration(video.duration);
+        const pct = (video.currentTime / video.duration) * SEEK_MAX;
         setSeekPosition(clampSeekPosition(Math.round(pct)));
       }
     }, SEEK_POLL_INTERVAL_MS);
@@ -355,21 +358,21 @@ export function App() {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      const audio = audioRef.current;
+      const timer = window.setInterval(() => {
+      const video = videoPlaybackRef.current;
       const channel = liveMirrorChannelRef.current;
-      if (!audio || !channel) {
+      if (!video || !channel) {
         return;
       }
 
       const nextState = {
         ...liveMirrorStateRef.current,
-        audioCurrentTime: isFinite(audio.currentTime)
-          ? audio.currentTime
+        audioCurrentTime: isFinite(video.currentTime)
+          ? video.currentTime
           : liveMirrorStateRef.current.audioCurrentTime,
         audioDuration:
-          audio.duration && isFinite(audio.duration)
-            ? audio.duration
+          video.duration && isFinite(video.duration)
+            ? video.duration
             : liveMirrorStateRef.current.audioDuration,
         isPlaying: true
       };
@@ -403,39 +406,47 @@ export function App() {
 
     const nextUrl = URL.createObjectURL(videoBlob);
     activeVideoObjectUrlRef.current = nextUrl;
+    setActiveVideoUrl(nextUrl);
     return nextUrl;
   }, []);
 
-  const playAudioFromUrl = useCallback(
+  const playVideoFromUrl = useCallback(
     async (
-      audioUrl: string,
+      videoUrl: string,
       options?: { entryId?: number; onEnded?: () => void }
     ): Promise<void> => {
-      audioRef.current?.pause();
+      const video = videoPlaybackRef.current;
+      if (!video) {
+        throw new Error('Could not play video: Playback element is not ready');
+      }
+
+      video.pause();
       stopSeekPolling();
 
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
+      if (video.src !== videoUrl) {
+        video.src = videoUrl;
+      }
+      video.currentTime = 0;
 
       setAudioDuration(0);
-      if (audio.duration && isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
+      if (video.duration && isFinite(video.duration)) {
+        setAudioDuration(video.duration);
       }
       setAudioCurrentTime(0);
       setSeekPosition(SEEK_MIN);
 
-      audio.addEventListener('ended', () => {
+      video.onended = () => {
         const endedDuration =
-          audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+          video.duration && isFinite(video.duration) ? video.duration : 0;
         setAudioDuration(endedDuration);
         setAudioCurrentTime(endedDuration);
         setSeekPosition(SEEK_MAX);
         setIsPlaying(false);
         stopSeekPolling();
         options?.onEnded?.();
-      });
+      };
 
-      await audio.play();
+      await video.play();
 
       setHasGeneratedTrack(true);
       setIsPlaying(true);
@@ -487,11 +498,12 @@ export function App() {
           )
         );
 
-        const isPlayingAudio = audioRef.current && !audioRef.current.paused;
-        if (!isPlayingAudio) {
+        const isPlayingVideo =
+          videoPlaybackRef.current && !videoPlaybackRef.current.paused;
+        if (!isPlayingVideo) {
           const playbackUrl = createVideoPlaybackUrl(videoBlob);
           setPlayingEntryId(entry.id);
-          await playAudioFromUrl(playbackUrl, {
+          await playVideoFromUrl(playbackUrl, {
             entryId: entry.id,
             onEnded: createQueueOnEnded(entry)
           });
@@ -516,7 +528,7 @@ export function App() {
         );
       }
     },
-    [createQueueOnEnded, createVideoPlaybackUrl, playAudioFromUrl]
+    [createQueueOnEnded, createVideoPlaybackUrl, playVideoFromUrl]
   );
 
   useEffect(() => {
@@ -639,7 +651,7 @@ export function App() {
     const playbackUrl = createVideoPlaybackUrl(entry.videoBlob);
     setPlayingEntryId(entry.id);
     try {
-      await playAudioFromUrl(playbackUrl, {
+      await playVideoFromUrl(playbackUrl, {
         entryId: entry.id,
         onEnded: createQueueOnEnded(entry)
       });
@@ -652,7 +664,7 @@ export function App() {
 
   async function handlePlay(): Promise<void> {
     try {
-      await audioRef.current?.play();
+      await videoPlaybackRef.current?.play();
       setIsPlaying(true);
       setErrorMessage(null);
       startSeekPolling();
@@ -663,7 +675,7 @@ export function App() {
 
   function handlePause(): void {
     try {
-      audioRef.current?.pause();
+      videoPlaybackRef.current?.pause();
       setIsPlaying(false);
       setPlayingEntryId(null);
       setErrorMessage(null);
@@ -676,13 +688,18 @@ export function App() {
   function handleSeekChange(position: number): void {
     const nextPosition = clampSeekPosition(position);
     setSeekPosition(nextPosition);
-    const audio = audioRef.current;
-    if (audio && audio.duration && isFinite(audio.duration)) {
-      audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
-      setAudioCurrentTime(audio.currentTime);
-      setAudioDuration(audio.duration);
+    const video = videoPlaybackRef.current;
+    if (video && video.duration && isFinite(video.duration)) {
+      video.currentTime = (nextPosition / SEEK_MAX) * video.duration;
+      setAudioCurrentTime(video.currentTime);
+      setAudioDuration(video.duration);
     }
   }
+
+  const handlePlaybackVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoPlaybackRef.current = node;
+    setVideoPlaybackElement((previous) => (previous === node ? previous : node));
+  }, []);
 
   function handleMoveEffect(
     effect: ToggleableEffectType,
@@ -709,6 +726,20 @@ export function App() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 text-lofi-text">
+      <video
+        ref={handlePlaybackVideoRef}
+        data-testid="playback-video"
+        playsInline
+        preload="auto"
+        muted={false}
+        className="hidden"
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          if (video.duration && isFinite(video.duration)) {
+            setAudioDuration(video.duration);
+          }
+        }}
+      />
       <div className="mx-auto w-full min-w-0 space-y-6">
         <header className="space-y-2">
           <h1 className="font-serif text-4xl font-bold text-lofi-text">
@@ -1317,6 +1348,8 @@ export function App() {
               >
                 <VisualScene
                   imageUrl={visualImageUrl}
+                  videoElement={videoPlaybackElement}
+                  videoUrl={activeVideoUrl}
                   audioCurrentTime={audioCurrentTime}
                   audioDuration={audioDuration}
                   isPlaying={isPlaying}

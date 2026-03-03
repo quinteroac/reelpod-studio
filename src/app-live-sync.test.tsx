@@ -62,27 +62,19 @@ vi.mock('./components/visual-scene', () => ({
 
 import { App } from './App';
 
-function createMockAudio() {
-  const listeners = new Map<string, EventListener>();
-
-  const audio = {
-    src: '',
-    paused: true,
-    currentTime: 0,
-    duration: 30,
-    play: vi.fn(async () => {
-      audio.paused = false;
+function mockVideoPlaybackApi(): void {
+  vi
+    .spyOn(HTMLMediaElement.prototype, 'play')
+    .mockImplementation(async function playMock(this: HTMLMediaElement) {
+      Object.defineProperty(this, 'paused', { configurable: true, value: false });
+      if (!Number.isFinite(this.duration) || this.duration <= 0) {
+        Object.defineProperty(this, 'duration', { configurable: true, value: 30 });
+      }
       return undefined;
-    }),
-    pause: vi.fn(() => {
-      audio.paused = true;
-    }),
-    addEventListener: vi.fn((eventName: string, listener: EventListener) => {
-      listeners.set(eventName, listener);
-    })
-  };
-
-  return audio as unknown as HTMLAudioElement;
+    });
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function pauseMock(this: HTMLMediaElement) {
+    Object.defineProperty(this, 'paused', { configurable: true, value: true });
+  });
 }
 
 function createVideoResponse(): Response {
@@ -125,8 +117,7 @@ describe('App live mirror sync (US-002)', () => {
       value: MockBroadcastChannel
     });
 
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       async (input: string | URL | Request) => {
         const url =
