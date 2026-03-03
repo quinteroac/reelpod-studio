@@ -1,0 +1,136 @@
+{
+  "goals": [
+    "Eliminate the separate audio/image response in favor of a single MP4 video output",
+    "Provide creators with a ready-to-consume video from a single Generate action",
+    "Display the generated video inside the R3F canvas"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Backend combines audio and image into MP4 video",
+      "description": "As a creator, I want the backend to generate audio and image and merge them into a single MP4 video file so that I get a ready-to-use video from one generation request.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A single backend endpoint orchestrates both audio generation (ACE-Step) and image generation (Diffusers) internally, producing both artifacts before muxing"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Given a successful generation request, the response is a valid MP4 file (verifiable by ffprobe) containing one H.264 video stream and one AAC audio stream"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The resulting MP4 has the same duration as the generated audio"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The endpoint returns the MP4 with `video/mp4` content type"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "If audio or image generation fails, the endpoint returns an appropriate error response (4xx/5xx) with a JSON error body — no partial or corrupt MP4 is returned"
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "The endpoint responds within a reasonable timeout that accounts for both generation steps plus muxing"
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Temporary intermediate files (audio, image) are cleaned up in a `finally` block, regardless of whether muxing succeeds or fails"
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "`ffmpeg-python` is added to `pyproject.toml` dependencies"
+        },
+        {
+          "id": "US-001-AC09",
+          "text": "`ffmpeg` system binary with H.264 and AAC codec support is documented as a required system dependency"
+        },
+        {
+          "id": "US-001-AC10",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Frontend receives and handles video response",
+      "description": "As a creator, I want the frontend to receive the generated video as a single MP4 file so that I can interact with one unified media element instead of separate audio and image.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Frontend `POST /api/generate` (or new unified endpoint) call expects and handles a `video/mp4` response"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The frontend no longer calls the separate audio and image endpoints for the main generation flow"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "A video object URL is created from the response blob and made available for playback"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Previous video blob URLs are revoked (`URL.revokeObjectURL`) before creating a new one to prevent memory leaks"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Display video in the R3F canvas",
+      "description": "As a creator, I want to see the generated video playing inside the visual canvas so that I can preview my creation with visualizers and effects applied.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The MP4 video is rendered as a texture on the image plane inside the R3F `<Canvas>`"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Video plays back with audio (not muted)"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Playback controls (play, pause, seek) work with the video element"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Audio timing props (`audioCurrentTime`, `audioDuration`, `isPlaying`) are driven by the video element so visualizers/effects remain audio-reactive"
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes"
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "Visually verified in browser"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "The backend must have `ffmpeg` available as a system dependency and use `ffmpeg-python` to produce MP4 (H.264 video + AAC audio) from the generated image and audio files"
+    },
+    {
+      "id": "FR-2",
+      "description": "The unified endpoint must orchestrate audio generation (ACE-Step) and image generation (Diffusers) before muxing, and return a `StreamingResponse` (or equivalent) with content type `video/mp4`"
+    },
+    {
+      "id": "FR-3",
+      "description": "The frontend must create an `HTMLVideoElement`, assign the blob URL, and use it as a `THREE.VideoTexture` for the R3F canvas image plane"
+    },
+    {
+      "id": "FR-4",
+      "description": "All existing audio timing props (`audioCurrentTime`, `audioDuration`, `isPlaying`) must be sourced from the `HTMLVideoElement` instead of the `HTMLAudioElement`"
+    },
+    {
+      "id": "FR-5",
+      "description": "The frontend must no longer call the separate `/api/generate` (audio) and `/api/generate-image` endpoints for the main generation flow"
+    }
+  ]
+}
