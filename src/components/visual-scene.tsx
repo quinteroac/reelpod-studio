@@ -1,6 +1,6 @@
 /* eslint-disable react/no-unknown-property */
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeContainScale } from '../lib/visual-scene';
 import { EffectComposer, type EffectType } from './effects';
@@ -14,6 +14,8 @@ const FALLBACK_VISUAL_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
 
 type VisualSceneProps = {
   imageUrl: string | null;
+  videoUrl?: string | null;
+  videoElement?: HTMLVideoElement | null;
   audioCurrentTime: number;
   audioDuration: number;
   isPlaying: boolean;
@@ -27,6 +29,8 @@ type VisualSceneProps = {
 
 type SceneRenderProps = {
   imageUrl: string | null;
+  videoUrl?: string | null;
+  videoElement?: HTMLVideoElement | null;
   audioCurrentTime: number;
   audioDuration: number;
   isPlaying: boolean;
@@ -35,23 +39,104 @@ type SceneRenderProps = {
 type SceneContentProps = SceneRenderProps & {
   visualizerType: VisualizerType;
   effects: EffectType[];
-  onDerived: (planeWidth: number, planeHeight: number) => void;
+  onDerived: (
+    planeWidth: number,
+    planeHeight: number,
+    textureSource: 'image' | 'video'
+  ) => void;
 };
 
-function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, visualizerType, effects, onDerived }: SceneContentProps) {
-  const texture = useLoader(THREE.TextureLoader, imageUrl ?? FALLBACK_VISUAL_DATA_URI);
+function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audioDuration, isPlaying, visualizerType, effects, onDerived }: SceneContentProps) {
+  const fallbackTexture = useLoader(THREE.TextureLoader, FALLBACK_VISUAL_DATA_URI);
+  const [loadedImageTexture, setLoadedImageTexture] = useState<THREE.Texture | null>(null);
+  const loadedImageUrlRef = useRef<string | null>(null);
+  const loadedTextureRef = useRef<THREE.Texture | null>(null);
+  loadedTextureRef.current = loadedImageTexture;
+
+  useEffect(() => {
+    return () => loadedTextureRef.current?.dispose();
+  }, []);
+
+  useEffect(() => {
+    if (!imageUrl || imageUrl === FALLBACK_VISUAL_DATA_URI) {
+      setLoadedImageTexture((prev) => {
+        if (prev) {
+          prev.dispose();
+        }
+        return null;
+      });
+      loadedImageUrlRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      imageUrl,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose();
+          return;
+        }
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        setLoadedImageTexture((prev) => {
+          loadedImageUrlRef.current = imageUrl;
+          if (prev) prev.dispose();
+          return tex;
+        });
+      },
+      undefined,
+      () => {
+        if (!cancelled) loadedImageUrlRef.current = null;
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  const imageTexture = imageUrl && imageUrl !== FALLBACK_VISUAL_DATA_URI
+    ? (loadedImageTexture ?? fallbackTexture)
+    : fallbackTexture;
+
+  const videoTexture = useMemo(() => {
+    if (!videoElement || !videoUrl) {
+      return null;
+    }
+
+    const nextTexture = new THREE.VideoTexture(videoElement);
+    nextTexture.minFilter = THREE.LinearFilter;
+    nextTexture.magFilter = THREE.LinearFilter;
+    nextTexture.generateMipmaps = false;
+    return nextTexture;
+  }, [videoElement, videoUrl]);
   const { viewport } = useThree();
+  const texture = videoTexture ?? imageTexture;
+  const textureSource: 'image' | 'video' = videoTexture ? 'video' : 'image';
 
   const [planeWidth, planeHeight] = useMemo(() => {
-    const image = texture.image as { width?: number; height?: number } | undefined;
+    const videoWidth = videoElement?.videoWidth ?? 0;
+    const videoHeight = videoElement?.videoHeight ?? 0;
+    if (videoTexture && videoWidth > 0 && videoHeight > 0) {
+      return computeContainScale(viewport.width, viewport.height, videoWidth, videoHeight);
+    }
+
+    const image = imageTexture.image as { width?: number; height?: number } | undefined;
     return computeContainScale(viewport.width, viewport.height, image?.width ?? 1, image?.height ?? 1);
-  }, [texture.image, viewport.height, viewport.width]);
+  }, [imageTexture.image, videoElement?.videoHeight, videoElement?.videoWidth, videoTexture, viewport.height, viewport.width]);
+
+  useEffect(() => {
+    return () => {
+      videoTexture?.dispose();
+    };
+  }, [videoTexture]);
 
   // Report derived values to the DOM overlay so tests can query them
   // without placing data-* props on Three.js objects (which crashes R3F).
   useEffect(() => {
-    onDerived(planeWidth, planeHeight);
-  }, [onDerived, planeWidth, planeHeight]);
+    onDerived(planeWidth, planeHeight, textureSource);
+  }, [onDerived, planeWidth, planeHeight, textureSource]);
 
   return (
     <>
@@ -95,6 +180,8 @@ function SceneContent({ imageUrl, audioCurrentTime, audioDuration, isPlaying, vi
 
 export function VisualScene({
   imageUrl,
+  videoUrl = null,
+  videoElement = null,
   audioCurrentTime,
   audioDuration,
   isPlaying,
@@ -109,12 +196,17 @@ export function VisualScene({
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
 
   const handleDerived = useCallback(
-    (planeWidth: number, planeHeight: number) => {
+    (
+      planeWidth: number,
+      planeHeight: number,
+      textureSource: 'image' | 'video'
+    ) => {
       const el = imagePlaneOverlayRef.current;
       if (!el) return;
       el.setAttribute('data-plane-width', planeWidth.toFixed(3));
       el.setAttribute('data-plane-height', planeHeight.toFixed(3));
       el.setAttribute('data-has-image', imageUrl ? 'true' : 'false');
+      el.setAttribute('data-texture-source', textureSource);
     },
     [imageUrl]
   );
@@ -134,6 +226,7 @@ export function VisualScene({
         ref={imagePlaneOverlayRef}
         data-testid="visual-image-plane"
         data-has-image={imageUrl ? 'true' : 'false'}
+        data-texture-source={videoElement && videoUrl ? 'video' : 'image'}
         aria-hidden="true"
         className="pointer-events-none absolute hidden"
       />
@@ -147,6 +240,8 @@ export function VisualScene({
         <color attach="background" args={[backgroundColor]} />
         <SceneContent
           imageUrl={imageUrl}
+          videoUrl={videoUrl}
+          videoElement={videoElement}
           audioCurrentTime={audioCurrentTime}
           audioDuration={audioDuration}
           isPlaying={isPlaying}

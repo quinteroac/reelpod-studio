@@ -25,6 +25,7 @@ ReelPod Studio is a creator-focused tool that generates lo-fi music and AI-power
 - [bun](https://bun.sh/)
 - [uv](https://github.com/astral-sh/uv) (Python)
 - ACEStep service (port 8001) for music generation
+- `ffmpeg` system binary with H.264 (`libx264`) and AAC encoder support (required for MP4 muxing)
 
 ### Run development
 

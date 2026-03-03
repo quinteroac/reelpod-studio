@@ -22,8 +22,7 @@ interface GenerationParams {
   prompt?: string;
 }
 import {
-  GENERATE_ENDPOINT_PATH,
-  GENERATE_IMAGE_ENDPOINT_PATH
+  GENERATE_ENDPOINT_PATH
 } from './api/constants';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
@@ -47,8 +46,7 @@ interface QueueEntry {
   targetHeight: number;
   status: QueueEntryStatus;
   errorMessage: string | null;
-  audioUrl: string | null;
-  imageUrl: string | null;
+  videoBlob: Blob | null;
 }
 
 const defaultParams: GenerationParams = {
@@ -172,15 +170,24 @@ function buildQueueSummary(params: GenerationParams): string {
   return `Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
 }
 
-async function requestGeneratedAudio(
-  params: GenerationParams
-): Promise<string> {
+async function requestGeneratedVideo(
+  params: GenerationParams,
+  imagePrompt: string,
+  targetWidth: number,
+  targetHeight: number
+): Promise<Blob> {
+  const payload = {
+    ...params,
+    imagePrompt,
+    targetWidth,
+    targetHeight
+  };
   const response = await fetch(GENERATE_ENDPOINT_PATH, {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
     },
-    body: JSON.stringify(params)
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
@@ -200,56 +207,23 @@ async function requestGeneratedAudio(
 
     throw new Error(
       errorText ??
-      `Could not generate track: Request failed with status ${response.status}`
+      `Could not generate video: Request failed with status ${response.status}`
     );
   }
 
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
-
-async function requestGeneratedImage(
-  prompt: string,
-  targetWidth: number,
-  targetHeight: number
-): Promise<string> {
-  const response = await fetch(GENERATE_IMAGE_ENDPOINT_PATH, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({ prompt, targetWidth, targetHeight })
-  });
-
-  if (!response.ok) {
-    let errorText: string | null = null;
-    try {
-      const payload: unknown = await response.json();
-      if (typeof payload === 'object' && payload !== null) {
-        const record = payload as Record<string, unknown>;
-        const candidate = record.error ?? record.detail;
-        if (typeof candidate === 'string' && candidate.trim().length > 0) {
-          errorText = candidate.trim();
-        }
-      }
-    } catch {
-      // ignore JSON parse errors for non-JSON error responses
-    }
-
-    throw new Error(
-      errorText ??
-      `Could not generate image: Request failed with status ${response.status}`
-    );
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (!contentType.startsWith('video/mp4')) {
+    throw new Error('Could not generate video: Expected video/mp4 response');
   }
 
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+  return response.blob();
 }
 
 export function App() {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const generatedAudioUrlsRef = useRef<string[]>([]);
-  const generatedImageUrlsRef = useRef<string[]>([]);
+  const videoPlaybackRef = useRef<HTMLVideoElement | null>(null);
+  const [videoPlaybackElement, setVideoPlaybackElement] =
+    useState<HTMLVideoElement | null>(null);
+  const activeVideoObjectUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [generationMode, setGenerationMode] = useState<GenerationMode>(
@@ -271,7 +245,8 @@ export function App() {
   const [imagePromptErrorMessage, setImagePromptErrorMessage] = useState<
     string | null
   >(null);
-  const [visualImageUrl, setVisualImageUrl] = useState<string | null>(null);
+  const [visualImageUrl] = useState<string | null>(null);
+  const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
@@ -295,7 +270,6 @@ export function App() {
   const [effectOrder, setEffectOrder] =
     useState<ToggleableEffectType[]>(defaultEffectOrder);
   const seekPollRef = useRef<number | null>(null);
-  const queueEntriesRef = useRef<QueueEntry[]>([]);
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
   const activeEffects = useMemo(
@@ -316,19 +290,15 @@ export function App() {
   const startSeekPolling = useCallback((): void => {
     stopSeekPolling();
     seekPollRef.current = window.setInterval(() => {
-      const audio = audioRef.current;
-      if (audio && audio.duration && isFinite(audio.duration)) {
-        setAudioCurrentTime(audio.currentTime);
-        setAudioDuration(audio.duration);
-        const pct = (audio.currentTime / audio.duration) * SEEK_MAX;
+      const video = videoPlaybackRef.current;
+      if (video && video.duration && isFinite(video.duration)) {
+        setAudioCurrentTime(video.currentTime);
+        setAudioDuration(video.duration);
+        const pct = (video.currentTime / video.duration) * SEEK_MAX;
         setSeekPosition(clampSeekPosition(Math.round(pct)));
       }
     }, SEEK_POLL_INTERVAL_MS);
   }, [stopSeekPolling]);
-
-  useEffect(() => {
-    queueEntriesRef.current = queueEntries;
-  }, [queueEntries]);
 
   useEffect(() => {
     const channel = createLiveMirrorChannel();
@@ -350,7 +320,10 @@ export function App() {
 
   useEffect(() => {
     const nextState: LiveMirrorState = {
-      imageUrl: visualImageUrl,
+      imageUrl:
+        activeVideoUrl != null
+          ? liveMirrorStateRef.current.imageUrl
+          : visualImageUrl,
       audioCurrentTime,
       audioDuration,
       isPlaying,
@@ -372,6 +345,7 @@ export function App() {
       });
     }
   }, [
+    activeVideoUrl,
     visualImageUrl,
     audioCurrentTime,
     audioDuration,
@@ -383,26 +357,73 @@ export function App() {
     activeEffects
   ]);
 
+  // When we have active video, capture current frame as data URL and send to live tab
+  // (blob URLs don't work cross-tab, so /live can't use the video element directly)
+  useEffect(() => {
+    if (!activeVideoUrl || !liveMirrorChannelRef.current) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const video = videoPlaybackRef.current;
+      const channel = liveMirrorChannelRef.current;
+      if (!video || !channel || video.readyState < 2) {
+        return;
+      }
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (w <= 0 || h <= 0) {
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return;
+      }
+      ctx.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const nextState: LiveMirrorState = {
+        ...liveMirrorStateRef.current,
+        imageUrl: dataUrl,
+        audioCurrentTime: isFinite(video.currentTime) ? video.currentTime : liveMirrorStateRef.current.audioCurrentTime,
+        audioDuration:
+          video.duration != null && isFinite(video.duration)
+            ? video.duration
+            : liveMirrorStateRef.current.audioDuration,
+        isPlaying: !video.paused
+      };
+      liveMirrorStateRef.current = nextState;
+      channel.postMessage({
+        ...nextState,
+        sentAt: Date.now()
+      });
+    }, LIVE_MIRROR_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [activeVideoUrl]);
+
   useEffect(() => {
     if (!isPlaying) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      const audio = audioRef.current;
+      const timer = window.setInterval(() => {
+      const video = videoPlaybackRef.current;
       const channel = liveMirrorChannelRef.current;
-      if (!audio || !channel) {
+      if (!video || !channel) {
         return;
       }
 
       const nextState = {
         ...liveMirrorStateRef.current,
-        audioCurrentTime: isFinite(audio.currentTime)
-          ? audio.currentTime
+        audioCurrentTime: isFinite(video.currentTime)
+          ? video.currentTime
           : liveMirrorStateRef.current.audioCurrentTime,
         audioDuration:
-          audio.duration && isFinite(audio.duration)
-            ? audio.duration
+          video.duration && isFinite(video.duration)
+            ? video.duration
             : liveMirrorStateRef.current.audioDuration,
         isPlaying: true
       };
@@ -421,44 +442,62 @@ export function App() {
 
   useEffect(() => {
     return () => {
-      generatedAudioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      generatedImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      generatedAudioUrlsRef.current = [];
-      generatedImageUrlsRef.current = [];
+      if (activeVideoObjectUrlRef.current) {
+        URL.revokeObjectURL(activeVideoObjectUrlRef.current);
+        activeVideoObjectUrlRef.current = null;
+      }
       stopSeekPolling();
     };
   }, [stopSeekPolling]);
 
-  const playAudioFromUrl = useCallback(
+  const createVideoPlaybackUrl = useCallback((videoBlob: Blob): string => {
+    if (activeVideoObjectUrlRef.current) {
+      URL.revokeObjectURL(activeVideoObjectUrlRef.current);
+    }
+
+    const nextUrl = URL.createObjectURL(videoBlob);
+    activeVideoObjectUrlRef.current = nextUrl;
+    setActiveVideoUrl(nextUrl);
+    return nextUrl;
+  }, []);
+
+  const playVideoFromUrl = useCallback(
     async (
-      audioUrl: string,
+      videoUrl: string,
       options?: { entryId?: number; onEnded?: () => void }
     ): Promise<void> => {
-      audioRef.current?.pause();
+      const video = videoPlaybackRef.current;
+      if (!video) {
+        throw new Error('Could not play video: Playback element is not ready');
+      }
+
+      video.pause();
       stopSeekPolling();
 
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
+      if (video.src !== videoUrl) {
+        video.src = videoUrl;
+      }
+      video.currentTime = 0;
 
       setAudioDuration(0);
-      if (audio.duration && isFinite(audio.duration)) {
-        setAudioDuration(audio.duration);
+      if (video.duration && isFinite(video.duration)) {
+        setAudioDuration(video.duration);
       }
       setAudioCurrentTime(0);
       setSeekPosition(SEEK_MIN);
 
-      audio.addEventListener('ended', () => {
+      video.onended = () => {
         const endedDuration =
-          audio.duration && isFinite(audio.duration) ? audio.duration : 0;
+          video.duration && isFinite(video.duration) ? video.duration : 0;
         setAudioDuration(endedDuration);
         setAudioCurrentTime(endedDuration);
         setSeekPosition(SEEK_MAX);
         setIsPlaying(false);
         stopSeekPolling();
         options?.onEnded?.();
-      });
+      };
 
-      await audio.play();
+      await video.play();
 
       setHasGeneratedTrack(true);
       setIsPlaying(true);
@@ -470,28 +509,12 @@ export function App() {
   );
 
   const createQueueOnEnded = useCallback(
-    (entry: QueueEntry): (() => void) => {
+    (_entry: QueueEntry): (() => void) => {
       return () => {
-        const entries = queueEntriesRef.current;
-        const idx = entries.findIndex((e) => e.id === entry.id);
-        const next = entries
-          .slice(idx + 1)
-          .find((e) => e.status === 'completed' && e.audioUrl);
-        if (next?.audioUrl) {
-          setPlayingEntryId(next.id);
-          if (next.imageUrl) {
-            setVisualImageUrl(next.imageUrl);
-          }
-          void playAudioFromUrl(next.audioUrl, {
-            entryId: next.id,
-            onEnded: createQueueOnEnded(next)
-          });
-        } else {
-          setPlayingEntryId(null);
-        }
+        setPlayingEntryId(null);
       };
     },
-    [playAudioFromUrl]
+    []
   );
 
   const processQueueEntry = useCallback(
@@ -506,75 +529,37 @@ export function App() {
       );
 
       try {
-        const [audioResult, imageResult] = await Promise.allSettled([
-          requestGeneratedAudio(entry.params),
-          requestGeneratedImage(
-            entry.imagePrompt,
-            entry.targetWidth,
-            entry.targetHeight
+        const videoBlob = await requestGeneratedVideo(
+          entry.params,
+          entry.imagePrompt,
+          entry.targetWidth,
+          entry.targetHeight
+        );
+
+        setQueueEntries((prev) =>
+          prev.map((item) =>
+            item.id === entry.id
+              ? {
+                ...item,
+                status: 'completed',
+                errorMessage: null,
+                videoBlob
+              }
+              : item
           )
-        ]);
+        );
 
-        if (
-          audioResult.status === 'fulfilled' &&
-          imageResult.status === 'fulfilled'
-        ) {
-          const audioUrl = audioResult.value;
-          const imageUrl = imageResult.value;
-          generatedAudioUrlsRef.current.push(audioUrl);
-          generatedImageUrlsRef.current.push(imageUrl);
-
-          setQueueEntries((prev) =>
-            prev.map((item) =>
-              item.id === entry.id
-                ? {
-                  ...item,
-                  status: 'completed',
-                  errorMessage: null,
-                  audioUrl,
-                  imageUrl
-                }
-                : item
-            )
-          );
-
-          const isPlayingAudio = audioRef.current && !audioRef.current.paused;
-          if (!isPlayingAudio) {
-            setPlayingEntryId(entry.id);
-            setVisualImageUrl(imageUrl);
-            await playAudioFromUrl(audioUrl, {
-              entryId: entry.id,
-              onEnded: createQueueOnEnded(entry)
-            });
-          } else {
-            setStatus('success');
-          }
+        const isPlayingVideo =
+          videoPlaybackRef.current && !videoPlaybackRef.current.paused;
+        if (!isPlayingVideo) {
+          const playbackUrl = createVideoPlaybackUrl(videoBlob);
+          setPlayingEntryId(entry.id);
+          await playVideoFromUrl(playbackUrl, {
+            entryId: entry.id,
+            onEnded: createQueueOnEnded(entry)
+          });
         } else {
-          if (audioResult.status === 'fulfilled') {
-            URL.revokeObjectURL(audioResult.value);
-          }
-          if (imageResult.status === 'fulfilled') {
-            URL.revokeObjectURL(imageResult.value);
-          }
-
-          const audioError =
-            audioResult.status === 'rejected'
-              ? getErrorMessage(audioResult.reason)
-              : null;
-          const imageError =
-            imageResult.status === 'rejected'
-              ? getErrorMessage(imageResult.reason)
-              : null;
-          const message =
-            audioError && imageError
-              ? `Could not generate pair: audio failed (${audioError}); image failed (${imageError})`
-              : audioError
-                ? `Could not generate pair: audio failed (${audioError})`
-                : imageError
-                  ? `Could not generate pair: image failed (${imageError})`
-                  : 'Could not generate pair: Unknown error';
-
-          throw new Error(message);
+          setStatus('success');
         }
       } catch (error) {
         const message = getErrorMessage(error);
@@ -587,15 +572,14 @@ export function App() {
                 ...item,
                 status: 'failed',
                 errorMessage: message,
-                audioUrl: null,
-                imageUrl: null
+                videoBlob: null
               }
               : item
           )
         );
       }
     },
-    [playAudioFromUrl, createQueueOnEnded]
+    [createQueueOnEnded, createVideoPlaybackUrl, playVideoFromUrl]
   );
 
   useEffect(() => {
@@ -608,7 +592,13 @@ export function App() {
       return;
     }
 
-    void processQueueEntry(nextQueued);
+    const timer = window.setTimeout(() => {
+      void processQueueEntry(nextQueued);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [queueEntries, status, processQueueEntry]);
 
   function handleGenerate(): void {
@@ -665,8 +655,7 @@ export function App() {
         targetHeight: selectedSocialFormat.height,
         status: 'queued',
         errorMessage: null,
-        audioUrl: null,
-        imageUrl: null
+        videoBlob: null
       };
       setQueueEntries((prev) => [...prev, nextEntry]);
       return;
@@ -685,8 +674,7 @@ export function App() {
         targetHeight: selectedSocialFormat.height,
         status: 'queued',
         errorMessage: null,
-        audioUrl: null,
-        imageUrl: null
+        videoBlob: null
       };
       setQueueEntries((prev) => [...prev, nextEntry]);
       return;
@@ -701,23 +689,20 @@ export function App() {
       targetHeight: selectedSocialFormat.height,
       status: 'queued',
       errorMessage: null,
-      audioUrl: null,
-      imageUrl: null
+      videoBlob: null
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
 
   async function handlePlayQueueEntry(entry: QueueEntry): Promise<void> {
-    if (entry.status !== 'completed' || !entry.audioUrl) {
+    if (entry.status !== 'completed' || !entry.videoBlob) {
       return;
     }
 
+    const playbackUrl = createVideoPlaybackUrl(entry.videoBlob);
     setPlayingEntryId(entry.id);
-    if (entry.imageUrl) {
-      setVisualImageUrl(entry.imageUrl);
-    }
     try {
-      await playAudioFromUrl(entry.audioUrl, {
+      await playVideoFromUrl(playbackUrl, {
         entryId: entry.id,
         onEnded: createQueueOnEnded(entry)
       });
@@ -730,7 +715,7 @@ export function App() {
 
   async function handlePlay(): Promise<void> {
     try {
-      await audioRef.current?.play();
+      await videoPlaybackRef.current?.play();
       setIsPlaying(true);
       setErrorMessage(null);
       startSeekPolling();
@@ -741,7 +726,7 @@ export function App() {
 
   function handlePause(): void {
     try {
-      audioRef.current?.pause();
+      videoPlaybackRef.current?.pause();
       setIsPlaying(false);
       setPlayingEntryId(null);
       setErrorMessage(null);
@@ -754,13 +739,18 @@ export function App() {
   function handleSeekChange(position: number): void {
     const nextPosition = clampSeekPosition(position);
     setSeekPosition(nextPosition);
-    const audio = audioRef.current;
-    if (audio && audio.duration && isFinite(audio.duration)) {
-      audio.currentTime = (nextPosition / SEEK_MAX) * audio.duration;
-      setAudioCurrentTime(audio.currentTime);
-      setAudioDuration(audio.duration);
+    const video = videoPlaybackRef.current;
+    if (video && video.duration && isFinite(video.duration)) {
+      video.currentTime = (nextPosition / SEEK_MAX) * video.duration;
+      setAudioCurrentTime(video.currentTime);
+      setAudioDuration(video.duration);
     }
   }
+
+  const handlePlaybackVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoPlaybackRef.current = node;
+    setVideoPlaybackElement((previous) => (previous === node ? previous : node));
+  }, []);
 
   function handleMoveEffect(
     effect: ToggleableEffectType,
@@ -787,6 +777,20 @@ export function App() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 text-lofi-text">
+      <video
+        ref={handlePlaybackVideoRef}
+        data-testid="playback-video"
+        playsInline
+        preload="auto"
+        muted={false}
+        className="hidden"
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          if (video.duration && isFinite(video.duration)) {
+            setAudioDuration(video.duration);
+          }
+        }}
+      />
       <div className="mx-auto w-full min-w-0 space-y-6">
         <header className="space-y-2">
           <h1 className="font-serif text-4xl font-bold text-lofi-text">
@@ -1273,7 +1277,7 @@ export function App() {
                               {statusLabel}
                             </span>
                           </div>
-                          {isCompleted && entry.audioUrl && (
+                          {isCompleted && entry.videoBlob && (
                             <div className="mt-2 flex justify-end">
                               <button
                                 type="button"
@@ -1395,6 +1399,8 @@ export function App() {
               >
                 <VisualScene
                   imageUrl={visualImageUrl}
+                  videoElement={videoPlaybackElement}
+                  videoUrl={activeVideoUrl}
                   audioCurrentTime={audioCurrentTime}
                   audioDuration={audioDuration}
                   isPlaying={isPlaying}

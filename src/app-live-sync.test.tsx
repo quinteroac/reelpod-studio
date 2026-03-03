@@ -62,40 +62,25 @@ vi.mock('./components/visual-scene', () => ({
 
 import { App } from './App';
 
-function createMockAudio() {
-  const listeners = new Map<string, EventListener>();
-
-  const audio = {
-    src: '',
-    paused: true,
-    currentTime: 0,
-    duration: 30,
-    play: vi.fn(async () => {
-      audio.paused = false;
+function mockVideoPlaybackApi(): void {
+  vi
+    .spyOn(HTMLMediaElement.prototype, 'play')
+    .mockImplementation(async function playMock(this: HTMLMediaElement) {
+      Object.defineProperty(this, 'paused', { configurable: true, value: false });
+      if (!Number.isFinite(this.duration) || this.duration <= 0) {
+        Object.defineProperty(this, 'duration', { configurable: true, value: 30 });
+      }
       return undefined;
-    }),
-    pause: vi.fn(() => {
-      audio.paused = true;
-    }),
-    addEventListener: vi.fn((eventName: string, listener: EventListener) => {
-      listeners.set(eventName, listener);
-    })
-  };
-
-  return audio as unknown as HTMLAudioElement;
-}
-
-function createAudioResponse(): Response {
-  return new Response(new Blob(['fake-wav-data'], { type: 'audio/wav' }), {
-    status: 200,
-    headers: { 'content-type': 'audio/wav' }
+    });
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function pauseMock(this: HTMLMediaElement) {
+    Object.defineProperty(this, 'paused', { configurable: true, value: true });
   });
 }
 
-function createImageResponse(): Response {
-  return new Response(new Blob(['fake-image-data'], { type: 'image/png' }), {
+function createVideoResponse(): Response {
+  return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
     status: 200,
-    headers: { 'content-type': 'image/png' }
+    headers: { 'content-type': 'video/mp4' }
   });
 }
 
@@ -132,8 +117,7 @@ describe('App live mirror sync (US-002)', () => {
       value: MockBroadcastChannel
     });
 
-    const mockAudio = createMockAudio();
-    vi.spyOn(globalThis, 'Audio').mockImplementation(() => mockAudio);
+    mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       async (input: string | URL | Request) => {
         const url =
@@ -143,22 +127,16 @@ describe('App live mirror sync (US-002)', () => {
               ? input.toString()
               : input.url;
 
-        if (url.endsWith('/api/generate-image')) {
-          return createImageResponse();
+        if (url.endsWith('/api/generate')) {
+          return createVideoResponse();
         }
 
-        return createAudioResponse();
+        throw new Error(`Unexpected endpoint called: ${url}`);
       }
     );
 
     vi.spyOn(URL, 'createObjectURL').mockImplementation(
-      (obj: Blob | MediaSource) => {
-        if ('type' in obj && obj.type === 'image/png') {
-          return 'blob:http://localhost/generated-image-url';
-        }
-
-        return 'blob:http://localhost/generated-audio-url';
-      }
+      () => 'blob:http://localhost/generated-video-url'
     );
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   });

@@ -34,6 +34,18 @@ class GenerateRequestBody(BaseModel):
         le=MAX_DURATION_SECONDS,
     )
     style: StrictStr = "jazz"
+    image_target_width: StrictInt = Field(
+        default=IMAGE_SIZE,
+        ge=1,
+        alias="targetWidth",
+        description="Target width (in pixels) for the generated image/video frame.",
+    )
+    image_target_height: StrictInt = Field(
+        default=IMAGE_SIZE,
+        ge=1,
+        alias="targetHeight",
+        description="Target height (in pixels) for the generated image/video frame.",
+    )
 
     @field_validator("prompt")
     @classmethod
