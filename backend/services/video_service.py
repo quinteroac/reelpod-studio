@@ -96,6 +96,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     temp_dir = Path(tempfile.mkdtemp(prefix="reelpod-video-"))
     temp_dir.mkdir(parents=True, exist_ok=True)
     audio_path = temp_dir.joinpath("audio.wav")
+    trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
     output_path = temp_dir.joinpath("output.mp4")
 
@@ -122,6 +123,15 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         audio_path.write_bytes(audio_bytes)
         logger.info(
             "Video pipeline: wrote audio to %s (%d bytes)",
+            audio_path,
+            audio_path.stat().st_size,
+        )
+
+        logger.info("Video pipeline: trimming trailing silence from audio")
+        media_repository.trim_trailing_silence(audio_path, trimmed_audio_path)
+        audio_path = trimmed_audio_path
+        logger.info(
+            "Video pipeline: trimmed audio at %s (%d bytes)",
             audio_path,
             audio_path.stat().st_size,
         )
@@ -178,7 +188,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     except Exception as exc:
         raise VideoGenerationFailedError(f"Video generation failed: {exc}") from exc
     finally:
-        for file_path in (audio_path, image_path, output_path):
+        for file_path in (audio_path, trimmed_audio_path, image_path, output_path):
             try:
                 file_path.unlink(missing_ok=True)
             except OSError:

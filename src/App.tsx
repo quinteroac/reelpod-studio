@@ -227,7 +227,7 @@ export function App() {
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
   const [generationMode, setGenerationMode] = useState<GenerationMode>(
-    'parameters'
+    'text'
   );
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
@@ -250,7 +250,7 @@ export function App() {
   const [imagePrompt, setImagePrompt] = useState(
     'lofi cafe at night, cinematic lighting'
   );
-  const [useSamePromptForImage, setUseSamePromptForImage] = useState(false);
+  const [useSamePromptForImage, setUseSamePromptForImage] = useState(true);
   const [imagePromptBeforeSharedToggle, setImagePromptBeforeSharedToggle] =
     useState(imagePrompt);
   const [socialFormatId, setSocialFormatId] =
@@ -508,10 +508,12 @@ export function App() {
     [startSeekPolling, stopSeekPolling]
   );
 
+  const playNextEntryRef = useRef<(currentEntryId: number) => void>(undefined);
+
   const createQueueOnEnded = useCallback(
-    (_entry: QueueEntry): (() => void) => {
+    (entry: QueueEntry): (() => void) => {
       return () => {
-        setPlayingEntryId(null);
+        playNextEntryRef.current?.(entry.id);
       };
     },
     []
@@ -581,6 +583,24 @@ export function App() {
     },
     [createQueueOnEnded, createVideoPlaybackUrl, playVideoFromUrl]
   );
+
+  playNextEntryRef.current = (currentEntryId: number) => {
+    const currentIndex = queueEntries.findIndex((e) => e.id === currentEntryId);
+    const nextCompleted = queueEntries
+      .slice(currentIndex + 1)
+      .find((e) => e.status === 'completed' && e.videoBlob);
+
+    if (nextCompleted) {
+      const playbackUrl = createVideoPlaybackUrl(nextCompleted.videoBlob!);
+      setPlayingEntryId(nextCompleted.id);
+      void playVideoFromUrl(playbackUrl, {
+        entryId: nextCompleted.id,
+        onEnded: createQueueOnEnded(nextCompleted)
+      });
+    } else {
+      setPlayingEntryId(null);
+    }
+  };
 
   useEffect(() => {
     if (status === 'loading') {

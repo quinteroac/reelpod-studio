@@ -251,7 +251,7 @@ export function VisualScene({
         />
       </Canvas>
 
-      {showPlaceholderCopy && !imageUrl && (
+      {showPlaceholderCopy && !imageUrl && !videoUrl && (
         <p
           data-testid="visual-placeholder-copy"
           className="pointer-events-none absolute inset-x-0 bottom-4 px-4 text-center text-sm text-lofi-accentMuted"
