@@ -16,11 +16,12 @@ from models.errors import (
     VideoGenerationFailedError,
     VideoGenerationTimeoutError,
 )
-from models.schemas import GenerateRequestBody
+from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from repositories import acestep_repository, image_repository
 from services import audio_service, image_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
+PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
 
 
@@ -59,6 +60,16 @@ class TestGenerateRequestBody:
     def test_text_mode_without_prompt_rejected(self) -> None:
         with pytest.raises(Exception):
             GenerateRequestBody(mode="text")
+
+
+class TestGenerateImageRequestBodyContract:
+    def test_schema_fields_and_aliases_remain_stable(self) -> None:
+        fields = GenerateImageRequestBody.model_fields
+
+        assert set(fields.keys()) == {"prompt", "negative_prompt", "target_width", "target_height"}
+        assert fields["negative_prompt"].alias == "negativePrompt"
+        assert fields["target_width"].alias == "targetWidth"
+        assert fields["target_height"].alias == "targetHeight"
 
 
 class TestBuildPrompt:
@@ -129,6 +140,74 @@ class TestGenerateEndpoint:
             "tempo": 95,
             "duration": 95,
             "style": "hip-hop",
+        }
+
+    def test_generate_runs_video_pipeline_and_returns_muxed_mp4(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_generate_audio_for_request(body):  # noqa: ANN001
+            seen["audio_body_mode"] = body.mode
+            seen["audio_body_prompt"] = body.prompt
+            return WAV_HEADER
+
+        def fake_generate_image_png(body):  # noqa: ANN001
+            seen["image_prompt"] = body.prompt
+            return PNG_HEADER
+
+        def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
+            output_path.write_bytes(audio_path.read_bytes())
+
+        def fake_mux_image_and_audio_to_mp4(image_path: Path, audio_path: Path, output_path: Path) -> None:
+            seen["mux_image_bytes"] = image_path.read_bytes()
+            seen["mux_audio_bytes"] = audio_path.read_bytes()
+            output_path.write_bytes(MP4_HEADER)
+
+        def fake_probe_media(path: Path) -> dict[str, object]:
+            if path.name == "output.mp4":
+                return {
+                    "streams": [
+                        {"codec_type": "video", "codec_name": "h264"},
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ],
+                    "format": {"duration": "40.0"},
+                }
+            if path.name == "audio_trimmed.wav":
+                return {"format": {"duration": "40.0"}}
+            raise AssertionError(f"Unexpected probe target: {path}")
+
+        monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", fake_generate_audio_for_request)
+        monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
+        monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", fake_trim_trailing_silence)
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_image_and_audio_to_mp4",
+            fake_mux_image_and_audio_to_mp4,
+        )
+        monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+        response = client.post(
+            "/api/generate",
+            json={
+                "mode": "text",
+                "prompt": "anima dreamscape over ocean",
+                "mood": "warm",
+                "style": "ambient",
+                "tempo": 80,
+                "duration": 40,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "video/mp4"
+        assert response.content == MP4_HEADER
+        assert seen == {
+            "audio_body_mode": "text",
+            "audio_body_prompt": "anima dreamscape over ocean",
+            "image_prompt": "anima dreamscape over ocean",
+            "mux_image_bytes": PNG_HEADER,
+            "mux_audio_bytes": WAV_HEADER,
         }
 
     def test_connection_error_returns_500(
