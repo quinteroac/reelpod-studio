@@ -11,12 +11,18 @@ const MAX_TEMPO = 120;
 const MIN_DURATION = 40;
 const MAX_DURATION = 300;
 
+const DEFAULT_BACKEND_BASE_URL = 'http://localhost:8000';
+const DEFAULT_IMAGE_PROMPT = 'lofi artwork, warm colors';
+const DEFAULT_TARGET_WIDTH = 1920;
+const DEFAULT_TARGET_HEIGHT = 1080;
+
 export interface CreateMcpServerOptions {
   parameterStore?: ParameterStore;
+  backendBaseUrl?: string;
 }
 
 export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer {
-  const { parameterStore } = options;
+  const { parameterStore, backendBaseUrl = DEFAULT_BACKEND_BASE_URL } = options;
   const server = new McpServer({
     name: 'reelpod-studio',
     version: '1.0.0',
@@ -80,14 +86,93 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
         .optional()
         .describe('Prompt for the accompanying image (optional)'),
     },
-  }, async ({ imagePrompt }) => ({
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify({ status: 'generation_started', imagePrompt }),
-      },
-    ],
-  }));
+  }, async ({ imagePrompt }) => {
+    const params = parameterStore?.get();
+    if (!params) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              status: 'failed',
+              error: 'No song parameters set. Call set_song_parameters first.',
+            }),
+          },
+        ],
+      };
+    }
+
+    const payload = {
+      ...params,
+      imagePrompt: imagePrompt ?? DEFAULT_IMAGE_PROMPT,
+      targetWidth: DEFAULT_TARGET_WIDTH,
+      targetHeight: DEFAULT_TARGET_HEIGHT,
+    };
+
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorText: string | null = null;
+        try {
+          const body: unknown = await response.json();
+          if (typeof body === 'object' && body !== null) {
+            const record = body as Record<string, unknown>;
+            const candidate = record.error ?? record.detail;
+            if (typeof candidate === 'string' && candidate.trim().length > 0) {
+              errorText = candidate.trim();
+            }
+          }
+        } catch {
+          // ignore JSON parse errors for non-JSON error responses
+        }
+
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                status: 'failed',
+                error:
+                  errorText ??
+                  `Generation failed with status ${response.status}`,
+              }),
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ status: 'completed' }),
+          },
+        ],
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown error';
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              status: 'failed',
+              error: message,
+            }),
+          },
+        ],
+      };
+    }
+  });
 
   server.registerTool('add_to_queue', {
     title: 'Add to Queue',

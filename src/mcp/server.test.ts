@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from './server.js';
@@ -330,6 +338,283 @@ describe('US-002 – set_song_parameters tool', () => {
         },
       });
       expect(result.isError).toBe(true);
+    });
+  });
+});
+
+// US-003: Agent triggers audio generation
+describe('US-003 – generate_audio tool', () => {
+  let client: Client;
+  let parameterStore: ParameterStore;
+  const mockFetch = vi.fn();
+  const BACKEND_BASE_URL = 'http://test-backend:9999';
+
+  beforeAll(async () => {
+    parameterStore = new ParameterStore();
+    const server = createMcpServer({
+      parameterStore,
+      backendBaseUrl: BACKEND_BASE_URL,
+    });
+    client = new Client({ name: 'test-client', version: '1.0.0' });
+
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterAll(async () => {
+    await client.close();
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  // US-003-AC01: generate_audio triggers the same flow as clicking the Generate button
+  describe('AC01 – triggers the same generation flow as the Generate button', () => {
+    it('POSTs to /api/generate with parameters from the store', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        }),
+      );
+
+      await client.callTool({
+        name: 'generate_audio',
+        arguments: { imagePrompt: 'sunset beach' },
+      });
+
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe(`${BACKEND_BASE_URL}/api/generate`);
+      expect(options.method).toBe('POST');
+
+      const body = JSON.parse(options.body);
+      expect(body.mood).toBe('chill');
+      expect(body.tempo).toBe(80);
+      expect(body.style).toBe('jazz');
+      expect(body.duration).toBe(60);
+      expect(body.imagePrompt).toBe('sunset beach');
+      expect(body.targetWidth).toBe(1920);
+      expect(body.targetHeight).toBe(1080);
+    });
+
+    it('uses default image prompt when none provided', async () => {
+      parameterStore.set({
+        mood: 'upbeat',
+        tempo: 100,
+        style: 'hip-hop',
+        duration: 45,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        }),
+      );
+
+      await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.imagePrompt).toBe('lofi artwork, warm colors');
+    });
+
+    it('returns error when no parameters have been set', async () => {
+      const freshStore = new ParameterStore();
+      const freshServer = createMcpServer({
+        parameterStore: freshStore,
+        backendBaseUrl: BACKEND_BASE_URL,
+      });
+      const freshClient = new Client({
+        name: 'test-client-fresh',
+        version: '1.0.0',
+      });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      await freshServer.connect(st);
+      await freshClient.connect(ct);
+
+      const result = await freshClient.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toContain('set_song_parameters');
+
+      await freshClient.close();
+    });
+  });
+
+  // US-003-AC02: Tool returns a result indicating success or failure
+  describe('AC02 – returns success or failure result', () => {
+    it('returns status "completed" on successful generation', async () => {
+      parameterStore.set({
+        mood: 'melancholic',
+        tempo: 70,
+        style: 'ambient',
+        duration: 120,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        }),
+      );
+
+      const result = await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = parseToolResult(result);
+      expect(parsed.status).toBe('completed');
+    });
+
+    it('returns status "failed" on backend error', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'ACEStep timeout' }), {
+          status: 504,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+      const result = await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.status).toBe('failed');
+    });
+  });
+
+  // US-003-AC03: If generation fails, the error message from the backend is forwarded
+  describe('AC03 – backend error message is forwarded to the agent', () => {
+    it('forwards the error field from a JSON error response', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: 'Audio generation timed out after 60s' }),
+          {
+            status: 504,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
+
+      const result = await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toBe('Audio generation timed out after 60s');
+    });
+
+    it('forwards the detail field from a JSON error response', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ detail: 'Image model out of memory' }),
+          {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
+
+      const result = await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toBe('Image model out of memory');
+    });
+
+    it('provides a fallback message for non-JSON error responses', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response('Internal Server Error', {
+          status: 500,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      );
+
+      const result = await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toContain('500');
+    });
+
+    it('forwards network errors', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockRejectedValueOnce(new Error('fetch failed'));
+
+      const result = await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toBe('fetch failed');
     });
   });
 });
