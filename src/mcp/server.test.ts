@@ -806,3 +806,152 @@ describe('US-004 – add_to_queue tool', () => {
     });
   });
 });
+
+// US-005: Agent retrieves current queue state
+describe('US-005 – get_queue tool', () => {
+  // US-005-AC03: Returns an empty list if no songs have been added
+  describe('AC03 – returns empty list when no songs added', () => {
+    let client: Client;
+
+    beforeAll(async () => {
+      const server = createMcpServer();
+      client = new Client({ name: 'test-client', version: '1.0.0' });
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+    });
+
+    afterAll(async () => {
+      await client.close();
+    });
+
+    it('returns songCount 0 and an empty queue array', async () => {
+      const result = await client.callTool({
+        name: 'get_queue',
+        arguments: {},
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = parseToolResult(result);
+      expect(parsed.songCount).toBe(0);
+      expect(parsed.queue).toEqual([]);
+    });
+  });
+
+  // US-005-AC01 & AC02: get_queue returns full queue with metadata per entry
+  describe('AC01/AC02 – returns full queue with name, genre, tempo, duration, position', () => {
+    let client: Client;
+    let parameterStore: ParameterStore;
+    const mockFetch = vi.fn();
+    const BACKEND_BASE_URL = 'http://test-backend:9999';
+
+    beforeAll(async () => {
+      parameterStore = new ParameterStore();
+      const server = createMcpServer({
+        parameterStore,
+        backendBaseUrl: BACKEND_BASE_URL,
+      });
+      client = new Client({ name: 'test-client', version: '1.0.0' });
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+
+      vi.stubGlobal('fetch', mockFetch);
+
+      // Add two songs to the queue
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+        prompt: 'mellow jazz vibes',
+      });
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), { status: 200 }),
+      );
+      await client.callTool({ name: 'generate_audio', arguments: { imagePrompt: 'sunset cafe' } });
+      await client.callTool({ name: 'add_to_queue', arguments: {} });
+
+      parameterStore.set({
+        mood: 'upbeat',
+        tempo: 110,
+        style: 'hip-hop',
+        duration: 45,
+      });
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), { status: 200 }),
+      );
+      await client.callTool({ name: 'generate_audio', arguments: { imagePrompt: 'neon city' } });
+      await client.callTool({ name: 'add_to_queue', arguments: {} });
+    });
+
+    afterAll(async () => {
+      await client.close();
+      vi.unstubAllGlobals();
+    });
+
+    it('returns the full ordered queue', async () => {
+      const result = await client.callTool({
+        name: 'get_queue',
+        arguments: {},
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = parseToolResult(result);
+      expect(parsed.songCount).toBe(2);
+      expect(parsed.queue).toHaveLength(2);
+    });
+
+    it('each entry includes name, genre, tempo, duration, and position', async () => {
+      const result = await client.callTool({
+        name: 'get_queue',
+        arguments: {},
+      });
+
+      const parsed = parseToolResult(result);
+      const first = parsed.queue[0];
+      expect(first.position).toBe(1);
+      expect(first.name).toBe('mellow jazz vibes');
+      expect(first.genre).toBe('jazz');
+      expect(first.tempo).toBe(80);
+      expect(first.duration).toBe(60);
+
+      const second = parsed.queue[1];
+      expect(second.position).toBe(2);
+      expect(second.name).toBe('upbeat hip-hop');
+      expect(second.genre).toBe('hip-hop');
+      expect(second.tempo).toBe(110);
+      expect(second.duration).toBe(45);
+    });
+
+    it('uses prompt as name when available, falls back to mood+style', async () => {
+      const result = await client.callTool({
+        name: 'get_queue',
+        arguments: {},
+      });
+
+      const parsed = parseToolResult(result);
+      // First song had a prompt
+      expect(parsed.queue[0].name).toBe('mellow jazz vibes');
+      // Second song had no prompt — falls back to "mood style"
+      expect(parsed.queue[1].name).toBe('upbeat hip-hop');
+    });
+
+    it('preserves queue order (first added is position 1)', async () => {
+      const result = await client.callTool({
+        name: 'get_queue',
+        arguments: {},
+      });
+
+      const parsed = parseToolResult(result);
+      const positions = parsed.queue.map((e: { position: number }) => e.position);
+      expect(positions).toEqual([1, 2]);
+    });
+  });
+});

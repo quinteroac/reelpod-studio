@@ -293,14 +293,19 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
   server.registerTool('get_queue', {
     title: 'Get Queue',
     description:
-      'Retrieve the current playback queue with status of each entry.',
+      'Retrieve the current playback queue with all song metadata.',
   }, async () => ({
     content: [
       {
         type: 'text' as const,
         text: JSON.stringify({
           songCount: queue.length,
-          queue: queue.map((e) => ({
+          queue: queue.map((e, index) => ({
+            position: index + 1,
+            name: e.parameters.prompt ?? `${e.parameters.mood} ${e.parameters.style}`,
+            genre: e.parameters.style,
+            tempo: e.parameters.tempo,
+            duration: e.parameters.duration,
             id: e.id,
             parameters: e.parameters,
             imagePrompt: e.imagePrompt,
