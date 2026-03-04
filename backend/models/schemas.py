@@ -75,6 +75,7 @@ class GenerateRequestBody(BaseModel):
 
 class GenerateImageRequestBody(BaseModel):
     prompt: StrictStr
+    negative_prompt: StrictStr | None = Field(default=None, alias="negativePrompt")
     target_width: StrictInt = Field(default=IMAGE_SIZE, ge=1, alias="targetWidth")
     target_height: StrictInt = Field(default=IMAGE_SIZE, ge=1, alias="targetHeight")
 
@@ -83,6 +84,17 @@ class GenerateImageRequestBody(BaseModel):
     @field_validator("prompt")
     @classmethod
     def validate_non_empty_prompt(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Value must be a non-empty string.")
+        return trimmed
+
+    @field_validator("negative_prompt")
+    @classmethod
+    def validate_negative_prompt_if_provided(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
         trimmed = value.strip()
         if not trimmed:
             raise ValueError("Value must be a non-empty string.")

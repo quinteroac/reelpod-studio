@@ -4,7 +4,7 @@ import io
 import logging
 from typing import Any
 
-from models.constants import IMAGE_ASPECT_TOLERANCE, IMAGE_NUM_INFERENCE_STEPS
+from models.constants import IMAGE_ASPECT_TOLERANCE
 from models.errors import ImageGenerationFailedError
 from models.schemas import GenerateImageRequestBody
 from repositories import image_repository
@@ -65,46 +65,17 @@ def startup() -> None:
         image_model_load_error = str(exc)
 
 
-def get_optimal_sdxl_size(target_width: int, target_height: int) -> tuple[int, int]:
-    target_aspect = target_width / target_height
-    valid_sizes = [
-        (1024, 1024),
-        (1152, 896),
-        (1216, 832),
-        (1344, 768),
-        (1536, 640),
-        (896, 1152),
-        (832, 1216),
-        (768, 1344),
-        (640, 1536),
-    ]
-    
-    best_size = valid_sizes[0]
-    min_diff = float("inf")
-    
-    for w, h in valid_sizes:
-        aspect = w / h
-        diff = abs(aspect - target_aspect)
-        if diff < min_diff:
-            min_diff = diff
-            best_size = (w, h)
-            
-    return best_size
-
-
 def generate_image_png(body: GenerateImageRequestBody) -> bytes:
     if image_pipeline is None:
         reason = image_model_load_error or "model unavailable"
         raise ImageGenerationFailedError(f"Image generation failed: {reason}")
 
     try:
-        gen_width, gen_height = get_optimal_sdxl_size(body.target_width, body.target_height)
         source_image = image_repository.run_image_inference(
             image_pipeline,
             prompt=body.prompt,
-            width=gen_width,
-            height=gen_height,
-            num_inference_steps=IMAGE_NUM_INFERENCE_STEPS,
+            seed=0,
+            negative_prompt=body.negative_prompt,
         )
         source_width, source_height = source_image.size
 

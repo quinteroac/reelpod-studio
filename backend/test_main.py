@@ -250,15 +250,29 @@ class TestGenerationQueue:
 
 
 class TestGenerateImageEndpoint:
-    def test_generate_image_returns_png_binary_and_uses_1024_square_resolution(
+    def test_generate_image_returns_png_binary_and_uses_anima_inference_defaults(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         seen_calls: list[dict[str, object]] = []
 
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                seen_calls.append({"prompt": prompt, "width": width, "height": height})
-                return FakeImageResult([Image.new("RGB", (width, height), color=(80, 120, 200))])
+            def __call__(
+                self,
+                prompt: str,
+                *,
+                seed: int,
+                num_inference_steps: int,
+                negative_prompt: str | None = None,
+            ) -> FakeImageResult:
+                seen_calls.append(
+                    {
+                        "prompt": prompt,
+                        "seed": seed,
+                        "num_inference_steps": num_inference_steps,
+                        "negative_prompt": negative_prompt,
+                    }
+                )
+                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(80, 120, 200))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
@@ -271,16 +285,26 @@ class TestGenerateImageEndpoint:
             assert second.status_code == 200
 
         assert seen_calls == [
-            {"prompt": "misty mountains", "width": 1024, "height": 1024},
-            {"prompt": "city sunset", "width": 1024, "height": 1024},
+            {
+                "prompt": "misty mountains",
+                "seed": 0,
+                "num_inference_steps": 50,
+                "negative_prompt": None,
+            },
+            {
+                "prompt": "city sunset",
+                "seed": 0,
+                "num_inference_steps": 50,
+                "negative_prompt": None,
+            },
         ]
 
     def test_generate_image_uses_requested_target_resolution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                return FakeImageResult([Image.new("RGB", (width, height), color=(255, 255, 255))])
+            def __call__(self, prompt: str, **kwargs: object) -> FakeImageResult:
+                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(255, 255, 255))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
@@ -292,6 +316,38 @@ class TestGenerateImageEndpoint:
             assert response.headers["content-type"] == "image/png"
             output = Image.open(io.BytesIO(response.content))
             assert output.size == (1080, 1920)
+
+    def test_generate_image_passes_negative_prompt_to_pipeline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        class Pipeline:
+            def __call__(self, prompt: str, **kwargs: object) -> FakeImageResult:
+                seen["prompt"] = prompt
+                seen["kwargs"] = kwargs
+                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(10, 10, 10))])
+
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            response = test_client.post(
+                "/api/generate-image",
+                json={
+                    "prompt": "portrait of a cat",
+                    "negativePrompt": "blurry, distorted",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert seen == {
+            "prompt": "portrait of a cat",
+            "kwargs": {
+                "seed": 0,
+                "num_inference_steps": 50,
+                "negative_prompt": "blurry, distorted",
+            },
+        }
 
     def test_model_load_failure_returns_500_with_meaningful_message(
         self, monkeypatch: pytest.MonkeyPatch

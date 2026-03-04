@@ -7,6 +7,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from PIL import Image
 
 from models import constants
 from repositories import image_repository
@@ -34,6 +35,11 @@ class _FakeAnimaImagePipeline:
     def from_pretrained(cls, **kwargs: Any) -> _FakePipeline:
         cls.last_kwargs = kwargs
         return _FakePipeline()
+
+
+class _FakeInferenceResult:
+    def __init__(self, image: Image.Image) -> None:
+        self.images = [image]
 
 
 def _install_fake_modules(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,3 +143,52 @@ def test_image_service_startup_logs_model_loading_completion(
     assert image_service.image_pipeline is not None
     assert image_service.image_model_load_error is None
     assert "Image generation model loading completed" in caplog.text
+
+
+def test_run_image_inference_calls_anima_pipeline_with_seed_and_default_steps() -> None:
+    seen: dict[str, Any] = {}
+
+    def pipeline(*args: Any, **kwargs: Any) -> _FakeInferenceResult:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return _FakeInferenceResult(Image.new("RGB", (64, 64), color=(1, 2, 3)))
+
+    output = image_repository.run_image_inference(
+        pipeline,
+        prompt="misty mountains",
+        seed=42,
+    )
+
+    assert output.size == (64, 64)
+    assert seen["args"] == ("misty mountains",)
+    assert seen["kwargs"] == {
+        "seed": 42,
+        "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
+    }
+
+
+def test_run_image_inference_passes_negative_prompt_when_provided() -> None:
+    seen: dict[str, Any] = {}
+
+    def pipeline(*args: Any, **kwargs: Any) -> _FakeInferenceResult:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return _FakeInferenceResult(Image.new("RGB", (32, 32), color=(1, 1, 1)))
+
+    image_repository.run_image_inference(
+        pipeline,
+        prompt="city skyline",
+        seed=7,
+        negative_prompt="low quality, blurry",
+    )
+
+    assert seen["args"] == ("city skyline",)
+    assert seen["kwargs"] == {
+        "seed": 7,
+        "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
+        "negative_prompt": "low quality, blurry",
+    }
+
+
+def test_clip_token_truncation_helper_is_not_exposed() -> None:
+    assert not hasattr(image_repository, "_truncate_prompt_to_token_limit")
