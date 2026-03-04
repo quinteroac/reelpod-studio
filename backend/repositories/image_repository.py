@@ -4,18 +4,17 @@ from typing import Any
 
 from models.constants import (
     IMAGE_DIFFUSION_MODEL_ID,
+    IMAGE_DIFFUSION_ORIGIN_PATTERN,
     IMAGE_NUM_INFERENCE_STEPS,
     IMAGE_QWEN_TOKENIZER_ID,
+    IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
     IMAGE_SD35_TOKENIZER_ID,
+    IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN,
     IMAGE_TEXT_ENCODER_MODEL_ID,
+    IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
     IMAGE_VAE_MODEL_ID,
+    IMAGE_VAE_ORIGIN_PATTERN,
 )
-
-
-def _compute_vram_limit_gb(torch_module: Any) -> int:
-    free_bytes, _ = torch_module.cuda.mem_get_info()
-    free_gib = free_bytes / (1024**3)
-    return max(1, int(free_gib * 0.9))
 
 
 def load_image_pipeline() -> Any:
@@ -31,32 +30,54 @@ def load_image_pipeline() -> Any:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required to run the Anima image pipeline.")
 
+    vram_config = {
+        "offload_dtype": "disk",
+        "offload_device": "disk",
+        "onload_dtype": "disk",
+        "onload_device": "disk",
+        "preparing_dtype": torch.bfloat16,
+        "preparing_device": "cuda",
+        "computation_dtype": torch.bfloat16,
+        "computation_device": "cuda",
+    }
     model_configs = [
-        ModelConfig(role="diffusion_model", model_id=IMAGE_DIFFUSION_MODEL_ID),
-        ModelConfig(role="text_encoder", model_id=IMAGE_TEXT_ENCODER_MODEL_ID),
-        ModelConfig(role="vae", model_id=IMAGE_VAE_MODEL_ID),
+        ModelConfig(
+            model_id=IMAGE_DIFFUSION_MODEL_ID,
+            origin_file_pattern=IMAGE_DIFFUSION_ORIGIN_PATTERN,
+            **vram_config,
+        ),
+        ModelConfig(
+            model_id=IMAGE_TEXT_ENCODER_MODEL_ID,
+            origin_file_pattern=IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
+            **vram_config,
+        ),
+        ModelConfig(
+            model_id=IMAGE_VAE_MODEL_ID,
+            origin_file_pattern=IMAGE_VAE_ORIGIN_PATTERN,
+            **vram_config,
+        ),
     ]
-    tokenizer_configs = [
-        {"role": "tokenizer", "model_id": IMAGE_QWEN_TOKENIZER_ID},
-        {
-            "role": "tokenizer_3",
-            "model_id": IMAGE_SD35_TOKENIZER_ID,
-            "subfolder": "tokenizer_3",
-        },
-    ]
-    vram_limit_gb = _compute_vram_limit_gb(torch)
+    _free, _total = torch.cuda.mem_get_info()
+    vram_limit = _total / (1024**3) - 0.5
     pipeline = AnimaImagePipeline.from_pretrained(
+        torch_dtype=torch.bfloat16,
+        device="cuda",
         model_configs=model_configs,
-        tokenizer_configs=tokenizer_configs,
-        enable_disk_offload=True,
-        computation_dtype=torch.bfloat16,
-        computation_device="cuda",
-        vram_limit_gb=vram_limit_gb,
+        tokenizer_config=ModelConfig(
+            model_id=IMAGE_QWEN_TOKENIZER_ID,
+            origin_file_pattern=IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
+        ),
+        tokenizer_t5xxl_config=ModelConfig(
+            model_id=IMAGE_SD35_TOKENIZER_ID,
+            origin_file_pattern=IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN,
+        ),
+        vram_limit=vram_limit,
     )
-
-    if hasattr(pipeline, "enable_disk_offload"):
-        pipeline.enable_disk_offload()
     return pipeline
+
+
+def _round_to_multiple_of_16(value: int) -> int:
+    return max(16, (value + 8) // 16 * 16)
 
 
 def run_image_inference(
@@ -65,6 +86,8 @@ def run_image_inference(
     prompt: str,
     seed: int,
     negative_prompt: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> Any:
     inference_kwargs: dict[str, Any] = {
         "seed": seed,
@@ -72,9 +95,15 @@ def run_image_inference(
     }
     if negative_prompt:
         inference_kwargs["negative_prompt"] = negative_prompt
+    if width is not None:
+        inference_kwargs["width"] = _round_to_multiple_of_16(width)
+    if height is not None:
+        inference_kwargs["height"] = _round_to_multiple_of_16(height)
 
     result = pipeline(prompt, **inference_kwargs)
     images = getattr(result, "images", None)
-    if not isinstance(images, list) or not images:
-        raise RuntimeError("No generated image returned by model")
-    return images[0]
+    if isinstance(images, list) and images:
+        return images[0]
+    if hasattr(result, "size") and callable(getattr(result, "save", None)):
+        return result
+    raise RuntimeError("No generated image returned by model")

@@ -24,6 +24,8 @@ from models.constants import (
 
 
 class GenerateRequestBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     mode: Literal["text", "text+params", "text-and-parameters", "params", "parameters"] = "params"
     prompt: Optional[StrictStr] = None
     mood: StrictStr = "chill"

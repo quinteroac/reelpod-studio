@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from dataclasses import dataclass
 from types import ModuleType
 from typing import Any
 
@@ -14,18 +13,15 @@ from repositories import image_repository
 from services import image_service
 
 
-@dataclass
 class _FakeModelConfig:
-    role: str
-    model_id: str
+    def __init__(self, model_id: str, origin_file_pattern: str, **kwargs: Any) -> None:
+        self.model_id = model_id
+        self.origin_file_pattern = origin_file_pattern
+        self.__dict__.update(kwargs)
 
 
 class _FakePipeline:
-    def __init__(self) -> None:
-        self.disk_offload_enabled = False
-
-    def enable_disk_offload(self) -> None:
-        self.disk_offload_enabled = True
+    pass
 
 
 class _FakeAnimaImagePipeline:
@@ -80,29 +76,20 @@ def test_load_image_pipeline_uses_anima_with_expected_model_and_tokenizer_config
 
     assert kwargs is not None
     assert isinstance(pipeline, _FakePipeline)
-    assert pipeline.disk_offload_enabled is True
 
     model_configs = kwargs["model_configs"]
     assert len(model_configs) == 3
-    assert model_configs[0] == _FakeModelConfig(
-        role="diffusion_model", model_id=constants.IMAGE_DIFFUSION_MODEL_ID
-    )
-    assert model_configs[1] == _FakeModelConfig(
-        role="text_encoder", model_id=constants.IMAGE_TEXT_ENCODER_MODEL_ID
-    )
-    assert model_configs[2] == _FakeModelConfig(
-        role="vae", model_id=constants.IMAGE_VAE_MODEL_ID
-    )
+    assert model_configs[0].model_id == constants.IMAGE_DIFFUSION_MODEL_ID
+    assert model_configs[0].origin_file_pattern == constants.IMAGE_DIFFUSION_ORIGIN_PATTERN
+    assert model_configs[1].model_id == constants.IMAGE_TEXT_ENCODER_MODEL_ID
+    assert model_configs[1].origin_file_pattern == constants.IMAGE_TEXT_ENCODER_ORIGIN_PATTERN
+    assert model_configs[2].model_id == constants.IMAGE_VAE_MODEL_ID
+    assert model_configs[2].origin_file_pattern == constants.IMAGE_VAE_ORIGIN_PATTERN
 
-    tokenizer_configs = kwargs["tokenizer_configs"]
-    assert tokenizer_configs == [
-        {"role": "tokenizer", "model_id": constants.IMAGE_QWEN_TOKENIZER_ID},
-        {
-            "role": "tokenizer_3",
-            "model_id": constants.IMAGE_SD35_TOKENIZER_ID,
-            "subfolder": "tokenizer_3",
-        },
-    ]
+    assert kwargs["tokenizer_config"].model_id == constants.IMAGE_QWEN_TOKENIZER_ID
+    assert kwargs["tokenizer_config"].origin_file_pattern == constants.IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN
+    assert kwargs["tokenizer_t5xxl_config"].model_id == constants.IMAGE_SD35_TOKENIZER_ID
+    assert kwargs["tokenizer_t5xxl_config"].origin_file_pattern == constants.IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN
 
 
 def test_load_image_pipeline_applies_low_vram_cuda_configuration(
@@ -114,10 +101,12 @@ def test_load_image_pipeline_applies_low_vram_cuda_configuration(
     kwargs = _FakeAnimaImagePipeline.last_kwargs
 
     assert kwargs is not None
-    assert kwargs["enable_disk_offload"] is True
-    assert kwargs["computation_device"] == "cuda"
-    assert kwargs["computation_dtype"] is sys.modules["torch"].bfloat16
-    assert kwargs["vram_limit_gb"] == 9
+    assert kwargs["device"] == "cuda"
+    assert kwargs["torch_dtype"] is sys.modules["torch"].bfloat16
+    assert kwargs["vram_limit"] == pytest.approx(15.5)
+    first_model = kwargs["model_configs"][0]
+    assert first_model.computation_device == "cuda"
+    assert first_model.computation_dtype is sys.modules["torch"].bfloat16
 
 
 def test_constants_define_anima_model_ids_and_default_steps() -> None:
@@ -188,6 +177,25 @@ def test_run_image_inference_passes_negative_prompt_when_provided() -> None:
         "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
         "negative_prompt": "low quality, blurry",
     }
+
+
+def test_run_image_inference_passes_width_height_rounded_to_multiple_of_16() -> None:
+    seen: dict[str, Any] = {}
+
+    def pipeline(*args: Any, **kwargs: Any) -> _FakeInferenceResult:
+        seen["kwargs"] = kwargs
+        return _FakeInferenceResult(Image.new("RGB", (1920, 1088), color=(0, 0, 0)))
+
+    image_repository.run_image_inference(
+        pipeline,
+        prompt="sunset",
+        seed=1,
+        width=1920,
+        height=1080,
+    )
+
+    assert seen["kwargs"]["width"] == 1920
+    assert seen["kwargs"]["height"] == 1088  # 1080 rounded up to multiple of 16
 
 
 def test_clip_token_truncation_helper_is_not_exposed() -> None:
