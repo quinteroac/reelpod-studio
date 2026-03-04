@@ -618,3 +618,191 @@ describe('US-003 – generate_audio tool', () => {
     });
   });
 });
+
+// US-004: Agent adds generated song to the queue
+describe('US-004 – add_to_queue tool', () => {
+  let client: Client;
+  let parameterStore: ParameterStore;
+  const mockFetch = vi.fn();
+  const BACKEND_BASE_URL = 'http://test-backend:9999';
+
+  beforeAll(async () => {
+    parameterStore = new ParameterStore();
+    const server = createMcpServer({
+      parameterStore,
+      backendBaseUrl: BACKEND_BASE_URL,
+    });
+    client = new Client({ name: 'test-client', version: '1.0.0' });
+
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterAll(async () => {
+    await client.close();
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  // US-004-AC03: Adding to the queue when no audio has been generated returns a clear error
+  describe('AC03 – error when no audio has been generated', () => {
+    it('returns an error when add_to_queue is called before any generation', async () => {
+      const freshStore = new ParameterStore();
+      const freshServer = createMcpServer({
+        parameterStore: freshStore,
+        backendBaseUrl: BACKEND_BASE_URL,
+      });
+      const freshClient = new Client({
+        name: 'test-client-fresh',
+        version: '1.0.0',
+      });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      await freshServer.connect(st);
+      await freshClient.connect(ct);
+      vi.stubGlobal('fetch', mockFetch);
+
+      const result = await freshClient.callTool({
+        name: 'add_to_queue',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toBeTruthy();
+
+      await freshClient.close();
+    });
+
+    it('returns an error when the last generation failed', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'ACEStep timeout' }), {
+          status: 504,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+      await client.callTool({
+        name: 'generate_audio',
+        arguments: {},
+      });
+
+      const result = await client.callTool({
+        name: 'add_to_queue',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toBeTruthy();
+    });
+  });
+
+  // US-004-AC01: add_to_queue adds the current song (with its parameters and audio) to the existing queue
+  describe('AC01 – adds current song to the queue', () => {
+    it('adds a successfully generated song to the queue', async () => {
+      parameterStore.set({
+        mood: 'chill',
+        tempo: 80,
+        style: 'jazz',
+        duration: 60,
+        prompt: 'mellow jazz vibes',
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        }),
+      );
+
+      await client.callTool({
+        name: 'generate_audio',
+        arguments: { imagePrompt: 'sunset cafe' },
+      });
+
+      const result = await client.callTool({
+        name: 'add_to_queue',
+        arguments: {},
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = parseToolResult(result);
+      expect(parsed.status).toBe('added_to_queue');
+      expect(parsed.queue.length).toBe(1);
+      expect(parsed.queue[0].parameters.mood).toBe('chill');
+      expect(parsed.queue[0].parameters.tempo).toBe(80);
+      expect(parsed.queue[0].parameters.style).toBe('jazz');
+      expect(parsed.queue[0].parameters.prompt).toBe('mellow jazz vibes');
+    });
+  });
+
+  // US-004-AC02: Tool returns the updated queue with song count and song metadata
+  describe('AC02 – returns updated queue with song count and metadata', () => {
+    it('returns songCount and queue metadata after adding', async () => {
+      // Generate a second song and add it
+      parameterStore.set({
+        mood: 'upbeat',
+        tempo: 110,
+        style: 'hip-hop',
+        duration: 45,
+        prompt: 'energetic beat',
+      });
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(new Blob(), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        }),
+      );
+
+      await client.callTool({
+        name: 'generate_audio',
+        arguments: { imagePrompt: 'neon city' },
+      });
+
+      const result = await client.callTool({
+        name: 'add_to_queue',
+        arguments: {},
+      });
+
+      const parsed = parseToolResult(result);
+      expect(parsed.songCount).toBe(2);
+      expect(parsed.queue).toHaveLength(2);
+
+      // Verify metadata of the second song
+      const second = parsed.queue[1];
+      expect(second.parameters.mood).toBe('upbeat');
+      expect(second.parameters.tempo).toBe(110);
+      expect(second.parameters.style).toBe('hip-hop');
+      expect(second.parameters.prompt).toBe('energetic beat');
+      expect(second.imagePrompt).toBe('neon city');
+      expect(typeof second.id).toBe('number');
+    });
+
+    it('prevents adding the same generation twice', async () => {
+      const result = await client.callTool({
+        name: 'add_to_queue',
+        arguments: {},
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = parseToolResult(result);
+      expect(parsed.error).toBeTruthy();
+    });
+  });
+});

@@ -16,6 +16,12 @@ const DEFAULT_IMAGE_PROMPT = 'lofi artwork, warm colors';
 const DEFAULT_TARGET_WIDTH = 1920;
 const DEFAULT_TARGET_HEIGHT = 1080;
 
+export interface QueueEntry {
+  id: number;
+  parameters: SongParameters;
+  imagePrompt: string;
+}
+
 export interface CreateMcpServerOptions {
   parameterStore?: ParameterStore;
   backendBaseUrl?: string;
@@ -27,6 +33,17 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     name: 'reelpod-studio',
     version: '1.0.0',
   });
+
+  // Tracks the last generation result so add_to_queue knows what to enqueue
+  let lastGeneration: {
+    parameters: SongParameters;
+    imagePrompt: string;
+    completed: boolean;
+    addedToQueue: boolean;
+  } | null = null;
+
+  const queue: QueueEntry[] = [];
+  let nextQueueId = 1;
 
   server.registerTool('set_song_parameters', {
     title: 'Set Song Parameters',
@@ -103,9 +120,10 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
       };
     }
 
+    const resolvedImagePrompt = imagePrompt ?? DEFAULT_IMAGE_PROMPT;
     const payload = {
       ...params,
-      imagePrompt: imagePrompt ?? DEFAULT_IMAGE_PROMPT,
+      imagePrompt: resolvedImagePrompt,
       targetWidth: DEFAULT_TARGET_WIDTH,
       targetHeight: DEFAULT_TARGET_HEIGHT,
     };
@@ -132,6 +150,13 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
           // ignore JSON parse errors for non-JSON error responses
         }
 
+        lastGeneration = {
+          parameters: params,
+          imagePrompt: resolvedImagePrompt,
+          completed: false,
+          addedToQueue: false,
+        };
+
         return {
           isError: true,
           content: [
@@ -148,6 +173,13 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
         };
       }
 
+      lastGeneration = {
+        parameters: params,
+        imagePrompt: resolvedImagePrompt,
+        completed: true,
+        addedToQueue: false,
+      };
+
       return {
         content: [
           {
@@ -159,6 +191,14 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown error';
+
+      lastGeneration = {
+        parameters: params,
+        imagePrompt: resolvedImagePrompt,
+        completed: false,
+        addedToQueue: false,
+      };
+
       return {
         isError: true,
         content: [
@@ -177,14 +217,78 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
   server.registerTool('add_to_queue', {
     title: 'Add to Queue',
     description: 'Add the most recently generated song to the playback queue.',
-  }, async () => ({
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify({ status: 'added_to_queue' }),
-      },
-    ],
-  }));
+  }, async () => {
+    if (!lastGeneration) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              status: 'failed',
+              error: 'No audio has been generated yet. Call generate_audio first.',
+            }),
+          },
+        ],
+      };
+    }
+
+    if (!lastGeneration.completed) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              status: 'failed',
+              error: 'The last audio generation failed. Generate a new song before adding to the queue.',
+            }),
+          },
+        ],
+      };
+    }
+
+    if (lastGeneration.addedToQueue) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              status: 'failed',
+              error: 'This song has already been added to the queue. Generate a new song first.',
+            }),
+          },
+        ],
+      };
+    }
+
+    const entry: QueueEntry = {
+      id: nextQueueId++,
+      parameters: { ...lastGeneration.parameters },
+      imagePrompt: lastGeneration.imagePrompt,
+    };
+
+    queue.push(entry);
+    lastGeneration.addedToQueue = true;
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({
+            status: 'added_to_queue',
+            songCount: queue.length,
+            queue: queue.map((e) => ({
+              id: e.id,
+              parameters: e.parameters,
+              imagePrompt: e.imagePrompt,
+            })),
+          }),
+        },
+      ],
+    };
+  });
 
   server.registerTool('get_queue', {
     title: 'Get Queue',
@@ -194,7 +298,14 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify({ queue: [] }),
+        text: JSON.stringify({
+          songCount: queue.length,
+          queue: queue.map((e) => ({
+            id: e.id,
+            parameters: e.parameters,
+            imagePrompt: e.imagePrompt,
+          })),
+        }),
       },
     ],
   }));
