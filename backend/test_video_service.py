@@ -14,11 +14,23 @@ PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
 
 
+def _patch_trim_trailing_silence_to_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
+        output_path.write_bytes(audio_path.read_bytes())
+
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "trim_trailing_silence",
+        fake_trim_trailing_silence,
+    )
+
+
 def test_generate_video_orchestrates_audio_image_and_muxing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     temp_dir = tmp_path.joinpath("video-run")
     calls: list[str] = []
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
 
     monkeypatch.setattr(video_service.tempfile, "mkdtemp", lambda prefix: str(temp_dir))
 
@@ -28,7 +40,10 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
         return WAV_HEADER
 
     def fake_generate_image_png(body):  # noqa: ANN001
+        assert body.__class__.__name__ == "GenerateImageRequestBody"
         assert body.prompt == "warm ambient lofi artwork"
+        assert body.target_width == 1024
+        assert body.target_height == 1024
         calls.append("image")
         return PNG_HEADER
 
@@ -40,7 +55,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
 
     def fake_probe_media(path: Path) -> dict[str, object]:
         calls.append(f"probe:{path.name}")
-        if path.name == "audio.wav":
+        if path.name == "audio_trimmed.wav":
             return {"format": {"duration": "40.0"}}
         if path.name == "output.mp4":
             return {
@@ -73,11 +88,65 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
     mp4_bytes = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
-    assert calls == ["audio", "image", "mux", "probe:output.mp4", "probe:audio.wav"]
+    assert calls == ["audio", "image", "mux", "probe:output.mp4", "probe:audio_trimmed.wav"]
     assert not temp_dir.exists()
 
 
+def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+
+    def fake_generate_image_png(body):  # noqa: ANN001
+        seen["prompt"] = body.prompt
+        seen["target_width"] = body.target_width
+        seen["target_height"] = body.target_height
+        return PNG_HEADER
+
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "mux_image_and_audio_to_mp4",
+        lambda _image, _audio, output: output.write_bytes(MP4_HEADER),
+    )
+
+    def fake_probe_media(path: Path) -> dict[str, object]:
+        if path.name == "audio_trimmed.wav":
+            return {"format": {"duration": "40.0"}}
+        return {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        }
+
+    monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+    body = GenerateRequestBody(
+        mode="text",
+        prompt=" cinematic skyline at blue hour ",
+        mood="warm",
+        style="ambient",
+        tempo=90,
+        duration=40,
+        targetWidth=1080,
+        targetHeight=1920,
+    )
+
+    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+
+    assert mp4_bytes == MP4_HEADER
+    assert seen == {
+        "prompt": "cinematic skyline at blue hour",
+        "target_width": 1080,
+        "target_height": 1920,
+    }
+
+
 def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
     monkeypatch.setattr(
@@ -87,7 +156,7 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
     )
 
     def fake_probe_media(path: Path) -> dict[str, object]:
-        if path.name == "audio.wav":
+        if path.name == "audio_trimmed.wav":
             return {"format": {"duration": "40.0"}}
         return {
             "streams": [
@@ -104,6 +173,7 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
 
 
 def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
     monkeypatch.setattr(
@@ -113,7 +183,7 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
     )
 
     def fake_probe_media(path: Path) -> dict[str, object]:
-        if path.name == "audio.wav":
+        if path.name == "audio_trimmed.wav":
             return {"format": {"duration": "40.0"}}
         return {
             "streams": [
@@ -132,6 +202,7 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
 def test_generate_video_times_out_when_audio_step_exceeds_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
     monkeypatch.setattr(video_service, "VIDEO_GENERATION_TIMEOUT_SECONDS", 0.05)
 
     def slow_audio(_body):  # noqa: ANN001
@@ -148,6 +219,7 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     temp_dir = tmp_path.joinpath("video-run-failure")
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
     monkeypatch.setattr(video_service.tempfile, "mkdtemp", lambda prefix: str(temp_dir))
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)

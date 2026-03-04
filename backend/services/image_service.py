@@ -1,15 +1,33 @@
 from __future__ import annotations
 
 import io
+import logging
 from typing import Any
 
-from models.constants import IMAGE_ASPECT_TOLERANCE, IMAGE_NUM_INFERENCE_STEPS
+from models.constants import IMAGE_ASPECT_TOLERANCE
 from models.errors import ImageGenerationFailedError
 from models.schemas import GenerateImageRequestBody
 from repositories import image_repository
 
 image_pipeline: Any | None = None
 image_model_load_error: str | None = None
+logger = logging.getLogger(__name__)
+
+# Anima quality tags for prompt enrichment
+QUALITY_TAGS = "score_9, score_8, best quality, highres"
+DEFAULT_NEGATIVE_PROMPT = "worst quality, low quality, lowres, jpeg artifacts, signature, watermark, artist name"
+
+
+def enrich_prompt_with_quality_tags(prompt: str) -> str:
+    """Concatenate Anima quality tags to user prompt following Hugging Face guidelines."""
+    return f"{QUALITY_TAGS}, {prompt}"
+
+
+def enrich_negative_prompt(user_negative: str | None = None) -> str:
+    """Enhance negative prompt with Anima-specific limitations and defaults."""
+    if user_negative:
+        return f"{DEFAULT_NEGATIVE_PROMPT}, {user_negative}"
+    return DEFAULT_NEGATIVE_PROMPT
 
 
 def needs_image_refiner_pass(
@@ -57,36 +75,10 @@ def startup() -> None:
     try:
         image_pipeline = image_repository.load_image_pipeline()
         image_model_load_error = None
+        logger.info("Image generation model loading completed")
     except Exception as exc:  # pragma: no cover - startup fallback safety
         image_pipeline = None
         image_model_load_error = str(exc)
-
-
-def get_optimal_sdxl_size(target_width: int, target_height: int) -> tuple[int, int]:
-    target_aspect = target_width / target_height
-    valid_sizes = [
-        (1024, 1024),
-        (1152, 896),
-        (1216, 832),
-        (1344, 768),
-        (1536, 640),
-        (896, 1152),
-        (832, 1216),
-        (768, 1344),
-        (640, 1536),
-    ]
-    
-    best_size = valid_sizes[0]
-    min_diff = float("inf")
-    
-    for w, h in valid_sizes:
-        aspect = w / h
-        diff = abs(aspect - target_aspect)
-        if diff < min_diff:
-            min_diff = diff
-            best_size = (w, h)
-            
-    return best_size
 
 
 def generate_image_png(body: GenerateImageRequestBody) -> bytes:
@@ -95,13 +87,17 @@ def generate_image_png(body: GenerateImageRequestBody) -> bytes:
         raise ImageGenerationFailedError(f"Image generation failed: {reason}")
 
     try:
-        gen_width, gen_height = get_optimal_sdxl_size(body.target_width, body.target_height)
+        # Enrich prompt with quality tags following Anima guidelines
+        enriched_prompt = enrich_prompt_with_quality_tags(body.prompt)
+        enriched_negative = enrich_negative_prompt(body.negative_prompt)
+
         source_image = image_repository.run_image_inference(
             image_pipeline,
-            prompt=body.prompt,
-            width=gen_width,
-            height=gen_height,
-            num_inference_steps=IMAGE_NUM_INFERENCE_STEPS,
+            prompt=enriched_prompt,
+            seed=0,
+            negative_prompt=enriched_negative,
+            width=body.target_width,
+            height=body.target_height,
         )
         source_width, source_height = source_image.size
 

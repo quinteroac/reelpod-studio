@@ -16,11 +16,12 @@ from models.errors import (
     VideoGenerationFailedError,
     VideoGenerationTimeoutError,
 )
-from models.schemas import GenerateRequestBody
+from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from repositories import acestep_repository, image_repository
 from services import audio_service, image_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
+PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
 
 
@@ -59,6 +60,16 @@ class TestGenerateRequestBody:
     def test_text_mode_without_prompt_rejected(self) -> None:
         with pytest.raises(Exception):
             GenerateRequestBody(mode="text")
+
+
+class TestGenerateImageRequestBodyContract:
+    def test_schema_fields_and_aliases_remain_stable(self) -> None:
+        fields = GenerateImageRequestBody.model_fields
+
+        assert set(fields.keys()) == {"prompt", "negative_prompt", "target_width", "target_height"}
+        assert fields["negative_prompt"].alias == "negativePrompt"
+        assert fields["target_width"].alias == "targetWidth"
+        assert fields["target_height"].alias == "targetHeight"
 
 
 class TestBuildPrompt:
@@ -129,6 +140,74 @@ class TestGenerateEndpoint:
             "tempo": 95,
             "duration": 95,
             "style": "hip-hop",
+        }
+
+    def test_generate_runs_video_pipeline_and_returns_muxed_mp4(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_generate_audio_for_request(body):  # noqa: ANN001
+            seen["audio_body_mode"] = body.mode
+            seen["audio_body_prompt"] = body.prompt
+            return WAV_HEADER
+
+        def fake_generate_image_png(body):  # noqa: ANN001
+            seen["image_prompt"] = body.prompt
+            return PNG_HEADER
+
+        def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
+            output_path.write_bytes(audio_path.read_bytes())
+
+        def fake_mux_image_and_audio_to_mp4(image_path: Path, audio_path: Path, output_path: Path) -> None:
+            seen["mux_image_bytes"] = image_path.read_bytes()
+            seen["mux_audio_bytes"] = audio_path.read_bytes()
+            output_path.write_bytes(MP4_HEADER)
+
+        def fake_probe_media(path: Path) -> dict[str, object]:
+            if path.name == "output.mp4":
+                return {
+                    "streams": [
+                        {"codec_type": "video", "codec_name": "h264"},
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ],
+                    "format": {"duration": "40.0"},
+                }
+            if path.name == "audio_trimmed.wav":
+                return {"format": {"duration": "40.0"}}
+            raise AssertionError(f"Unexpected probe target: {path}")
+
+        monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", fake_generate_audio_for_request)
+        monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
+        monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", fake_trim_trailing_silence)
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_image_and_audio_to_mp4",
+            fake_mux_image_and_audio_to_mp4,
+        )
+        monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+        response = client.post(
+            "/api/generate",
+            json={
+                "mode": "text",
+                "prompt": "anima dreamscape over ocean",
+                "mood": "warm",
+                "style": "ambient",
+                "tempo": 80,
+                "duration": 40,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "video/mp4"
+        assert response.content == MP4_HEADER
+        assert seen == {
+            "audio_body_mode": "text",
+            "audio_body_prompt": "anima dreamscape over ocean",
+            "image_prompt": "anima dreamscape over ocean",
+            "mux_image_bytes": PNG_HEADER,
+            "mux_audio_bytes": WAV_HEADER,
         }
 
     def test_connection_error_returns_500(
@@ -250,15 +329,29 @@ class TestGenerationQueue:
 
 
 class TestGenerateImageEndpoint:
-    def test_generate_image_returns_png_binary_and_uses_1024_square_resolution(
+    def test_generate_image_returns_png_binary_and_uses_anima_inference_defaults(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         seen_calls: list[dict[str, object]] = []
 
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                seen_calls.append({"prompt": prompt, "width": width, "height": height})
-                return FakeImageResult([Image.new("RGB", (width, height), color=(80, 120, 200))])
+            def __call__(
+                self,
+                prompt: str,
+                *,
+                seed: int,
+                num_inference_steps: int,
+                negative_prompt: str | None = None,
+            ) -> FakeImageResult:
+                seen_calls.append(
+                    {
+                        "prompt": prompt,
+                        "seed": seed,
+                        "num_inference_steps": num_inference_steps,
+                        "negative_prompt": negative_prompt,
+                    }
+                )
+                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(80, 120, 200))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
@@ -271,16 +364,26 @@ class TestGenerateImageEndpoint:
             assert second.status_code == 200
 
         assert seen_calls == [
-            {"prompt": "misty mountains", "width": 1024, "height": 1024},
-            {"prompt": "city sunset", "width": 1024, "height": 1024},
+            {
+                "prompt": "misty mountains",
+                "seed": 0,
+                "num_inference_steps": 50,
+                "negative_prompt": None,
+            },
+            {
+                "prompt": "city sunset",
+                "seed": 0,
+                "num_inference_steps": 50,
+                "negative_prompt": None,
+            },
         ]
 
     def test_generate_image_uses_requested_target_resolution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class Pipeline:
-            def __call__(self, *, prompt: str, width: int, height: int, **kwargs: object) -> FakeImageResult:
-                return FakeImageResult([Image.new("RGB", (width, height), color=(255, 255, 255))])
+            def __call__(self, prompt: str, **kwargs: object) -> FakeImageResult:
+                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(255, 255, 255))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
@@ -292,6 +395,38 @@ class TestGenerateImageEndpoint:
             assert response.headers["content-type"] == "image/png"
             output = Image.open(io.BytesIO(response.content))
             assert output.size == (1080, 1920)
+
+    def test_generate_image_passes_negative_prompt_to_pipeline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: dict[str, object] = {}
+
+        class Pipeline:
+            def __call__(self, prompt: str, **kwargs: object) -> FakeImageResult:
+                seen["prompt"] = prompt
+                seen["kwargs"] = kwargs
+                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(10, 10, 10))])
+
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
+            response = test_client.post(
+                "/api/generate-image",
+                json={
+                    "prompt": "portrait of a cat",
+                    "negativePrompt": "blurry, distorted",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert seen == {
+            "prompt": "portrait of a cat",
+            "kwargs": {
+                "seed": 0,
+                "num_inference_steps": 50,
+                "negative_prompt": "blurry, distorted",
+            },
+        }
 
     def test_model_load_failure_returns_500_with_meaningful_message(
         self, monkeypatch: pytest.MonkeyPatch

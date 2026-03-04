@@ -35,10 +35,19 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Generated audio
+# Generated media
 *.wav
 *.mp3
+*.heapsnapshot
+
+# Model artifacts / vendor dirs (downloaded or generated)
+backend/models/Qwen/
+backend/models/circlestone-labs/
+backend/models/stabilityai/
 
 # IDE
 .vscode/settings.json
