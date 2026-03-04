@@ -53,14 +53,22 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
   const loadedTextureRef = useRef<THREE.Texture | null>(null);
   loadedTextureRef.current = loadedImageTexture;
 
+  // For rapidly changing data URLs (live mirror frames), reuse a single texture
+  // and update its image in place to avoid constant texture recreation.
+  const streamingTextureRef = useRef<THREE.Texture | null>(null);
+
   useEffect(() => {
-    return () => loadedTextureRef.current?.dispose();
+    return () => {
+      loadedTextureRef.current?.dispose();
+      streamingTextureRef.current?.dispose();
+      streamingTextureRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
     if (!imageUrl || imageUrl === FALLBACK_VISUAL_DATA_URI) {
       setLoadedImageTexture((prev) => {
-        if (prev) {
+        if (prev && prev !== streamingTextureRef.current) {
           prev.dispose();
         }
         return null;
@@ -68,6 +76,30 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
       loadedImageUrlRef.current = null;
       return;
     }
+
+    const isDataUrl = imageUrl.startsWith('data:');
+
+    if (isDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        let tex = streamingTextureRef.current;
+        if (!tex) {
+          tex = new THREE.Texture(img);
+          tex.minFilter = THREE.LinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.generateMipmaps = false;
+          streamingTextureRef.current = tex;
+        } else {
+          tex.image = img;
+        }
+        tex.needsUpdate = true;
+        loadedImageUrlRef.current = imageUrl;
+        setLoadedImageTexture(tex);
+      };
+      img.src = imageUrl;
+      return;
+    }
+
     let cancelled = false;
     const loader = new THREE.TextureLoader();
     loader.load(
@@ -82,7 +114,7 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
         tex.generateMipmaps = false;
         setLoadedImageTexture((prev) => {
           loadedImageUrlRef.current = imageUrl;
-          if (prev) prev.dispose();
+          if (prev && prev !== streamingTextureRef.current) prev.dispose();
           return tex;
         });
       },
@@ -165,7 +197,7 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
       )}
 
       <VisualizerFactory
-        key={imageUrl ?? 'fallback-texture'}
+        key={visualizerType}
         type={visualizerType}
         audioCurrentTime={audioCurrentTime}
         audioDuration={audioDuration}
