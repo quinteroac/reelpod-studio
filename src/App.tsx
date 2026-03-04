@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SongParameters } from './mcp/parameter-store';
+import { useAgentParameters } from './hooks/use-agent-parameters';
+import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
@@ -280,6 +283,49 @@ export function App() {
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
 
+  const handleAgentParametersUpdate = useCallback((agentParams: SongParameters) => {
+    setParams({
+      mood: agentParams.mood,
+      tempo: agentParams.tempo,
+      style: agentParams.style,
+      duration: agentParams.duration,
+    });
+    setDurationInput(String(agentParams.duration));
+    setDurationErrorMessage(null);
+    if (agentParams.mode) {
+      setGenerationMode(agentParams.mode);
+    }
+    if (agentParams.prompt !== undefined) {
+      setMusicPrompt(agentParams.prompt);
+      setMusicPromptErrorMessage(null);
+    }
+  }, []);
+
+  useAgentParameters({ onParametersUpdate: handleAgentParametersUpdate });
+
+  const handleAgentGenerationCommand = useCallback((command: GenerationCommand) => {
+    const nextEntry: QueueEntry = {
+      id: queueIdRef.current++,
+      params: {
+        mood: command.parameters.mood,
+        tempo: command.parameters.tempo,
+        style: command.parameters.style,
+        duration: command.parameters.duration,
+        mode: command.parameters.mode,
+        prompt: command.parameters.prompt,
+      },
+      imagePrompt: command.imagePrompt,
+      targetWidth: command.targetWidth,
+      targetHeight: command.targetHeight,
+      status: 'queued',
+      errorMessage: null,
+      videoBlob: null,
+    };
+    setQueueEntries((prev) => [...prev, nextEntry]);
+  }, []);
+
+  useAgentGeneration({ onGenerationCommand: handleAgentGenerationCommand });
+
   const stopSeekPolling = useCallback((): void => {
     if (seekPollRef.current !== null) {
       window.clearInterval(seekPollRef.current);
@@ -497,10 +543,16 @@ export function App() {
         options?.onEnded?.();
       };
 
-      await video.play();
+      try {
+        await video.play();
+        setHasGeneratedTrack(true);
+        setIsPlaying(true);
+      } catch (error) {
+        // Browser blocked autoplay - set as ready but paused
+        setHasGeneratedTrack(true);
+        setIsPlaying(false);
+      }
 
-      setHasGeneratedTrack(true);
-      setIsPlaying(true);
       setStatus('success');
       setErrorMessage(null);
       startSeekPolling();

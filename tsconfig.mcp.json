@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/mcp/stdio.ts", "src/mcp/sse.ts", "src/mcp/server.ts"]
+}
