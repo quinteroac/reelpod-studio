@@ -13,6 +13,22 @@ image_pipeline: Any | None = None
 image_model_load_error: str | None = None
 logger = logging.getLogger(__name__)
 
+# Anima quality tags for prompt enrichment
+QUALITY_TAGS = "score_9, score_8, best quality, highres"
+DEFAULT_NEGATIVE_PROMPT = "worst quality, low quality, lowres, jpeg artifacts, signature, watermark, artist name"
+
+
+def enrich_prompt_with_quality_tags(prompt: str) -> str:
+    """Concatenate Anima quality tags to user prompt following Hugging Face guidelines."""
+    return f"{QUALITY_TAGS}, {prompt}"
+
+
+def enrich_negative_prompt(user_negative: str | None = None) -> str:
+    """Enhance negative prompt with Anima-specific limitations and defaults."""
+    if user_negative:
+        return f"{DEFAULT_NEGATIVE_PROMPT}, {user_negative}"
+    return DEFAULT_NEGATIVE_PROMPT
+
 
 def needs_image_refiner_pass(
     source_width: int, source_height: int, target_width: int, target_height: int
@@ -71,11 +87,17 @@ def generate_image_png(body: GenerateImageRequestBody) -> bytes:
         raise ImageGenerationFailedError(f"Image generation failed: {reason}")
 
     try:
+        # Enrich prompt with quality tags following Anima guidelines
+        enriched_prompt = enrich_prompt_with_quality_tags(body.prompt)
+        enriched_negative = enrich_negative_prompt(body.negative_prompt)
+
         source_image = image_repository.run_image_inference(
             image_pipeline,
-            prompt=body.prompt,
+            prompt=enriched_prompt,
             seed=0,
-            negative_prompt=body.negative_prompt,
+            negative_prompt=enriched_negative,
+            width=body.target_width,
+            height=body.target_height,
         )
         source_width, source_height = source_image.size
 
