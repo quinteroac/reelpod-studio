@@ -4,7 +4,7 @@ import io
 import logging
 from typing import Any
 
-from models.constants import IMAGE_ASPECT_TOLERANCE
+from models.constants import ANIMA_PREVIEW_SIZES, IMAGE_ASPECT_TOLERANCE
 from models.errors import ImageGenerationFailedError
 from models.schemas import GenerateImageRequestBody
 from repositories import image_repository
@@ -28,6 +28,16 @@ def enrich_negative_prompt(user_negative: str | None = None) -> str:
     if user_negative:
         return f"{DEFAULT_NEGATIVE_PROMPT}, {user_negative}"
     return DEFAULT_NEGATIVE_PROMPT
+
+
+def pick_anima_resolution(target_width: int, target_height: int) -> tuple[int, int]:
+    """Choose an Anima ~1MP resolution whose aspect ratio is closest to target; then we pad to target."""
+    target_aspect = target_width / target_height
+    best = min(
+        ANIMA_PREVIEW_SIZES,
+        key=lambda wh: abs((wh[0] / wh[1]) - target_aspect),
+    )
+    return best[0], best[1]
 
 
 def needs_image_refiner_pass(
@@ -91,29 +101,23 @@ def generate_image_png(body: GenerateImageRequestBody) -> bytes:
         enriched_prompt = enrich_prompt_with_quality_tags(body.prompt)
         enriched_negative = enrich_negative_prompt(body.negative_prompt)
 
+        # Generate at an Anima preview ~1MP resolution (1024x1024, 896x1152, 1152x896), then pad to target
+        gen_width, gen_height = pick_anima_resolution(body.target_width, body.target_height)
         source_image = image_repository.run_image_inference(
             image_pipeline,
             prompt=enriched_prompt,
             seed=0,
             negative_prompt=enriched_negative,
-            width=body.target_width,
-            height=body.target_height,
+            width=gen_width,
+            height=gen_height,
         )
-        source_width, source_height = source_image.size
 
-        if needs_image_refiner_pass(
-            source_width=source_width,
-            source_height=source_height,
+        # Always letterbox/pad to the requested target resolution
+        final_image = letterbox_and_resize_to_target(
+            source_image,
             target_width=body.target_width,
             target_height=body.target_height,
-        ):
-            final_image = letterbox_and_resize_to_target(
-                source_image,
-                target_width=body.target_width,
-                target_height=body.target_height,
-            )
-        else:
-            final_image = source_image
+        )
 
         output = io.BytesIO()
         final_image.save(output, format="PNG")

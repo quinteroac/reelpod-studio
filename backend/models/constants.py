@@ -29,6 +29,8 @@ IMAGE_SD35_TOKENIZER_ID = "stabilityai/stable-diffusion-3.5-large"
 IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN = "./"
 IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN = "tokenizer_3/"
 IMAGE_SIZE = 1024
+# Anima preview model ~1MP native resolutions (use these for inference, then pad to target)
+ANIMA_PREVIEW_SIZES = ((1024, 1024), (896, 1152), (1152, 896))
 IMAGE_NUM_INFERENCE_STEPS = 25
 IMAGE_ASPECT_TOLERANCE = 1e-6
 
