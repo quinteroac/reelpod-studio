@@ -14,5 +14,6 @@
     "strict": true,
     "types": ["vitest/globals", "@testing-library/jest-dom", "vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/mcp/stdio.ts", "src/mcp/sse.ts"]
 }
