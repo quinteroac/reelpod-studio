@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import type { ParameterStore, SongParameters } from './parameter-store.js';
 
 const MOODS = ['chill', 'melancholic', 'upbeat'] as const;
 const STYLES = ['jazz', 'hip-hop', 'ambient'] as const;
@@ -10,7 +11,12 @@ const MAX_TEMPO = 120;
 const MIN_DURATION = 40;
 const MAX_DURATION = 300;
 
-export function createMcpServer(): McpServer {
+export interface CreateMcpServerOptions {
+  parameterStore?: ParameterStore;
+}
+
+export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer {
+  const { parameterStore } = options;
   const server = new McpServer({
     name: 'reelpod-studio',
     version: '1.0.0',
@@ -44,14 +50,25 @@ export function createMcpServer(): McpServer {
         .optional()
         .describe('Text prompt describing the desired song'),
     },
-  }, async ({ mood, tempo, style, duration, mode, prompt }) => ({
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify({ mood, tempo, style, duration, mode, prompt }),
-      },
-    ],
-  }));
+  }, async ({ mood, tempo, style, duration, mode, prompt }) => {
+    const params: SongParameters = { mood, tempo, style, duration, mode, prompt };
+
+    if (parameterStore) {
+      parameterStore.set(params);
+    }
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({
+            status: 'parameters_set',
+            parameters: params,
+          }),
+        },
+      ],
+    };
+  });
 
   server.registerTool('generate_audio', {
     title: 'Generate Audio',

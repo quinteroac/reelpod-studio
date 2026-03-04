@@ -4,6 +4,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/mcp': {
+        target: 'http://127.0.0.1:3100',
+        changeOrigin: true
+      },
       '/api/generate-image': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,

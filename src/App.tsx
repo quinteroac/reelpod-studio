@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SongParameters } from './mcp/parameter-store';
+import { useAgentParameters } from './hooks/use-agent-parameters';
 
 type Mood = 'chill' | 'melancholic' | 'upbeat';
 type Style = 'jazz' | 'hip-hop' | 'ambient';
@@ -279,6 +281,26 @@ export function App() {
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
+
+  const handleAgentParametersUpdate = useCallback((agentParams: SongParameters) => {
+    setParams({
+      mood: agentParams.mood,
+      tempo: agentParams.tempo,
+      style: agentParams.style,
+      duration: agentParams.duration,
+    });
+    setDurationInput(String(agentParams.duration));
+    setDurationErrorMessage(null);
+    if (agentParams.mode) {
+      setGenerationMode(agentParams.mode);
+    }
+    if (agentParams.prompt !== undefined) {
+      setMusicPrompt(agentParams.prompt);
+      setMusicPromptErrorMessage(null);
+    }
+  }, []);
+
+  useAgentParameters({ onParametersUpdate: handleAgentParametersUpdate });
 
   const stopSeekPolling = useCallback((): void => {
     if (seekPollRef.current !== null) {
