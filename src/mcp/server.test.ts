@@ -342,6 +342,125 @@ describe('US-002 – set_song_parameters tool', () => {
   });
 });
 
+// SSE Bridge: generate_audio delegates to SSE server when sseBaseUrl is set
+describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
+  let client: Client;
+  let parameterStore: ParameterStore;
+  const mockFetch = vi.fn();
+  const SSE_BASE_URL = 'http://127.0.0.1:3100';
+
+  beforeAll(async () => {
+    parameterStore = new ParameterStore();
+    const server = createMcpServer({
+      parameterStore,
+      sseBaseUrl: SSE_BASE_URL,
+    });
+    client = new Client({ name: 'test-client', version: '1.0.0' });
+
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterAll(async () => {
+    await client.close();
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it('POSTs to /mcp/generate on the SSE server instead of /api/generate', async () => {
+    parameterStore.set({
+      mood: 'chill',
+      tempo: 80,
+      style: 'jazz',
+      duration: 60,
+    });
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const result = await client.callTool({
+      name: 'generate_audio',
+      arguments: { imagePrompt: 'sunset beach' },
+    });
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${SSE_BASE_URL}/mcp/generate`);
+    expect(options.method).toBe('POST');
+
+    const body = JSON.parse(options.body);
+    expect(body.parameters.mood).toBe('chill');
+    expect(body.imagePrompt).toBe('sunset beach');
+    expect(body.targetWidth).toBe(1920);
+    expect(body.targetHeight).toBe(1080);
+
+    expect(result.isError).toBeFalsy();
+    const parsed = parseToolResult(result);
+    expect(parsed.status).toBe('queued');
+  });
+
+  it('returns error when SSE bridge is unreachable', async () => {
+    parameterStore.set({
+      mood: 'chill',
+      tempo: 80,
+      style: 'jazz',
+      duration: 60,
+    });
+
+    mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
+
+    const result = await client.callTool({
+      name: 'generate_audio',
+      arguments: {},
+    });
+
+    expect(result.isError).toBe(true);
+    const parsed = parseToolResult(result);
+    expect(parsed.error).toContain('Connection refused');
+  });
+
+  it('also POSTs parameters to /mcp/parameters when set_song_parameters is called', async () => {
+    // First call for /mcp/parameters bridge
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await client.callTool({
+      name: 'set_song_parameters',
+      arguments: {
+        mood: 'upbeat',
+        tempo: 100,
+        style: 'hip-hop',
+        duration: 45,
+      },
+    });
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe(`${SSE_BASE_URL}/mcp/parameters`);
+    expect(options.method).toBe('POST');
+
+    const body = JSON.parse(options.body);
+    expect(body.mood).toBe('upbeat');
+    expect(body.tempo).toBe(100);
+  });
+});
+
 // US-003: Agent triggers audio generation
 describe('US-003 – generate_audio tool', () => {
   let client: Client;

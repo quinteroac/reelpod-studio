@@ -25,10 +25,11 @@ export interface QueueEntry {
 export interface CreateMcpServerOptions {
   parameterStore?: ParameterStore;
   backendBaseUrl?: string;
+  sseBaseUrl?: string;
 }
 
 export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer {
-  const { parameterStore, backendBaseUrl = DEFAULT_BACKEND_BASE_URL } = options;
+  const { parameterStore, backendBaseUrl = DEFAULT_BACKEND_BASE_URL, sseBaseUrl } = options;
   const server = new McpServer({
     name: 'reelpod-studio',
     version: '1.0.0',
@@ -80,6 +81,18 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
       parameterStore.set(params);
     }
 
+    if (sseBaseUrl) {
+      try {
+        await fetch(`${sseBaseUrl}/mcp/parameters`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(params),
+        });
+      } catch {
+        // SSE bridge is best-effort; don't fail the tool call
+      }
+    }
+
     return {
       content: [
         {
@@ -128,8 +141,75 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
       targetHeight: DEFAULT_TARGET_HEIGHT,
     };
 
+    // When sseBaseUrl is configured, delegate generation to the frontend via SSE bridge
+    // (fire-and-forget — the UI does the actual generation)
+    if (sseBaseUrl) {
+      try {
+        const response = await fetch(`${sseBaseUrl}/mcp/generate`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            parameters: params,
+            imagePrompt: resolvedImagePrompt,
+            targetWidth: DEFAULT_TARGET_WIDTH,
+            targetHeight: DEFAULT_TARGET_HEIGHT,
+          }),
+        });
+
+        if (!response.ok) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  status: 'failed',
+                  error: `SSE bridge returned status ${response.status}`,
+                }),
+              },
+            ],
+          };
+        }
+
+        lastGeneration = {
+          parameters: params,
+          imagePrompt: resolvedImagePrompt,
+          completed: true,
+          addedToQueue: false,
+        };
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                status: 'queued',
+                message: 'Generation command sent to the UI. The frontend will generate and auto-play.',
+              }),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                status: 'failed',
+                error: `SSE bridge error: ${message}`,
+              }),
+            },
+          ],
+        };
+      }
+    }
+
+    // Direct backend call (no SSE bridge)
     try {
-      const response = await fetch(`${backendBaseUrl}/api/generate`, {
+      const response = await fetch(`${backendBaseUrl}/api/generate-requests`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),

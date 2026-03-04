@@ -6,7 +6,8 @@ export default defineConfig({
     proxy: {
       '/mcp': {
         target: 'http://127.0.0.1:3100',
-        changeOrigin: true
+        changeOrigin: true,
+        proxyTimeout: 600_000 // 10 min for audio generation
       },
       '/api/generate-image': {
         target: 'http://127.0.0.1:8000',

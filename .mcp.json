@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "reelpod-ui-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "tsx",
+        "src/mcp/stdio.ts"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "reelpod-mcp": {
+      "command": "npx tsx src/mcp/stdio.ts",
+      "args": []
+    }
+  }
+}
