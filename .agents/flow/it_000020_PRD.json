@@ -144,7 +144,7 @@
     },
     {
       "id": "FR-2",
-      "description": "The MCP server MUST be frontend-only (TypeScript, no backend integration required)"
+      "description": "The MCP server MUST be frontend-only (TypeScript, no backend integration required) and MUST NOT be implemented in the backend (no FastAPI/Python MCP implementation for this requirement)"
     },
     {
       "id": "FR-3",

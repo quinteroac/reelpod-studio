@@ -61,7 +61,7 @@ ReelPod Studio currently requires manual interaction through the browser UI to c
 
 ## Functional Requirements
 - FR-1: The MCP server MUST use the official `@modelcontextprotocol/sdk` package
-- FR-2: The MCP server MUST be frontend-only (TypeScript, no backend integration required)
+- FR-2: The MCP server MUST be frontend-only (TypeScript, no backend integration required) and MUST NOT be implemented in the backend (no FastAPI/Python MCP implementation for this requirement)
 - FR-3: The MCP server MUST support the standard MCP tool discovery and invocation protocol
 - FR-4: The MCP server MUST expose tools: `set_song_parameters`, `generate_audio`, `add_to_queue`, `get_queue`
 - FR-5: The MCP server MUST interact with the existing React application state (not bypass it)
