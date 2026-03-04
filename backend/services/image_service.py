@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from typing import Any
 
 from models.constants import IMAGE_ASPECT_TOLERANCE, IMAGE_NUM_INFERENCE_STEPS
@@ -10,6 +11,7 @@ from repositories import image_repository
 
 image_pipeline: Any | None = None
 image_model_load_error: str | None = None
+logger = logging.getLogger(__name__)
 
 
 def needs_image_refiner_pass(
@@ -57,6 +59,7 @@ def startup() -> None:
     try:
         image_pipeline = image_repository.load_image_pipeline()
         image_model_load_error = None
+        logger.info("Image generation model loading completed")
     except Exception as exc:  # pragma: no cover - startup fallback safety
         image_pipeline = None
         image_model_load_error = str(exc)

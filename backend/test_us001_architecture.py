@@ -48,7 +48,8 @@ def test_us001_ac05_repositories_contain_external_io() -> None:
 
     assert "from urllib.request import Request, urlopen" in audio_source
     assert "urlopen(" in audio_source
-    assert "DiffusionPipeline" in image_source
-    assert "from diffusers import DiffusionPipeline" in image_source
+    assert "AnimaImagePipeline" in image_source
+    assert "diffsynth.pipelines.anima_image" in image_source
+    assert "DiffusionPipeline" not in image_source
     assert "from fastapi" not in audio_source
     assert "from fastapi" not in image_source
