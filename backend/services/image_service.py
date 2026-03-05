@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
+import time
+from pathlib import Path
 from typing import Any
 
 from models.constants import ANIMA_PREVIEW_SIZES, IMAGE_ASPECT_TOLERANCE
@@ -63,6 +66,7 @@ def letterbox_and_resize_to_target(image: Any, target_width: int, target_height:
     if abs(source_aspect - target_aspect) <= IMAGE_ASPECT_TOLERANCE and source_width == target_width and source_height == target_height:
         return image
 
+    # Resize to fit inside target while preserving aspect ratio, then pad (letterbox) to exact target size.
     if source_aspect > target_aspect:
         new_width = target_width
         new_height = max(1, int(round(target_width / source_aspect)))
@@ -76,6 +80,33 @@ def letterbox_and_resize_to_target(image: Any, target_width: int, target_height:
     paste_x = (target_width - new_width) // 2
     paste_y = (target_height - new_height) // 2
     new_image.paste(resized_image, (paste_x, paste_y))
+
+    # #region agent log
+    _log_path = Path(__file__).resolve().parent.parent.parent / ".cursor" / "debug.log"
+    try:
+        _log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(_log_path, "a") as _f:
+            _f.write(
+                json.dumps(
+                    {
+                        "timestamp": int(time.time() * 1000),
+                        "location": "image_service.py:resize_to_target",
+                        "message": "resize+letterbox to target",
+                        "data": {
+                            "source_size": [source_width, source_height],
+                            "resized_size": [new_width, new_height],
+                            "paste_offset": [paste_x, paste_y],
+                            "final_size": list(new_image.size),
+                            "target": [target_width, target_height],
+                        },
+                        "hypothesisId": "H5",
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    # #endregion
 
     return new_image
 
@@ -113,9 +144,67 @@ def generate_image_png(body: GenerateImageRequestBody) -> bytes:
         )
 
         # Upscale first using Real-ESRGAN anime model before final resize/letterbox.
+        # #region agent log
+        _src_w, _src_h = source_image.size
+        _log_path = Path(__file__).resolve().parent.parent.parent / ".cursor" / "debug.log"
+        try:
+            _log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(_log_path, "a") as _f:
+                _f.write(
+                    json.dumps(
+                        {
+                            "timestamp": int(time.time() * 1000),
+                            "location": "image_service.py:upscale_before",
+                            "message": "before upscale",
+                            "data": {"source_size": [_src_w, _src_h], "target": [body.target_width, body.target_height]},
+                            "hypothesisId": "H1",
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # #endregion
         try:
             working_image = image_repository.upscale_image_with_realesrgan_anime(source_image)
+            # #region agent log
+            _w_w, _w_h = working_image.size
+            try:
+                with open(_log_path, "a") as _f:
+                    _f.write(
+                        json.dumps(
+                            {
+                                "timestamp": int(time.time() * 1000),
+                                "location": "image_service.py:upscale_ok",
+                                "message": "after upscale",
+                                "data": {"working_size": [_w_w, _w_h], "source_size": [_src_w, _src_h]},
+                                "hypothesisId": "H2",
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
+            # #endregion
         except Exception as exc:
+            # #region agent log
+            try:
+                with open(_log_path, "a") as _f:
+                    _f.write(
+                        json.dumps(
+                            {
+                                "timestamp": int(time.time() * 1000),
+                                "location": "image_service.py:upscale_fallback",
+                                "message": "fallback to original",
+                                "data": {"error": str(exc), "source_size": [_src_w, _src_h]},
+                                "hypothesisId": "H3",
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
+            # #endregion
             logger.warning(
                 "Real-ESRGAN upscale failed; falling back to original generated image: %s",
                 exc,

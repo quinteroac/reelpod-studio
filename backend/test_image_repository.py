@@ -205,32 +205,52 @@ def test_clip_token_truncation_helper_is_not_exposed() -> None:
 def test_upscale_image_with_realesrgan_anime_uses_expected_model_and_scale(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen: dict[str, object] = {}
+    import numpy as np
 
-    def fake_run(args: list[str], *, check: bool, capture_output: bool, text: bool) -> Any:
-        seen["args"] = args
-        seen["check"] = check
-        seen["capture_output"] = capture_output
-        seen["text"] = text
+    seen: dict[str, Any] = {}
+    weights_dir = image_repository._get_realesrgan_weights_dir()
+    weights_path = weights_dir / constants.REAL_ESRGAN_ANIME_WEIGHTS_FILENAME
 
-        output_path = args[args.index("-o") + 1]
-        Image.new("RGB", (256, 256), color=(9, 8, 7)).save(output_path, format="PNG")
+    def fake_ensure_weights() -> Any:
+        seen["ensure_weights_called"] = True
+        return weights_path
 
-        class Result:
-            returncode = 0
+    class FakeRealESRGANer:
+        def __init__(self, *, scale: int, model_path: str, model: Any, **kwargs: Any) -> None:
+            seen["scale"] = scale
+            seen["model_path"] = model_path
 
-        return Result()
+        def enhance(self, img: Any, outscale: int = 4) -> tuple[Any, int]:
+            h, w = img.shape[:2]
+            out = np.zeros((h * outscale, w * outscale, 3), dtype=img.dtype)
+            out[:] = img[0, 0]
+            return out, outscale
 
-    monkeypatch.setattr(image_repository.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        image_repository,
+        "_ensure_realesrgan_anime_weights",
+        fake_ensure_weights,
+    )
+    monkeypatch.setattr("realesrgan.RealESRGANer", FakeRealESRGANer)
+    monkeypatch.setattr(
+        "basicsr.archs.rrdbnet_arch.RRDBNet",
+        lambda **kwargs: None,
+    )
 
     output = image_repository.upscale_image_with_realesrgan_anime(
         Image.new("RGB", (64, 64), color=(1, 2, 3))
     )
 
     assert output.size == (256, 256)
-    assert seen["args"][0] == constants.REAL_ESRGAN_BINARY
-    assert seen["args"][seen["args"].index("-n") + 1] == constants.REAL_ESRGAN_MODEL_NAME
-    assert seen["args"][seen["args"].index("-s") + 1] == str(constants.REAL_ESRGAN_SCALE)
-    assert seen["check"] is True
-    assert seen["capture_output"] is True
-    assert seen["text"] is True
+    assert seen.get("ensure_weights_called") is True
+    assert seen.get("scale") == constants.REAL_ESRGAN_SCALE
+    assert str(seen.get("model_path")) == str(weights_path)
+
+
+def test_upscale_image_with_realesrgan_anime_runs_real_upscale() -> None:
+    """Minimal test that runs the real Real-ESRGAN anime upscaler (no mocks). Uses a small image for speed."""
+    small = Image.new("RGB", (64, 64), color=(40, 80, 120))
+    out = image_repository.upscale_image_with_realesrgan_anime(small)
+    assert out is not None
+    assert out.size == (256, 256)
+    assert out.mode == "RGB"

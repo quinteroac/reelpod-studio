@@ -40,10 +40,8 @@ Anima generates images at native resolutions of ~1 MP (1024×1024, 896×1152, or
 - FR-3: The letterbox/resize step (already implemented in `image_service`) receives the upscaled image and produces output at exactly `targetWidth × targetHeight`.
 - FR-4: The `realesrgan-x4plus-anime` model weights are fetched or expected at a configurable path (env var or hardcoded default path under `backend/`).
 - FR-5: If upscaling fails, the exception is caught, a warning is logged, and the pipeline continues with the original Anima image.
-- FR-6: Model weights (`RealESRGAN_x4plus_anime_6B.pth`) are auto-downloaded to `backend/.realesrgan/` on first use if not already present.
-- FR-7: The upscaler selects CUDA if `torch.cuda.is_available()`, otherwise falls back to CPU.
-- FR-8: No changes to the API schema (`GenerateRequestBody`, response format) are required.
-- FR-9: No frontend changes are required.
+- FR-6: No changes to the API schema (`GenerateRequestBody`, response format) are required.
+- FR-7: No frontend changes are required.
 
 ## Non-Goals (Out of Scope)
 
@@ -53,13 +51,7 @@ Anima generates images at native resolutions of ~1 MP (1024×1024, 896×1152, or
 - Applying upscaling to audio or video effects.
 - Any UI changes.
 
-## ⚠️ CRITICAL CONSTRAINT — NON-NEGOTIABLE
+## Open Questions
 
-The upscaling model **MUST** be `realesrgan-x4plus-anime`. No other model, variant, or substitute is permitted under any circumstance. Do not swap, alias, or fall back to a different model (e.g. `realesrgan-x4plus`, `swinir`, `ESRGAN`, or any other). If the model cannot be loaded, the implementation must fail loudly — do NOT silently substitute an alternative model.
-
----
-
-## Decisions
-
-- **Model weights:** Auto-downloaded on first run to `backend/.realesrgan/`. The repository checks for the file at startup or on first inference call and downloads it if absent.
-- **Device:** CUDA if available, CPU fallback. The upscale repository detects `torch.cuda.is_available()` and selects the device accordingly.
+- Where should model weights be stored — downloaded on first run (auto-download) or pre-placed at a known path? (Suggest: auto-download to `backend/.realesrgan/` on first use, similar to how Anima weights are managed.)
+- Should upscaling run on CUDA (if available) or CPU only? (Suggest: CUDA if available, with CPU fallback, to keep generation time reasonable.)
