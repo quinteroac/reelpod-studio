@@ -91,6 +91,23 @@ def _validate_mp4_streams(mp4_probe_data: dict[str, Any]) -> None:
         raise VideoGenerationFailedError("Muxed MP4 audio stream must use AAC")
 
 
+def _parse_video_dimensions(mp4_probe_data: dict[str, Any]) -> tuple[int, int]:
+    streams = mp4_probe_data.get("streams")
+    if not isinstance(streams, list):
+        raise VideoGenerationFailedError("Missing stream metadata")
+    video_stream = next(
+        (item for item in streams if isinstance(item, dict) and item.get("codec_type") == "video"),
+        None,
+    )
+    if not isinstance(video_stream, dict):
+        raise VideoGenerationFailedError("Missing video stream metadata")
+    width = video_stream.get("width")
+    height = video_stream.get("height")
+    if not isinstance(width, int) or not isinstance(height, int):
+        raise VideoGenerationFailedError("Missing MP4 frame dimensions")
+    return width, height
+
+
 def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     deadline = time.monotonic() + VIDEO_GENERATION_TIMEOUT_SECONDS
     temp_dir = Path(tempfile.mkdtemp(prefix="reelpod-video-"))
@@ -160,13 +177,24 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             output_path,
         )
         _run_with_timeout(
-            lambda: media_repository.mux_image_and_audio_to_mp4(image_path, audio_path, output_path),
+            lambda: media_repository.mux_image_and_audio_to_mp4(
+                image_path,
+                audio_path,
+                output_path,
+                target_width=body.image_target_width,
+                target_height=body.image_target_height,
+            ),
             timeout_seconds=remaining_seconds(),
             timeout_message="Video generation timed out while muxing",
         )
 
         mp4_probe_data = media_repository.probe_media(output_path)
         _validate_mp4_streams(mp4_probe_data)
+        actual_width, actual_height = _parse_video_dimensions(mp4_probe_data)
+        if (actual_width, actual_height) != (body.image_target_width, body.image_target_height):
+            raise VideoGenerationFailedError(
+                "Muxed MP4 frame dimensions do not match requested target resolution"
+            )
 
         source_audio_probe_data = media_repository.probe_media(audio_path)
         source_audio_duration = _parse_duration_seconds(source_audio_probe_data)
@@ -174,10 +202,11 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         if abs(source_audio_duration - mp4_duration) > MP4_DURATION_TOLERANCE_SECONDS:
             raise VideoGenerationFailedError("Muxed MP4 duration does not match generated audio")
         logger.info(
-            "Video pipeline: completed MP4 mux (audio_duration=%.3fs, video_duration=%.3fs, diff=%.3fs, path=%s, size_bytes=%d)",
+            "Video pipeline: completed MP4 mux (audio_duration=%.3fs, video_duration=%.3fs, diff=%.3fs, frame_dimensions=%s, path=%s, size_bytes=%d)",
             source_audio_duration,
             mp4_duration,
             abs(source_audio_duration - mp4_duration),
+            f"{actual_width}x{actual_height}",
             output_path,
             output_path.stat().st_size,
         )

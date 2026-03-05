@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from models.constants import (
     IMAGE_DIFFUSION_MODEL_ID,
     IMAGE_DIFFUSION_ORIGIN_PATTERN,
     IMAGE_NUM_INFERENCE_STEPS,
+    REAL_ESRGAN_BINARY,
+    REAL_ESRGAN_MODEL_NAME,
+    REAL_ESRGAN_SCALE,
     IMAGE_QWEN_TOKENIZER_ID,
     IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
     IMAGE_SD35_TOKENIZER_ID,
@@ -107,3 +113,44 @@ def run_image_inference(
     if hasattr(result, "size") and callable(getattr(result, "save", None)):
         return result
     raise RuntimeError("No generated image returned by model")
+
+
+def upscale_image_with_realesrgan_anime(image: Any) -> Any:
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory(prefix="reelpod-realesrgan-") as temp_dir:
+        source_path = Path(temp_dir).joinpath("source.png")
+        upscaled_path = Path(temp_dir).joinpath("upscaled.png")
+        image.convert("RGB").save(source_path, format="PNG")
+        try:
+            completed = subprocess.run(
+                [
+                    REAL_ESRGAN_BINARY,
+                    "-i",
+                    str(source_path),
+                    "-o",
+                    str(upscaled_path),
+                    "-n",
+                    REAL_ESRGAN_MODEL_NAME,
+                    "-s",
+                    str(REAL_ESRGAN_SCALE),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Real-ESRGAN binary not found. Install realesrgan-ncnn-vulkan to enable image upscaling."
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or "").strip()
+            raise RuntimeError(detail or "Real-ESRGAN upscale failed") from exc
+
+        if completed.returncode != 0:
+            raise RuntimeError("Real-ESRGAN upscale failed")
+
+        if not upscaled_path.exists():
+            raise RuntimeError("Real-ESRGAN did not produce an output image")
+
+        return Image.open(upscaled_path).convert("RGB").copy()

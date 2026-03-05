@@ -115,7 +115,7 @@ def test_constants_define_anima_model_ids_and_default_steps() -> None:
     assert constants.IMAGE_VAE_MODEL_ID == "circlestone-labs/Anima"
     assert constants.IMAGE_QWEN_TOKENIZER_ID == "Qwen/Qwen3-0.6B"
     assert constants.IMAGE_SD35_TOKENIZER_ID == "stabilityai/stable-diffusion-3.5-large"
-    assert constants.IMAGE_NUM_INFERENCE_STEPS == 50
+    assert constants.IMAGE_NUM_INFERENCE_STEPS == 25
 
 
 def test_image_service_startup_logs_model_loading_completion(
@@ -200,3 +200,37 @@ def test_run_image_inference_passes_width_height_rounded_to_multiple_of_16() -> 
 
 def test_clip_token_truncation_helper_is_not_exposed() -> None:
     assert not hasattr(image_repository, "_truncate_prompt_to_token_limit")
+
+
+def test_upscale_image_with_realesrgan_anime_uses_expected_model_and_scale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run(args: list[str], *, check: bool, capture_output: bool, text: bool) -> Any:
+        seen["args"] = args
+        seen["check"] = check
+        seen["capture_output"] = capture_output
+        seen["text"] = text
+
+        output_path = args[args.index("-o") + 1]
+        Image.new("RGB", (256, 256), color=(9, 8, 7)).save(output_path, format="PNG")
+
+        class Result:
+            returncode = 0
+
+        return Result()
+
+    monkeypatch.setattr(image_repository.subprocess, "run", fake_run)
+
+    output = image_repository.upscale_image_with_realesrgan_anime(
+        Image.new("RGB", (64, 64), color=(1, 2, 3))
+    )
+
+    assert output.size == (256, 256)
+    assert seen["args"][0] == constants.REAL_ESRGAN_BINARY
+    assert seen["args"][seen["args"].index("-n") + 1] == constants.REAL_ESRGAN_MODEL_NAME
+    assert seen["args"][seen["args"].index("-s") + 1] == str(constants.REAL_ESRGAN_SCALE)
+    assert seen["check"] is True
+    assert seen["capture_output"] is True
+    assert seen["text"] is True

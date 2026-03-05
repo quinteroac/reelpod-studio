@@ -24,7 +24,21 @@ def trim_trailing_silence(audio_path: Path, output_path: Path, silence_threshold
         raise RuntimeError(detail or "ffmpeg silence trim failed") from exc
 
 
-def mux_image_and_audio_to_mp4(image_path: Path, audio_path: Path, output_path: Path) -> None:
+def _build_letterbox_filter(target_width: int, target_height: int) -> str:
+    return (
+        f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,"
+        f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:color=black"
+    )
+
+
+def mux_image_and_audio_to_mp4(
+    image_path: Path,
+    audio_path: Path,
+    output_path: Path,
+    *,
+    target_width: int,
+    target_height: int,
+) -> None:
     ffmpeg_module = _load_ffmpeg_module()
     video_input = ffmpeg_module.input(str(image_path), loop=1, framerate=30)
     audio_input = ffmpeg_module.input(str(audio_path))
@@ -37,6 +51,7 @@ def mux_image_and_audio_to_mp4(image_path: Path, audio_path: Path, output_path: 
                 vcodec="libx264",
                 acodec="aac",
                 pix_fmt="yuv420p",
+                vf=_build_letterbox_filter(target_width, target_height),
                 shortest=None,
                 movflags="+faststart",
             )

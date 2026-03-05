@@ -7,7 +7,9 @@ import pytest
 from repositories import media_repository
 
 
-def test_mux_image_and_audio_to_mp4_uses_h264_and_aac(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mux_image_and_audio_to_mp4_uses_h264_aac_and_target_letterbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     seen: dict[str, object] = {}
 
     class FakeFfmpegError(Exception):
@@ -53,6 +55,8 @@ def test_mux_image_and_audio_to_mp4_uses_h264_and_aac(monkeypatch: pytest.Monkey
         Path("/tmp/image.png"),
         Path("/tmp/audio.wav"),
         Path("/tmp/output.mp4"),
+        target_width=1080,
+        target_height=1920,
     )
 
     assert seen["inputs"] == [
@@ -64,6 +68,7 @@ def test_mux_image_and_audio_to_mp4_uses_h264_and_aac(monkeypatch: pytest.Monkey
         "vcodec": "libx264",
         "acodec": "aac",
         "pix_fmt": "yuv420p",
+        "vf": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black",
         "shortest": None,
         "movflags": "+faststart",
     }

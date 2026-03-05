@@ -47,9 +47,18 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
         calls.append("image")
         return PNG_HEADER
 
-    def fake_mux_image_and_audio_to_mp4(image_path: Path, audio_path: Path, output_path: Path) -> None:
+    def fake_mux_image_and_audio_to_mp4(
+        image_path: Path,
+        audio_path: Path,
+        output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+    ) -> None:
         assert image_path.read_bytes() == PNG_HEADER
         assert audio_path.read_bytes() == WAV_HEADER
+        assert target_width == 1024
+        assert target_height == 1024
         calls.append("mux")
         output_path.write_bytes(MP4_HEADER)
 
@@ -60,7 +69,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
         if path.name == "output.mp4":
             return {
                 "streams": [
-                    {"codec_type": "video", "codec_name": "h264"},
+                    {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
                     {"codec_type": "audio", "codec_name": "aac"},
                 ],
                 "format": {"duration": "40.0"},
@@ -108,7 +117,7 @@ def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytes
     monkeypatch.setattr(
         video_service.media_repository,
         "mux_image_and_audio_to_mp4",
-        lambda _image, _audio, output: output.write_bytes(MP4_HEADER),
+        lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
     )
 
     def fake_probe_media(path: Path) -> dict[str, object]:
@@ -116,7 +125,7 @@ def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytes
             return {"format": {"duration": "40.0"}}
         return {
             "streams": [
-                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "video", "codec_name": "h264", "width": 1080, "height": 1920},
                 {"codec_type": "audio", "codec_name": "aac"},
             ],
             "format": {"duration": "40.0"},
@@ -152,7 +161,7 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
     monkeypatch.setattr(
         video_service.media_repository,
         "mux_image_and_audio_to_mp4",
-        lambda _image, _audio, output: output.write_bytes(MP4_HEADER),
+        lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
     )
 
     def fake_probe_media(path: Path) -> dict[str, object]:
@@ -160,7 +169,7 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
             return {"format": {"duration": "40.0"}}
         return {
             "streams": [
-                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
                 {"codec_type": "audio", "codec_name": "mp3"},
             ],
             "format": {"duration": "40.0"},
@@ -179,7 +188,7 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(
         video_service.media_repository,
         "mux_image_and_audio_to_mp4",
-        lambda _image, _audio, output: output.write_bytes(MP4_HEADER),
+        lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
     )
 
     def fake_probe_media(path: Path) -> dict[str, object]:
@@ -187,7 +196,7 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
             return {"format": {"duration": "40.0"}}
         return {
             "streams": [
-                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
                 {"codec_type": "audio", "codec_name": "aac"},
             ],
             "format": {"duration": "45.0"},
@@ -224,7 +233,16 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
 
-    def fail_mux(_image_path: Path, _audio_path: Path, _output_path: Path) -> None:
+    def fail_mux(
+        _image_path: Path,
+        _audio_path: Path,
+        _output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+    ) -> None:
+        assert target_width == 1024
+        assert target_height == 1024
         raise RuntimeError("mux failed")
 
     monkeypatch.setattr(video_service.media_repository, "mux_image_and_audio_to_mp4", fail_mux)
@@ -233,3 +251,99 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
         video_service.generate_video_mp4_for_request(GenerateRequestBody())
 
     assert not temp_dir.exists()
+
+
+@pytest.mark.parametrize(
+    ("target_width", "target_height"),
+    [(1920, 1080), (1080, 1920), (1080, 1080)],
+)
+def test_generate_video_completes_for_platform_presets(
+    target_width: int,
+    target_height: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+
+    seen_mux: dict[str, int] = {}
+
+    def fake_mux_image_and_audio_to_mp4(
+        _image_path: Path,
+        _audio_path: Path,
+        output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+    ) -> None:
+        seen_mux["target_width"] = target_width
+        seen_mux["target_height"] = target_height
+        output_path.write_bytes(MP4_HEADER)
+
+    def fake_probe_media(path: Path) -> dict[str, object]:
+        if path.name == "audio_trimmed.wav":
+            return {"format": {"duration": "40.0"}}
+        return {
+            "streams": [
+                {
+                    "codec_type": "video",
+                    "codec_name": "h264",
+                    "width": target_width,
+                    "height": target_height,
+                },
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        }
+
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "mux_image_and_audio_to_mp4",
+        fake_mux_image_and_audio_to_mp4,
+    )
+    monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+    mp4_bytes = video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(
+            mood="warm",
+            style="ambient",
+            tempo=90,
+            duration=40,
+            targetWidth=target_width,
+            targetHeight=target_height,
+        )
+    )
+
+    assert mp4_bytes == MP4_HEADER
+    assert seen_mux == {"target_width": target_width, "target_height": target_height}
+
+
+def test_generate_video_rejects_mismatched_final_frame_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "mux_image_and_audio_to_mp4",
+        lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
+    )
+
+    def fake_probe_media(path: Path) -> dict[str, object]:
+        if path.name == "audio_trimmed.wav":
+            return {"format": {"duration": "40.0"}}
+        return {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        }
+
+    monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+    with pytest.raises(VideoGenerationFailedError, match="frame dimensions"):
+        video_service.generate_video_mp4_for_request(
+            GenerateRequestBody(targetWidth=1080, targetHeight=1920)
+        )

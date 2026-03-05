@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
+from models import constants
 from models.errors import (
     AudioGenerationFailedError,
     ImageGenerationFailedError,
@@ -159,7 +160,16 @@ class TestGenerateEndpoint:
         def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
             output_path.write_bytes(audio_path.read_bytes())
 
-        def fake_mux_image_and_audio_to_mp4(image_path: Path, audio_path: Path, output_path: Path) -> None:
+        def fake_mux_image_and_audio_to_mp4(
+            image_path: Path,
+            audio_path: Path,
+            output_path: Path,
+            *,
+            target_width: int,
+            target_height: int,
+        ) -> None:
+            seen["mux_target_width"] = target_width
+            seen["mux_target_height"] = target_height
             seen["mux_image_bytes"] = image_path.read_bytes()
             seen["mux_audio_bytes"] = audio_path.read_bytes()
             output_path.write_bytes(MP4_HEADER)
@@ -168,7 +178,7 @@ class TestGenerateEndpoint:
             if path.name == "output.mp4":
                 return {
                     "streams": [
-                        {"codec_type": "video", "codec_name": "h264"},
+                        {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
                         {"codec_type": "audio", "codec_name": "aac"},
                     ],
                     "format": {"duration": "40.0"},
@@ -208,6 +218,8 @@ class TestGenerateEndpoint:
             "image_prompt": "anima dreamscape over ocean",
             "mux_image_bytes": PNG_HEADER,
             "mux_audio_bytes": WAV_HEADER,
+            "mux_target_width": 1024,
+            "mux_target_height": 1024,
         }
 
     def test_connection_error_returns_500(
@@ -342,6 +354,8 @@ class TestGenerateImageEndpoint:
                 seed: int,
                 num_inference_steps: int,
                 negative_prompt: str | None = None,
+                width: int | None = None,
+                height: int | None = None,
             ) -> FakeImageResult:
                 seen_calls.append(
                     {
@@ -349,11 +363,14 @@ class TestGenerateImageEndpoint:
                         "seed": seed,
                         "num_inference_steps": num_inference_steps,
                         "negative_prompt": negative_prompt,
+                        "width": width,
+                        "height": height,
                     }
                 )
                 return FakeImageResult([Image.new("RGB", (1024, 1024), color=(80, 120, 200))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        monkeypatch.setattr(image_repository, "upscale_image_with_realesrgan_anime", lambda image: image)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post("/api/generate-image", json={"prompt": "misty mountains"})
             assert response.status_code == 200
@@ -365,16 +382,20 @@ class TestGenerateImageEndpoint:
 
         assert seen_calls == [
             {
-                "prompt": "misty mountains",
+                "prompt": "score_9, score_8, best quality, highres, misty mountains",
                 "seed": 0,
-                "num_inference_steps": 50,
-                "negative_prompt": None,
+                "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
+                "negative_prompt": image_service.DEFAULT_NEGATIVE_PROMPT,
+                "width": 1024,
+                "height": 1024,
             },
             {
-                "prompt": "city sunset",
+                "prompt": "score_9, score_8, best quality, highres, city sunset",
                 "seed": 0,
-                "num_inference_steps": 50,
-                "negative_prompt": None,
+                "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
+                "negative_prompt": image_service.DEFAULT_NEGATIVE_PROMPT,
+                "width": 1024,
+                "height": 1024,
             },
         ]
 
@@ -386,6 +407,7 @@ class TestGenerateImageEndpoint:
                 return FakeImageResult([Image.new("RGB", (1024, 1024), color=(255, 255, 255))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        monkeypatch.setattr(image_repository, "upscale_image_with_realesrgan_anime", lambda image: image)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
                 "/api/generate-image",
@@ -408,6 +430,7 @@ class TestGenerateImageEndpoint:
                 return FakeImageResult([Image.new("RGB", (1024, 1024), color=(10, 10, 10))])
 
         monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        monkeypatch.setattr(image_repository, "upscale_image_with_realesrgan_anime", lambda image: image)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
                 "/api/generate-image",
@@ -420,11 +443,13 @@ class TestGenerateImageEndpoint:
         assert response.status_code == 200
         assert response.headers["content-type"] == "image/png"
         assert seen == {
-            "prompt": "portrait of a cat",
+            "prompt": "score_9, score_8, best quality, highres, portrait of a cat",
             "kwargs": {
                 "seed": 0,
-                "num_inference_steps": 50,
-                "negative_prompt": "blurry, distorted",
+                "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
+                "negative_prompt": f"{image_service.DEFAULT_NEGATIVE_PROMPT}, blurry, distorted",
+                "width": 1024,
+                "height": 1024,
             },
         }
 
