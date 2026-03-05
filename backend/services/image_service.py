@@ -113,11 +113,18 @@ def generate_image_png(body: GenerateImageRequestBody) -> bytes:
         )
 
         # Upscale first using Real-ESRGAN anime model before final resize/letterbox.
-        upscaled_image = image_repository.upscale_image_with_realesrgan_anime(source_image)
+        try:
+            working_image = image_repository.upscale_image_with_realesrgan_anime(source_image)
+        except Exception as exc:
+            logger.warning(
+                "Real-ESRGAN upscale failed; falling back to original generated image: %s",
+                exc,
+            )
+            working_image = source_image
 
         # Always letterbox/pad to the requested target resolution.
         final_image = letterbox_and_resize_to_target(
-            upscaled_image,
+            working_image,
             target_width=body.target_width,
             target_height=body.target_height,
         )

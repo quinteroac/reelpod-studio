@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from typing import Any
 
 import pytest
@@ -97,3 +98,50 @@ def test_generate_image_png_outputs_exact_requested_size_after_upscale(
 
     image = Image.open(io.BytesIO(result))
     assert image.size == (1920, 1080)
+
+
+def test_generate_image_png_falls_back_when_realesrgan_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    source_image = Image.new("RGB", (896, 1152), color=(120, 40, 80))
+    seen: dict[str, Any] = {}
+    caplog.set_level(logging.WARNING)
+
+    monkeypatch.setattr(
+        image_repository,
+        "run_image_inference",
+        lambda *args, **kwargs: source_image,
+    )
+
+    def fake_upscale_image_with_realesrgan_anime(_image: Image.Image) -> Image.Image:
+        raise RuntimeError("upscaler model failed to load")
+
+    def fake_letterbox_and_resize_to_target(image: Any, target_width: int, target_height: int) -> Image.Image:
+        seen["image"] = image
+        seen["target_width"] = target_width
+        seen["target_height"] = target_height
+        return Image.new("RGB", (1080, 1920), color=(1, 2, 3))
+
+    monkeypatch.setattr(
+        image_repository,
+        "upscale_image_with_realesrgan_anime",
+        fake_upscale_image_with_realesrgan_anime,
+    )
+    monkeypatch.setattr(
+        image_service,
+        "letterbox_and_resize_to_target",
+        fake_letterbox_and_resize_to_target,
+    )
+
+    result = image_service.generate_image_png(
+        GenerateImageRequestBody(prompt="rainy city at night", targetWidth=1080, targetHeight=1920)
+    )
+
+    output = Image.open(io.BytesIO(result))
+    assert output.size == (1080, 1920)
+    assert seen == {
+        "image": source_image,
+        "target_width": 1080,
+        "target_height": 1920,
+    }
+    assert "Real-ESRGAN upscale failed; falling back to original generated image" in caplog.text

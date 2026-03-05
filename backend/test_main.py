@@ -222,6 +222,48 @@ class TestGenerateEndpoint:
             "mux_target_height": 1024,
         }
 
+    def test_generate_returns_mp4_when_realesrgan_upscale_fails(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+        monkeypatch.setattr(
+            image_repository,
+            "run_image_inference",
+            lambda *args, **kwargs: Image.new("RGB", (1024, 1024), color=(55, 66, 77)),
+        )
+        monkeypatch.setattr(
+            image_repository,
+            "upscale_image_with_realesrgan_anime",
+            lambda _image: (_ for _ in ()).throw(RuntimeError("upscaler crashed")),
+        )
+        monkeypatch.setattr(image_service, "image_pipeline", object())
+        monkeypatch.setattr(image_service, "image_model_load_error", None)
+        monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", lambda src, dst: dst.write_bytes(src.read_bytes()))
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_image_and_audio_to_mp4",
+            lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
+        )
+
+        def fake_probe_media(path: Path) -> dict[str, object]:
+            if path.name == "audio_trimmed.wav":
+                return {"format": {"duration": "40.0"}}
+            return {
+                "streams": [
+                    {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
+                    {"codec_type": "audio", "codec_name": "aac"},
+                ],
+                "format": {"duration": "40.0"},
+            }
+
+        monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "video/mp4"
+        assert response.content == MP4_HEADER
+
     def test_connection_error_returns_500(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
