@@ -53,6 +53,8 @@ backend/.realesrgan/
 # IDE
 .vscode/settings.json
 .idea/
+.cursor/
+.gemini/
 
 # OS
 .DS_Store
