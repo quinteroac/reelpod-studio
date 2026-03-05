@@ -48,6 +48,7 @@ venv/
 backend/models/Qwen/
 backend/models/circlestone-labs/
 backend/models/stabilityai/
+backend/.realesrgan/
 
 # IDE
 .vscode/settings.json
