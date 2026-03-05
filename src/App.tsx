@@ -122,7 +122,7 @@ const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
   filmGrain: false,
   chromaticAberration: false,
   scanLines: false,
-  colorDrift: true
+  colorDrift: false
 };
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;
@@ -265,7 +265,7 @@ export function App() {
   const [audioDuration, setAudioDuration] = useState(0);
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
   const [activeVisualizerType, setActiveVisualizerType] =
-    useState<VisualizerType>('glitch');
+    useState<VisualizerType>('none');
   const [enabledEffects, setEnabledEffects] = useState<
     Record<ToggleableEffectType, boolean>
   >(defaultEnabledEffects);

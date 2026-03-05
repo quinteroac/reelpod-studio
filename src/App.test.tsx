@@ -182,17 +182,17 @@ describe('App unified generate flow (US-003)', () => {
     ]);
   });
 
-  it('defaults to glitch and updates the active visualizer immediately on selection change', () => {
+  it('defaults to none and updates the active visualizer immediately on selection change', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const selector = screen.getByLabelText(
       'Active visualizer'
     ) as HTMLSelectElement;
-    expect(selector.value).toBe('glitch');
+    expect(selector.value).toBe('none');
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-visualizer-type',
-      'glitch'
+      'none'
     );
 
     fireEvent.change(selector, { target: { value: 'waveform' } });
@@ -634,7 +634,7 @@ describe('App effects toggles (US-002)', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
-  it('lists all 7 effect types and defaults to colorDrift only', () => {
+  it('lists all 7 effect types and defaults to no effects enabled', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
@@ -658,11 +658,11 @@ describe('App effects toggles (US-002)', () => {
       expect(within(effectSection).getByRole('checkbox', { name: effect })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('checkbox', { name: 'colorDrift' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'colorDrift' })).not.toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'zoom' })).not.toBeChecked();
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'colorDrift'
+      'none'
     );
   });
 

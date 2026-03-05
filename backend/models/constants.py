@@ -30,9 +30,20 @@ IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN = "./"
 IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN = "tokenizer_3/"
 IMAGE_SIZE = 1024
 # Anima preview model ~1MP native resolutions (use these for inference, then pad to target)
-ANIMA_PREVIEW_SIZES = ((1024, 1024), (896, 1152), (1152, 896))
+# Updated to align more closely with common social video aspect ratios:
+# - 16:9  -> 1280x720
+# - 9:16  -> 720x1280
+# - 1:1   -> 1024x1024
+ANIMA_PREVIEW_SIZES = ((1280, 720), (720, 1280), (1024, 1024))
 IMAGE_NUM_INFERENCE_STEPS = 25
 IMAGE_ASPECT_TOLERANCE = 1e-6
+# Real-ESRGAN Anime 4× upscaler (PyTorch; weights auto-downloaded to backend/.realesrgan/)
+REAL_ESRGAN_MODEL_NAME = "realesrgan-x4plus-anime"
+REAL_ESRGAN_ANIME_WEIGHTS_FILENAME = "RealESRGAN_x4plus_anime_6B.pth"
+REAL_ESRGAN_ANIME_WEIGHTS_URL = (
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+)
+REAL_ESRGAN_SCALE = 4
 
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
 VIDEO_GENERATION_TIMEOUT_SECONDS = 360.0

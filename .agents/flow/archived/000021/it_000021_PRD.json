@@ -1,0 +1,155 @@
+{
+  "goals": [
+    "Replace the image generation model without changing any public API contracts",
+    "Use DiffSynth Anima's low-VRAM configuration for efficient GPU memory usage",
+    "Maintain full integration with the video generation pipeline"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Replace model loading with DiffSynth Anima pipeline",
+      "description": "As a backend service, I want to load the DiffSynth Anima model at startup so that image generation uses the new model.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`backend/repositories/image_repository.py` uses `diffsynth.pipelines.anima_image.AnimaImagePipeline` instead of `diffusers.DiffusionPipeline`"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Pipeline is initialized with three `ModelConfig` entries (diffusion model, text encoder, VAE) pointing to `circlestone-labs/Anima`"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Tokenizer configs use `Qwen/Qwen3-0.6B` and `stabilityai/stable-diffusion-3.5-large` tokenizer_3"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Low-VRAM config is applied: disk offloading, `torch.bfloat16` computation dtype, CUDA computation device"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "VRAM limit is calculated dynamically from available GPU memory (`torch.cuda.mem_get_info`)"
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "`backend/models/constants.py` is updated with new model identifiers and default inference steps (50)"
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Backend starts successfully and logs model loading completion"
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Replace inference call with Anima pipeline",
+      "description": "As a backend service, I want to run inference using the Anima pipeline API so that image generation produces output from the new model.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "`run_image_inference()` in `image_repository.py` calls `pipe(prompt, seed=N, num_inference_steps=50)` using the Anima API"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Negative prompt support is included (Anima supports `negative_prompt` or it is passed appropriately)"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The old CLIP token truncation logic (`_truncate_prompt_to_token_limit`) is removed or adapted for the new tokenizer (Qwen-based, not CLIP)"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Output is a PIL Image that is converted to PNG bytes as before"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "`/api/generate-image` returns a valid PNG for a test prompt"
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Update Python dependencies",
+      "description": "As a developer, I want the project dependencies updated so that the DiffSynth library is available and unused HuggingFace dependencies are removed.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "`diffsynth-studio` is added to `requirements.txt` (or equivalent dependency file)"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "`diffusers` and `transformers` are removed from dependencies (if no longer used elsewhere)"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "`pip install -r requirements.txt` succeeds cleanly"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Typecheck / lint passes"
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Verify video generation pipeline integration",
+      "description": "As a backend service, I want the video generation pipeline to continue working with the new image model so that `/api/generate` still produces MP4 videos with generated images.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "`video_service.py` calls `image_service.generate_image_png()` without changes to its interface"
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "`/api/generate` returns a valid MP4 containing an Anima-generated image muxed with audio"
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "The image prompt flow (user-provided or auto-generated from mood/style) still works"
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "No changes needed to `GenerateImageRequestBody` schema or API routes"
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "The `AnimaImagePipeline` must be loaded once at startup via `image_service.startup()` and reused for all requests"
+    },
+    {
+      "id": "FR-2",
+      "description": "VRAM configuration must use disk offloading with `torch.bfloat16` computation on CUDA, matching the reference low-VRAM script"
+    },
+    {
+      "id": "FR-3",
+      "description": "Dynamic VRAM limit must be calculated as `torch.cuda.mem_get_info(\"cuda\")[1] / (1024 ** 3) - 0.5`"
+    },
+    {
+      "id": "FR-4",
+      "description": "Default inference steps must be 50 (Anima's recommended value, up from 25 for WAI-Illustrious)"
+    },
+    {
+      "id": "FR-5",
+      "description": "The `/api/generate-image` endpoint contract (request schema, PNG response) must remain unchanged"
+    },
+    {
+      "id": "FR-6",
+      "description": "The `image_service.generate_image_png()` interface must remain unchanged so `video_service` requires no modifications"
+    },
+    {
+      "id": "FR-7",
+      "description": "SDXL-specific size optimization logic (`get_optimal_sdxl_size`, valid SDXL sizes list) should be reviewed and adapted or removed if Anima supports different resolutions"
+    }
+  ]
+}

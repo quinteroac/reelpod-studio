@@ -1,0 +1,97 @@
+{
+  "goals": [
+    "Improve final MP4 image sharpness by upscaling the Anima-generated image 4× with `realesrgan-x4plus-anime` before fitting to the target resolution.",
+    "Ensure the final video frame dimensions exactly match the selected platform resolution.",
+    "Keep the change entirely within the existing generation pipeline — no new user-facing controls."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Upscale Generated Image Before Muxing",
+      "description": "As an end user generating a video, I want the image to be automatically upscaled using Real-ESRGAN Anime before it is resized and muxed, so that the final video has visibly sharper image quality at the target platform resolution.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "After Anima generates the image, the backend runs `realesrgan-x4plus-anime` (4× scale) on the PNG before any resize/letterbox step."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The upscaled image is then downscaled and letterboxed to exactly match `targetWidth × targetHeight` from the generation request."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The final MP4 video frame dimensions exactly equal the requested platform resolution (e.g. 1920×1080, 1080×1920, or 1080×1080)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The upscale step runs automatically — no new user action or UI control is required."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Generation still completes successfully for all three platform presets (YouTube, TikTok/Reels, Instagram Square)."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Graceful Fallback if Upscaler Fails",
+      "description": "As an end user, I want video generation to still succeed (with a warning logged) if the upscale step fails, so that a model loading issue does not break the entire generation flow.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "If Real-ESRGAN inference raises an exception, the backend logs the error and falls back to resizing the original Anima image directly."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The API response is still a valid MP4; the HTTP status remains 200."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "A new `upscale_repository` (or equivalent module) loads the `realesrgan-x4plus-anime` model and exposes a function `upscale_image(image: PIL.Image) -> PIL.Image` that returns the 4× upscaled image."
+    },
+    {
+      "id": "FR-2",
+      "description": "`image_service` calls `upscale_image` immediately after Anima generation and before the letterbox/resize step."
+    },
+    {
+      "id": "FR-3",
+      "description": "The letterbox/resize step (already implemented in `image_service`) receives the upscaled image and produces output at exactly `targetWidth × targetHeight`."
+    },
+    {
+      "id": "FR-4",
+      "description": "The `realesrgan-x4plus-anime` model weights are fetched or expected at a configurable path (env var or hardcoded default path under `backend/`)."
+    },
+    {
+      "id": "FR-5",
+      "description": "If upscaling fails, the exception is caught, a warning is logged, and the pipeline continues with the original Anima image."
+    },
+    {
+      "id": "FR-6",
+      "description": "Model weights (`RealESRGAN_x4plus_anime_6B.pth`) are auto-downloaded to `backend/.realesrgan/` on first use if not already present."
+    },
+    {
+      "id": "FR-7",
+      "description": "The upscaler selects CUDA if `torch.cuda.is_available()`, otherwise falls back to CPU."
+    },
+    {
+      "id": "FR-8",
+      "description": "No changes to the API schema (`GenerateRequestBody`, response format) are required."
+    },
+    {
+      "id": "FR-9",
+      "description": "No frontend changes are required."
+    }
+  ]
+}
