@@ -6,5 +6,4 @@
 - **Project context:** `.agents/PROJECT_CONTEXT.md` (conventions and architecture; agent adheres from second iteration onward).
 - **Rule:** All generated resources in this repo must be in English.
 - **MCP integration:** The ReelPod UI MCP server lives under `src/mcp/`. Use the `install-mcp` skill to configure the `reelpod-ui-mcp` server for your MCP host, and the `create-amv` skill to drive AMV generations via the `set_song_parameters`, `generate_audio`, and `add_to_queue` tools.
-- **Git commits:** When creating git commits from an agent, keep the human as the primary author and always append a `Co-authored-by: Cursor AI <dev@cursor.sh>` trailer at the end of the commit message (after a blank line), preserving any existing trailers.
 - **Model artifacts:** Do not commit large model weights or vendor assets (e.g. under `backend/.realesrgan/` or external repos like SeedVR/SeedVR2). Treat them as local-only dependencies or download-time assets.
