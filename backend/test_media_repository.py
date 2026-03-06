@@ -77,6 +77,94 @@ def test_mux_image_and_audio_to_mp4_uses_h264_aac_and_target_letterbox(
     assert seen["capture_stderr"] is True
 
 
+def test_loop_video_to_duration_uses_stream_loop_and_t(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    class FakeFfmpegError(Exception):
+        def __init__(self, stderr: bytes = b""):
+            super().__init__("ffmpeg error")
+            self.stderr = stderr
+
+    class FakeRunner:
+        def overwrite_output(self) -> "FakeRunner":
+            seen["overwrite_output"] = True
+            return self
+
+        def run(self, capture_stdout: bool, capture_stderr: bool) -> tuple[bytes, bytes]:
+            seen["capture_stdout"] = capture_stdout
+            seen["capture_stderr"] = capture_stderr
+            return (b"", b"")
+
+    class FakeStream:
+        def output(self, output_path: str, **kwargs: object) -> FakeRunner:
+            seen["output_path"] = output_path
+            seen["output_kwargs"] = kwargs
+            return FakeRunner()
+
+    class FakeFfmpegModule:
+        Error = FakeFfmpegError
+
+        @staticmethod
+        def input(path: str, **kwargs: object) -> FakeStream:
+            seen["input_path"] = path
+            seen["input_kwargs"] = kwargs
+            return FakeStream()
+
+    monkeypatch.setattr(media_repository, "_load_ffmpeg_module", lambda: FakeFfmpegModule)
+
+    media_repository.loop_video_to_duration(
+        Path("/tmp/clip.mp4"),
+        target_duration=30.5,
+        output_path=Path("/tmp/looped.mp4"),
+    )
+
+    assert seen["input_path"] == "/tmp/clip.mp4"
+    assert seen["input_kwargs"] == {"stream_loop": -1}
+    assert seen["output_path"] == "/tmp/looped.mp4"
+    assert seen["output_kwargs"] == {"t": 30.5, "codec": "copy"}
+    assert seen["overwrite_output"] is True
+    assert seen["capture_stdout"] is True
+    assert seen["capture_stderr"] is True
+
+
+def test_loop_video_to_duration_raises_on_ffmpeg_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeFfmpegError(Exception):
+        def __init__(self, stderr: bytes = b""):
+            super().__init__("ffmpeg error")
+            self.stderr = stderr
+
+    class FakeRunner:
+        def overwrite_output(self) -> "FakeRunner":
+            return self
+
+        def run(self, capture_stdout: bool, capture_stderr: bool) -> tuple[bytes, bytes]:
+            raise FakeFfmpegError(b"loop error detail")
+
+    class FakeStream:
+        def output(self, output_path: str, **kwargs: object) -> FakeRunner:
+            return FakeRunner()
+
+    class FakeFfmpegModule:
+        Error = FakeFfmpegError
+
+        @staticmethod
+        def input(path: str, **kwargs: object) -> FakeStream:
+            return FakeStream()
+
+    monkeypatch.setattr(media_repository, "_load_ffmpeg_module", lambda: FakeFfmpegModule)
+
+    with pytest.raises(RuntimeError, match="loop error detail"):
+        media_repository.loop_video_to_duration(
+            Path("/tmp/clip.mp4"),
+            target_duration=30.5,
+            output_path=Path("/tmp/looped.mp4"),
+        )
+
+
 def test_probe_media_returns_ffprobe_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = {"streams": [{"codec_type": "video"}], "format": {"duration": "1.0"}}
 
