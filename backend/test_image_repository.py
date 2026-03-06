@@ -254,3 +254,156 @@ def test_upscale_image_with_realesrgan_anime_runs_real_upscale() -> None:
     assert out is not None
     assert out.size == (256, 256)
     assert out.mode == "RGB"
+
+
+# ---------------------------------------------------------------------------
+# US-004 – Wan pipeline loader in image_repository
+# ---------------------------------------------------------------------------
+
+
+class _FakeWanPipeline:
+    last_call_kwargs: dict[str, Any] | None = None
+
+    def __call__(self, **kwargs: Any) -> list[Any]:
+        _FakeWanPipeline.last_call_kwargs = kwargs
+        return ["frame_1", "frame_2", "frame_3"]
+
+
+class _FakeWanVideoPipeline:
+    last_kwargs: dict[str, Any] | None = None
+
+    @classmethod
+    def from_pretrained(cls, **kwargs: Any) -> _FakeWanPipeline:
+        cls.last_kwargs = kwargs
+        return _FakeWanPipeline()
+
+
+def _install_wan_fake_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_torch = ModuleType("torch")
+    fake_torch.bfloat16 = object()
+
+    class _FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+        @staticmethod
+        def mem_get_info() -> tuple[int, int]:
+            gib = 1024**3
+            return (10 * gib, 16 * gib)
+
+    fake_torch.cuda = _FakeCuda()
+
+    fake_diffsynth = ModuleType("diffsynth")
+    fake_diffsynth_pipelines = ModuleType("diffsynth.pipelines")
+    fake_wan_module = ModuleType("diffsynth.pipelines.wan_video")
+    fake_wan_module.WanVideoPipeline = _FakeWanVideoPipeline
+    fake_wan_module.ModelConfig = _FakeModelConfig
+
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "diffsynth", fake_diffsynth)
+    monkeypatch.setitem(sys.modules, "diffsynth.pipelines", fake_diffsynth_pipelines)
+    monkeypatch.setitem(sys.modules, "diffsynth.pipelines.wan_video", fake_wan_module)
+
+
+# AC01 – load_wan_pipeline returns WanVideoPipeline with four ModelConfig entries
+def test_load_wan_pipeline_returns_pipeline_with_four_model_configs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_wan_fake_modules(monkeypatch)
+
+    pipeline = image_repository.load_wan_pipeline()
+    kwargs = _FakeWanVideoPipeline.last_kwargs
+
+    assert kwargs is not None
+    assert isinstance(pipeline, _FakeWanPipeline)
+
+    model_configs = kwargs["model_configs"]
+    assert len(model_configs) == 4
+
+    assert model_configs[0].model_id == constants.WAN_VIDEO_MODEL_ID
+    assert model_configs[0].origin_file_pattern == constants.WAN_PIPELINE_HIGH_NOISE_PATTERN
+    assert model_configs[1].model_id == constants.WAN_VIDEO_MODEL_ID
+    assert model_configs[1].origin_file_pattern == constants.WAN_PIPELINE_LOW_NOISE_PATTERN
+    assert model_configs[2].model_id == constants.WAN_VIDEO_MODEL_ID
+    assert model_configs[2].origin_file_pattern == constants.WAN_PIPELINE_T5_PATTERN
+    assert model_configs[3].model_id == constants.WAN_VIDEO_MODEL_ID
+    assert model_configs[3].origin_file_pattern == constants.WAN_PIPELINE_VAE_PATTERN
+
+
+# AC01 – tokenizer_config points to Wan2.1-T2V-1.3B / google/umt5-xxl/
+def test_load_wan_pipeline_has_tokenizer_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_wan_fake_modules(monkeypatch)
+
+    image_repository.load_wan_pipeline()
+    kwargs = _FakeWanVideoPipeline.last_kwargs
+
+    assert kwargs is not None
+    tc = kwargs["tokenizer_config"]
+    assert tc.model_id == constants.WAN_PIPELINE_TOKENIZER_MODEL_ID
+    assert tc.origin_file_pattern == constants.WAN_PIPELINE_TOKENIZER_ORIGIN
+
+
+# AC02 – low-VRAM disk-offload pattern
+def test_load_wan_pipeline_applies_low_vram_disk_offload_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_wan_fake_modules(monkeypatch)
+
+    image_repository.load_wan_pipeline()
+    kwargs = _FakeWanVideoPipeline.last_kwargs
+
+    assert kwargs is not None
+    assert kwargs["device"] == "cuda"
+    assert kwargs["torch_dtype"] is sys.modules["torch"].bfloat16
+    # 16 GiB total - 2 GiB headroom = 14.0
+    assert kwargs["vram_limit"] == pytest.approx(14.0)
+
+    first_model = kwargs["model_configs"][0]
+    assert first_model.offload_dtype == "disk"
+    assert first_model.offload_device == "disk"
+    assert first_model.onload_dtype is sys.modules["torch"].bfloat16
+    assert first_model.onload_device == "cpu"
+    assert first_model.preparing_dtype is sys.modules["torch"].bfloat16
+    assert first_model.preparing_device == "cuda"
+    assert first_model.computation_dtype is sys.modules["torch"].bfloat16
+    assert first_model.computation_device == "cuda"
+
+
+# AC03 – run_wan_inference calls pipeline with expected arguments
+def test_run_wan_inference_calls_pipeline_with_expected_kwargs() -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_pipeline(**kwargs: Any) -> list[str]:
+        seen.update(kwargs)
+        return ["f1", "f2"]
+
+    result = image_repository.run_wan_inference(
+        fake_pipeline,
+        image="test_img",
+        prompt="a scenic view",
+        seed=42,
+        width=832,
+        height=480,
+    )
+
+    assert result == ["f1", "f2"]
+    assert seen["prompt"] == "a scenic view"
+    assert seen["input_image"] == "test_img"
+    assert seen["seed"] == 42
+    assert seen["num_inference_steps"] == 20
+    assert seen["tiled"] is True
+    assert seen["switch_DiT_boundary"] == pytest.approx(0.9)
+
+
+# AC01 – constants define expected values
+def test_wan_pipeline_constants_defined() -> None:
+    assert constants.WAN_PIPELINE_HIGH_NOISE_PATTERN == "high_noise_model/diffusion_pytorch_model*.safetensors"
+    assert constants.WAN_PIPELINE_LOW_NOISE_PATTERN == "low_noise_model/diffusion_pytorch_model*.safetensors"
+    assert constants.WAN_PIPELINE_T5_PATTERN == "models_t5_umt5-xxl-enc-bf16.pth"
+    assert constants.WAN_PIPELINE_VAE_PATTERN == "Wan2.1_VAE.pth"
+    assert constants.WAN_PIPELINE_TOKENIZER_MODEL_ID == "Wan-AI/Wan2.1-T2V-1.3B"
+    assert constants.WAN_PIPELINE_TOKENIZER_ORIGIN == "google/umt5-xxl/"
+    assert constants.WAN_PIPELINE_VRAM_HEADROOM_GB == 2

@@ -59,3 +59,12 @@ WAN_VIDEO_RESOLUTIONS: dict[str, tuple[int, int]] = {
     "9:16": (480, 832),
     "1:1": (720, 720),
 }
+
+# Wan 2.2 I2V pipeline loader (low-VRAM disk-offload pattern)
+WAN_PIPELINE_HIGH_NOISE_PATTERN = "high_noise_model/diffusion_pytorch_model*.safetensors"
+WAN_PIPELINE_LOW_NOISE_PATTERN = "low_noise_model/diffusion_pytorch_model*.safetensors"
+WAN_PIPELINE_T5_PATTERN = "models_t5_umt5-xxl-enc-bf16.pth"
+WAN_PIPELINE_VAE_PATTERN = "Wan2.1_VAE.pth"
+WAN_PIPELINE_TOKENIZER_MODEL_ID = "Wan-AI/Wan2.1-T2V-1.3B"
+WAN_PIPELINE_TOKENIZER_ORIGIN = "google/umt5-xxl/"
+WAN_PIPELINE_VRAM_HEADROOM_GB = 2
