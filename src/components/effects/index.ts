@@ -6,4 +6,5 @@ export * from './FilmGrainEffect';
 export * from './ChromaticAberrationEffect';
 export * from './ScanLinesEffect';
 export * from './ColorDriftEffect';
+export * from './LightingMovementEffect';
 export * from './EffectComposer';

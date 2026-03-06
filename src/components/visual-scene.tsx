@@ -185,7 +185,7 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
           {/* Image plane — no data-* props allowed here (Three.js object, not DOM) */}
           <mesh scale={[planeWidth, planeHeight, 1]}>
             <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial map={texture} toneMapped={false} />
+            <meshBasicMaterial map={texture} />
           </mesh>
         </>
       )}

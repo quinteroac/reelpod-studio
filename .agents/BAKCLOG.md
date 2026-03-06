@@ -1,10 +1,10 @@
 ## New Features
-- Create Live/Record Mode (Streaming mode or Record as video mode)
-- Tiktok integration
-- YouTube Integration
-- Instragram/Facebook Integration
-
+Adding song lyrics
+Wan Support using diffsynt studio
 
 ## Improvements
+Animations and effects
+
 
 ## Issues
+Some generations fails

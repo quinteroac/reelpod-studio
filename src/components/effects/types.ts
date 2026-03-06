@@ -1,4 +1,4 @@
-export type EffectType = 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'none';
+export type EffectType = 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'lightingMovement' | 'none';
 
 export type EffectProps = {
     audioCurrentTime: number;

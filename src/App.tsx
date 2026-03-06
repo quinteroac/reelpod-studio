@@ -112,7 +112,8 @@ const effectOptions: ReadonlyArray<ToggleableEffectType> = [
   'filmGrain',
   'chromaticAberration',
   'scanLines',
-  'colorDrift'
+  'colorDrift',
+  'lightingMovement'
 ];
 const defaultEffectOrder: ToggleableEffectType[] = [...effectOptions];
 const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
@@ -122,7 +123,8 @@ const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
   filmGrain: false,
   chromaticAberration: false,
   scanLines: false,
-  colorDrift: false
+  colorDrift: false,
+  lightingMovement: false
 };
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;

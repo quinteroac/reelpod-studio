@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { ChromaticAberrationEffect } from './ChromaticAberrationEffect';
 import { ColorDriftEffect } from './ColorDriftEffect';
 import { FilmGrainEffect } from './FilmGrainEffect';
+import { LightingMovementEffect } from './LightingMovementEffect';
 import { FlickerEffect } from './FlickerEffect';
 import { ScanLinesEffect } from './ScanLinesEffect';
 import type { EffectProps, EffectType } from './types';
@@ -20,6 +21,7 @@ const EFFECT_REGISTRY: Record<Exclude<EffectType, 'none'>, ComponentType<EffectP
     chromaticAberration: ChromaticAberrationEffect,
     scanLines: ScanLinesEffect,
     colorDrift: ColorDriftEffect,
+    lightingMovement: LightingMovementEffect,
 };
 
 interface EffectComposerProps extends EffectProps {
