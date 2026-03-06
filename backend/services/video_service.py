@@ -116,6 +116,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
     wan_clip_path = temp_dir.joinpath("wan_clip.mp4")
+    looped_clip_path = temp_dir.joinpath("looped_clip.mp4")
     output_path = temp_dir.joinpath("output.mp4")
 
     def remaining_seconds() -> float:
@@ -192,15 +193,39 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             wan_clip_path.stat().st_size,
         )
 
+        logger.info("Video pipeline: probing trimmed audio for duration")
+        source_audio_probe_data = media_repository.probe_media(audio_path)
+        source_audio_duration = _parse_duration_seconds(source_audio_probe_data)
+        logger.info("Video pipeline: audio duration = %.3fs", source_audio_duration)
+
         logger.info(
-            "Video pipeline: muxing image %s and audio %s into MP4 at %s",
-            image_path,
+            "Video pipeline: looping Wan clip to %.3fs",
+            source_audio_duration,
+        )
+        _run_with_timeout(
+            lambda: media_repository.loop_video_to_duration(
+                wan_clip_path,
+                target_duration=source_audio_duration,
+                output_path=looped_clip_path,
+            ),
+            timeout_seconds=remaining_seconds(),
+            timeout_message="Video generation timed out while looping clip",
+        )
+        logger.info(
+            "Video pipeline: looped clip saved to %s (%d bytes)",
+            looped_clip_path,
+            looped_clip_path.stat().st_size,
+        )
+
+        logger.info(
+            "Video pipeline: muxing looped clip %s and audio %s into MP4 at %s",
+            looped_clip_path,
             audio_path,
             output_path,
         )
         _run_with_timeout(
-            lambda: media_repository.mux_image_and_audio_to_mp4(
-                image_path,
+            lambda: media_repository.mux_video_and_audio_to_mp4(
+                looped_clip_path,
                 audio_path,
                 output_path,
                 target_width=body.image_target_width,
@@ -218,8 +243,6 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
                 "Muxed MP4 frame dimensions do not match requested target resolution"
             )
 
-        source_audio_probe_data = media_repository.probe_media(audio_path)
-        source_audio_duration = _parse_duration_seconds(source_audio_probe_data)
         mp4_duration = _parse_duration_seconds(mp4_probe_data)
         if abs(source_audio_duration - mp4_duration) > MP4_DURATION_TOLERANCE_SECONDS:
             raise VideoGenerationFailedError("Muxed MP4 duration does not match generated audio")
@@ -239,7 +262,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     except Exception as exc:
         raise VideoGenerationFailedError(f"Video generation failed: {exc}") from exc
     finally:
-        for file_path in (audio_path, trimmed_audio_path, image_path, wan_clip_path, output_path):
+        for file_path in (audio_path, trimmed_audio_path, image_path, wan_clip_path, looped_clip_path, output_path):
             try:
                 file_path.unlink(missing_ok=True)
             except OSError:

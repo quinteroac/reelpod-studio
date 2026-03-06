@@ -93,6 +93,38 @@ def loop_video_to_duration(
         raise RuntimeError(detail or "ffmpeg loop failed") from exc
 
 
+def mux_video_and_audio_to_mp4(
+    video_path: Path,
+    audio_path: Path,
+    output_path: Path,
+    *,
+    target_width: int,
+    target_height: int,
+) -> None:
+    ffmpeg_module = _load_ffmpeg_module()
+    video_input = ffmpeg_module.input(str(video_path))
+    audio_input = ffmpeg_module.input(str(audio_path))
+    try:
+        (
+            ffmpeg_module.output(
+                video_input,
+                audio_input,
+                str(output_path),
+                vcodec="libx264",
+                acodec="aac",
+                pix_fmt="yuv420p",
+                vf=_build_letterbox_filter(target_width, target_height),
+                shortest=None,
+                movflags="+faststart",
+            )
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except ffmpeg_module.Error as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(detail or "ffmpeg video mux failed") from exc
+
+
 def _load_ffmpeg_module() -> Any:
     try:
         import ffmpeg as ffmpeg_module

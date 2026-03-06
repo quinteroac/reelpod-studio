@@ -189,8 +189,15 @@ class TestGenerateEndpoint:
         def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
             output_path.write_bytes(audio_path.read_bytes())
 
-        def fake_mux_image_and_audio_to_mp4(
-            image_path: Path,
+        def fake_loop_video_to_duration(
+            video_path: Path,
+            target_duration: float,
+            output_path: Path,
+        ) -> None:
+            output_path.write_bytes(video_path.read_bytes())
+
+        def fake_mux_video_and_audio_to_mp4(
+            video_path: Path,
             audio_path: Path,
             output_path: Path,
             *,
@@ -199,7 +206,6 @@ class TestGenerateEndpoint:
         ) -> None:
             seen["mux_target_width"] = target_width
             seen["mux_target_height"] = target_height
-            seen["mux_image_bytes"] = image_path.read_bytes()
             seen["mux_audio_bytes"] = audio_path.read_bytes()
             output_path.write_bytes(MP4_HEADER)
 
@@ -221,8 +227,13 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", fake_trim_trailing_silence)
         monkeypatch.setattr(
             video_service.media_repository,
-            "mux_image_and_audio_to_mp4",
-            fake_mux_image_and_audio_to_mp4,
+            "loop_video_to_duration",
+            fake_loop_video_to_duration,
+        )
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_video_and_audio_to_mp4",
+            fake_mux_video_and_audio_to_mp4,
         )
         monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
@@ -245,7 +256,6 @@ class TestGenerateEndpoint:
             "audio_body_mode": "text",
             "audio_body_prompt": "anima dreamscape over ocean",
             "image_prompt": "anima dreamscape over ocean",
-            "mux_image_bytes": PNG_HEADER,
             "mux_audio_bytes": WAV_HEADER,
             "mux_target_width": 1024,
             "mux_target_height": 1024,
@@ -271,8 +281,13 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", lambda src, dst: dst.write_bytes(src.read_bytes()))
         monkeypatch.setattr(
             video_service.media_repository,
-            "mux_image_and_audio_to_mp4",
-            lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
+            "loop_video_to_duration",
+            lambda video_path, target_duration, output_path: output_path.write_bytes(video_path.read_bytes()),
+        )
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_video_and_audio_to_mp4",
+            lambda _video, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
         )
 
         def fake_probe_media(path: Path) -> dict[str, object]:
