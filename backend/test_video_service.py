@@ -1,17 +1,27 @@
 from __future__ import annotations
 
+import io
 import time
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from models.errors import VideoGenerationFailedError, VideoGenerationTimeoutError
 from models.schemas import GenerateRequestBody
 from services import video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
-PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
+
+
+def _make_png_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), color=(1, 2, 3)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+PNG_HEADER = _make_png_bytes()
 
 
 def _patch_trim_trailing_silence_to_copy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,12 +35,35 @@ def _patch_trim_trailing_silence_to_copy(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
 
+def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub out the Wan I2V step so existing tests are not affected."""
+
+    def fake_load_video_pipeline() -> object:
+        return object()
+
+    def fake_run_video_inference(
+        pipeline: object,
+        *,
+        input_image: object,
+        target_width: int,
+        target_height: int,
+        temp_dir: Path,
+    ) -> Path:
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    monkeypatch.setattr(video_service.video_repository, "load_video_pipeline", fake_load_video_pipeline)
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+
+
 def test_generate_video_orchestrates_audio_image_and_muxing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     temp_dir = tmp_path.joinpath("video-run")
     calls: list[str] = []
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
 
     monkeypatch.setattr(video_service.tempfile, "mkdtemp", lambda prefix: str(temp_dir))
 
@@ -103,6 +136,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
 
 def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
@@ -156,6 +190,7 @@ def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytes
 
 def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
     monkeypatch.setattr(
@@ -183,6 +218,7 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
 
 def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
     monkeypatch.setattr(
@@ -229,6 +265,7 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
 ) -> None:
     temp_dir = tmp_path.joinpath("video-run-failure")
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     monkeypatch.setattr(video_service.tempfile, "mkdtemp", lambda prefix: str(temp_dir))
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
@@ -263,6 +300,7 @@ def test_generate_video_completes_for_platform_presets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
 
@@ -322,6 +360,7 @@ def test_generate_video_rejects_mismatched_final_frame_dimensions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
     monkeypatch.setattr(

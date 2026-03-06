@@ -20,7 +20,7 @@ from models.errors import (
     VideoGenerationTimeoutError,
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
-from repositories import media_repository
+from repositories import media_repository, video_repository
 from services import audio_service, image_service
 
 T = TypeVar("T")
@@ -115,6 +115,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     audio_path = temp_dir.joinpath("audio.wav")
     trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
+    wan_clip_path = temp_dir.joinpath("wan_clip.mp4")
     output_path = temp_dir.joinpath("output.mp4")
 
     def remaining_seconds() -> float:
@@ -170,6 +171,27 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             image_path.stat().st_size,
         )
 
+        logger.info("Video pipeline: generating Wan I2V animated clip")
+        from PIL import Image as _PILImage
+
+        _pil_image = _PILImage.open(image_path)
+        wan_clip_path = _run_with_timeout(
+            lambda: video_repository.run_video_inference(
+                video_repository.load_video_pipeline(),
+                input_image=_pil_image,
+                target_width=body.image_target_width,
+                target_height=body.image_target_height,
+                temp_dir=temp_dir,
+            ),
+            timeout_seconds=remaining_seconds(),
+            timeout_message="Video generation timed out while generating Wan I2V clip",
+        )
+        logger.info(
+            "Video pipeline: Wan I2V clip saved to %s (%d bytes)",
+            wan_clip_path,
+            wan_clip_path.stat().st_size,
+        )
+
         logger.info(
             "Video pipeline: muxing image %s and audio %s into MP4 at %s",
             image_path,
@@ -217,7 +239,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     except Exception as exc:
         raise VideoGenerationFailedError(f"Video generation failed: {exc}") from exc
     finally:
-        for file_path in (audio_path, trimmed_audio_path, image_path, output_path):
+        for file_path in (audio_path, trimmed_audio_path, image_path, wan_clip_path, output_path):
             try:
                 file_path.unlink(missing_ok=True)
             except OSError:

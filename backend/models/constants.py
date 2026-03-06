@@ -48,3 +48,14 @@ REAL_ESRGAN_SCALE = 4
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
 VIDEO_GENERATION_TIMEOUT_SECONDS = 360.0
 MP4_DURATION_TOLERANCE_SECONDS = 0.2
+
+# Wan 2.2 Image-to-Video pipeline
+WAN_VIDEO_MODEL_ID = "Wan-AI/Wan2.2-I2V-A14B"
+WAN_VIDEO_CLIP_DURATION_SECONDS = 3
+WAN_VIDEO_NUM_INFERENCE_STEPS = 40
+# Supported resolutions for Wan I2V, keyed by aspect ratio label
+WAN_VIDEO_RESOLUTIONS: dict[str, tuple[int, int]] = {
+    "16:9": (832, 480),
+    "9:16": (480, 832),
+    "1:1": (720, 720),
+}
