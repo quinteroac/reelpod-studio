@@ -21,14 +21,6 @@ from models.constants import (
     IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
     IMAGE_VAE_MODEL_ID,
     IMAGE_VAE_ORIGIN_PATTERN,
-    WAN_PIPELINE_HIGH_NOISE_PATTERN,
-    WAN_PIPELINE_LOW_NOISE_PATTERN,
-    WAN_PIPELINE_T5_PATTERN,
-    WAN_PIPELINE_TOKENIZER_MODEL_ID,
-    WAN_PIPELINE_TOKENIZER_ORIGIN,
-    WAN_PIPELINE_VAE_PATTERN,
-    WAN_PIPELINE_VRAM_HEADROOM_GB,
-    WAN_VIDEO_MODEL_ID,
 )
 
 
@@ -59,16 +51,19 @@ def load_image_pipeline() -> Any:
         ModelConfig(
             model_id=IMAGE_DIFFUSION_MODEL_ID,
             origin_file_pattern=IMAGE_DIFFUSION_ORIGIN_PATTERN,
+            skip_download=True,
             **vram_config,
         ),
         ModelConfig(
             model_id=IMAGE_TEXT_ENCODER_MODEL_ID,
             origin_file_pattern=IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
+            skip_download=True,
             **vram_config,
         ),
         ModelConfig(
             model_id=IMAGE_VAE_MODEL_ID,
             origin_file_pattern=IMAGE_VAE_ORIGIN_PATTERN,
+            skip_download=True,
             **vram_config,
         ),
     ]
@@ -81,10 +76,12 @@ def load_image_pipeline() -> Any:
         tokenizer_config=ModelConfig(
             model_id=IMAGE_QWEN_TOKENIZER_ID,
             origin_file_pattern=IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
+            skip_download=True,
         ),
         tokenizer_t5xxl_config=ModelConfig(
             model_id=IMAGE_SD35_TOKENIZER_ID,
             origin_file_pattern=IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN,
+            skip_download=True,
         ),
         vram_limit=vram_limit,
     )
@@ -261,83 +258,3 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
         pass
     # #endregion
     return out_pil
-
-
-def load_wan_pipeline() -> Any:
-    try:
-        import torch
-    except ImportError as exc:
-        raise ImportError(
-            "PyTorch is required for Wan video generation. Install it with: uv add torch torchvision"
-        ) from exc
-
-    from diffsynth.pipelines.wan_video import ModelConfig, WanVideoPipeline
-
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required to run the Wan video pipeline.")
-
-    vram_config = {
-        "offload_dtype": "disk",
-        "offload_device": "disk",
-        "onload_dtype": torch.bfloat16,
-        "onload_device": "cpu",
-        "preparing_dtype": torch.bfloat16,
-        "preparing_device": "cuda",
-        "computation_dtype": torch.bfloat16,
-        "computation_device": "cuda",
-    }
-    model_configs = [
-        ModelConfig(
-            model_id=WAN_VIDEO_MODEL_ID,
-            origin_file_pattern=WAN_PIPELINE_HIGH_NOISE_PATTERN,
-            **vram_config,
-        ),
-        ModelConfig(
-            model_id=WAN_VIDEO_MODEL_ID,
-            origin_file_pattern=WAN_PIPELINE_LOW_NOISE_PATTERN,
-            **vram_config,
-        ),
-        ModelConfig(
-            model_id=WAN_VIDEO_MODEL_ID,
-            origin_file_pattern=WAN_PIPELINE_T5_PATTERN,
-            **vram_config,
-        ),
-        ModelConfig(
-            model_id=WAN_VIDEO_MODEL_ID,
-            origin_file_pattern=WAN_PIPELINE_VAE_PATTERN,
-            **vram_config,
-        ),
-    ]
-    _free, _total = torch.cuda.mem_get_info()
-    vram_limit = _total / (1024**3) - WAN_PIPELINE_VRAM_HEADROOM_GB
-    pipeline = WanVideoPipeline.from_pretrained(
-        torch_dtype=torch.bfloat16,
-        device="cuda",
-        model_configs=model_configs,
-        tokenizer_config=ModelConfig(
-            model_id=WAN_PIPELINE_TOKENIZER_MODEL_ID,
-            origin_file_pattern=WAN_PIPELINE_TOKENIZER_ORIGIN,
-        ),
-        vram_limit=vram_limit,
-    )
-    return pipeline
-
-
-def run_wan_inference(
-    pipeline: Any,
-    *,
-    image: Any,
-    prompt: str,
-    seed: int,
-    width: int,
-    height: int,
-) -> list[Any]:
-    frames: list[Any] = pipeline(
-        prompt=prompt,
-        input_image=image,
-        seed=seed,
-        num_inference_steps=20,
-        tiled=True,
-        switch_DiT_boundary=0.9,
-    )
-    return frames

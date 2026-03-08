@@ -42,6 +42,7 @@ def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
         pipeline: object,
         *,
         input_image: object,
+        prompt: str,
         target_width: int,
         target_height: int,
         temp_dir: Path,

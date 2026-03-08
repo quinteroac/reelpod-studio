@@ -38,13 +38,13 @@ def _patch_trim_trailing_silence_to_copy(monkeypatch: pytest.MonkeyPatch) -> Non
 def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub out the Wan I2V step so existing tests are not affected."""
 
-    def fake_load_video_pipeline() -> object:
-        return object()
+    fake_pipeline = object()
 
     def fake_run_video_inference(
         pipeline: object,
         *,
         input_image: object,
+        prompt: str,
         target_width: int,
         target_height: int,
         temp_dir: Path,
@@ -53,7 +53,7 @@ def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
         clip_path.write_bytes(MP4_HEADER)
         return clip_path
 
-    monkeypatch.setattr(video_service.video_repository, "load_video_pipeline", fake_load_video_pipeline)
+    monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
     monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
 
 
@@ -80,8 +80,8 @@ def _patch_loop_and_mux_noop(
         audio_path: Path,
         output_path: Path,
         *,
-        target_width: int,
-        target_height: int,
+        target_width: int | None = None,
+        target_height: int | None = None,
     ) -> None:
         if calls is not None:
             calls.append("mux")
@@ -135,12 +135,10 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
         audio_path: Path,
         output_path: Path,
         *,
-        target_width: int,
-        target_height: int,
+        target_width: int | None = None,
+        target_height: int | None = None,
     ) -> None:
         assert audio_path.read_bytes() == WAV_HEADER
-        assert target_width == 1024
-        assert target_height == 1024
         calls.append("mux")
         output_path.write_bytes(MP4_HEADER)
 
@@ -298,6 +296,7 @@ def test_generate_video_times_out_when_audio_step_exceeds_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
     monkeypatch.setattr(video_service, "VIDEO_GENERATION_TIMEOUT_SECONDS", 0.05)
 
     def slow_audio(_body):  # noqa: ANN001
@@ -339,11 +338,9 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
         _audio_path: Path,
         _output_path: Path,
         *,
-        target_width: int,
-        target_height: int,
+        target_width: int | None = None,
+        target_height: int | None = None,
     ) -> None:
-        assert target_width == 1024
-        assert target_height == 1024
         raise RuntimeError("mux failed")
 
     monkeypatch.setattr(video_service.media_repository, "mux_video_and_audio_to_mp4", fail_mux)
@@ -375,8 +372,8 @@ def test_generate_video_completes_for_platform_presets(
         _audio_path: Path,
         output_path: Path,
         *,
-        target_width: int,
-        target_height: int,
+        target_width: int | None = None,
+        target_height: int | None = None,
     ) -> None:
         seen_mux["target_width"] = target_width
         seen_mux["target_height"] = target_height
@@ -519,8 +516,8 @@ def test_us003_ac02_frame_dimensions_match_target(
         audio_path: Path,
         output_path: Path,
         *,
-        target_width: int,
-        target_height: int,
+        target_width: int | None = None,
+        target_height: int | None = None,
     ) -> None:
         mux_calls.append({"target_width": target_width, "target_height": target_height})
         output_path.write_bytes(MP4_HEADER)

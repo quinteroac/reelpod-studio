@@ -98,24 +98,28 @@ def mux_video_and_audio_to_mp4(
     audio_path: Path,
     output_path: Path,
     *,
-    target_width: int,
-    target_height: int,
+    target_width: int | None = None,
+    target_height: int | None = None,
 ) -> None:
     ffmpeg_module = _load_ffmpeg_module()
     video_input = ffmpeg_module.input(str(video_path))
     audio_input = ffmpeg_module.input(str(audio_path))
+    output_kwargs: dict[str, Any] = {
+        "vcodec": "libx264",
+        "acodec": "aac",
+        "pix_fmt": "yuv420p",
+        "shortest": None,
+        "movflags": "+faststart",
+    }
+    if target_width is not None and target_height is not None:
+        output_kwargs["vf"] = _build_letterbox_filter(target_width, target_height)
     try:
         (
             ffmpeg_module.output(
                 video_input,
                 audio_input,
                 str(output_path),
-                vcodec="libx264",
-                acodec="aac",
-                pix_fmt="yuv420p",
-                vf=_build_letterbox_filter(target_width, target_height),
-                shortest=None,
-                movflags="+faststart",
+                **output_kwargs,
             )
             .overwrite_output()
             .run(capture_stdout=True, capture_stderr=True)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 MIN_TEMPO = 60
 MAX_TEMPO = 120
 MIN_DURATION_SECONDS = 40
@@ -46,25 +48,36 @@ REAL_ESRGAN_ANIME_WEIGHTS_URL = (
 REAL_ESRGAN_SCALE = 4
 
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
-VIDEO_GENERATION_TIMEOUT_SECONDS = 360.0
+VIDEO_GENERATION_TIMEOUT_SECONDS = 1800.0  # 30 min — Wan I2V with 8 steps can take 10+ minutes
 MP4_DURATION_TOLERANCE_SECONDS = 0.2
 
-# Wan 2.2 Image-to-Video pipeline
-WAN_VIDEO_MODEL_ID = "Wan-AI/Wan2.2-I2V-A14B"
-WAN_VIDEO_CLIP_DURATION_SECONDS = 3
-WAN_VIDEO_NUM_INFERENCE_STEPS = 40
-# Supported resolutions for Wan I2V, keyed by aspect ratio label
+# Wan 2.2 Image-to-Video via comfy-diffusion (ComfyUI inference engine)
+# https://github.com/quinteroac/comfy-diffusion
+# Example: https://github.com/quinteroac/comfy-diffusion/blob/master/examples/wan_video_example.py
+WAN_VIDEO_CLIP_DURATION_SECONDS = 1
+WAN_VIDEO_FPS = 16.0
+# Supported resolutions for Wan I2V (multiples of 8; length must be (4*n)+1 frames)
 WAN_VIDEO_RESOLUTIONS: dict[str, tuple[int, int]] = {
     "16:9": (832, 480),
     "9:16": (480, 832),
     "1:1": (720, 720),
 }
 
-# Wan 2.2 I2V pipeline loader (low-VRAM disk-offload pattern)
-WAN_PIPELINE_HIGH_NOISE_PATTERN = "high_noise_model/diffusion_pytorch_model*.safetensors"
-WAN_PIPELINE_LOW_NOISE_PATTERN = "low_noise_model/diffusion_pytorch_model*.safetensors"
-WAN_PIPELINE_T5_PATTERN = "models_t5_umt5-xxl-enc-bf16.pth"
-WAN_PIPELINE_VAE_PATTERN = "Wan2.1_VAE.pth"
-WAN_PIPELINE_TOKENIZER_MODEL_ID = "Wan-AI/Wan2.1-T2V-1.3B"
-WAN_PIPELINE_TOKENIZER_ORIGIN = "google/umt5-xxl/"
-WAN_PIPELINE_VRAM_HEADROOM_GB = 2
+# Comfy-diffusion ModelManager root dir (must contain diffusion_models/, text_encoders/, vae/).
+# Set WAN_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR to your models path.
+WAN_COMFY_MODELS_DIR = os.environ.get("WAN_COMFY_MODELS_DIR", "") or os.environ.get("PYCOMFY_MODELS_DIR", "")
+WAN_COMFY_UNET_HIGH = os.environ.get("WAN_COMFY_UNET_HIGH", "") or os.environ.get("PYCOMFY_WAN_UNET_HIGH", "")
+WAN_COMFY_UNET_LOW = os.environ.get("WAN_COMFY_UNET_LOW", "") or os.environ.get("PYCOMFY_WAN_UNET_LOW", "")
+WAN_COMFY_CLIP = os.environ.get("WAN_COMFY_CLIP", "") or os.environ.get("PYCOMFY_WAN_CLIP", "")
+WAN_COMFY_VAE = os.environ.get("WAN_COMFY_VAE", "") or os.environ.get("PYCOMFY_WAN_VAE", "")
+
+# Two-stage sampling: high-noise steps then low-noise (Wan 2.2)
+WAN_COMFY_HIGH_STEPS = 10
+WAN_COMFY_STEPS = 20
+WAN_COMFY_CFG = 7.0
+WAN_COMFY_SAMPLER = "euler"
+WAN_COMFY_SCHEDULER = "normal"
+WAN_COMFY_SAMPLING_SHIFT = 5.0
+WAN_COMFY_NEGATIVE_PROMPT = (
+    "blurry, low quality, distorted, static"
+)

@@ -6,13 +6,13 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "accelerate>=1.12.0",
-    "diffsynth",
+    "av>=14.2.0",
+    "comfy-diffusion[comfyui] @ git+https://github.com/quinteroac/comfy-diffusion.git",
     "ffmpeg-python>=0.2.0",
     "fastapi==0.116.1",
     "python-dotenv==1.1.1",
     "realesrgan>=0.3.0",
     "torch>=2.10.0",
-    "torchcodec>=0.10.0",
     "torchvision>=0.25.0",
     "uvicorn==0.35.0",
 ]

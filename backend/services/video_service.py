@@ -36,6 +36,20 @@ if not logger.handlers:
     logger.addHandler(_handler)
 logger.setLevel(logging.INFO)
 
+wan_pipeline: Any | None = None
+wan_pipeline_load_error: str | None = None
+
+
+def startup() -> None:
+    global wan_pipeline, wan_pipeline_load_error
+    try:
+        wan_pipeline = video_repository.load_video_pipeline()
+        wan_pipeline_load_error = None
+        logger.info("Video generation model loading completed")
+    except Exception as exc:  # pragma: no cover - startup fallback safety
+        wan_pipeline = None
+        wan_pipeline_load_error = str(exc)
+
 
 def build_image_prompt(body: GenerateRequestBody) -> str:
     if body.prompt is not None:
@@ -173,13 +187,20 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         )
 
         logger.info("Video pipeline: generating Wan I2V animated clip")
+        if wan_pipeline is None:
+            reason = wan_pipeline_load_error or "model unavailable"
+            raise VideoGenerationFailedError(f"Video generation failed: {reason}")
+
         from PIL import Image as _PILImage
 
         _pil_image = _PILImage.open(image_path)
+        _video_prompt = build_image_prompt(body)
+        _wan_pipeline = wan_pipeline
         wan_clip_path = _run_with_timeout(
             lambda: video_repository.run_video_inference(
-                video_repository.load_video_pipeline(),
+                _wan_pipeline,
                 input_image=_pil_image,
+                prompt=_video_prompt,
                 target_width=body.image_target_width,
                 target_height=body.image_target_height,
                 temp_dir=temp_dir,
@@ -218,7 +239,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         )
 
         logger.info(
-            "Video pipeline: muxing looped clip %s and audio %s into MP4 at %s",
+            "Video pipeline: muxing looped clip %s and audio %s into MP4 at %s (no scaling, native Wan resolution)",
             looped_clip_path,
             audio_path,
             output_path,
@@ -238,9 +259,9 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         mp4_probe_data = media_repository.probe_media(output_path)
         _validate_mp4_streams(mp4_probe_data)
         actual_width, actual_height = _parse_video_dimensions(mp4_probe_data)
-        if (actual_width, actual_height) != (body.image_target_width, body.image_target_height):
+        if actual_width != body.image_target_width or actual_height != body.image_target_height:
             raise VideoGenerationFailedError(
-                "Muxed MP4 frame dimensions do not match requested target resolution"
+                "Muxed MP4 frame dimensions do not match target"
             )
 
         mp4_duration = _parse_duration_seconds(mp4_probe_data)
