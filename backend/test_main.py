@@ -176,6 +176,13 @@ class TestGenerateEndpoint:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_wan_i2v_noop(monkeypatch)
+        monkeypatch.setattr(
+            image_repository,
+            "load_image_pipeline",
+            lambda: image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None),
+        )
+        monkeypatch.setattr(video_service, "wan_pipeline", object())
+        monkeypatch.setattr(video_service, "wan_pipeline_load_error", None)
         seen: dict[str, object] = {}
 
         def fake_generate_audio_for_request(body):  # noqa: ANN001
@@ -266,6 +273,13 @@ class TestGenerateEndpoint:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_wan_i2v_noop(monkeypatch)
+        monkeypatch.setattr(
+            image_repository,
+            "load_image_pipeline",
+            lambda: image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None),
+        )
+        monkeypatch.setattr(video_service, "wan_pipeline", object())
+        monkeypatch.setattr(video_service, "wan_pipeline_load_error", None)
         monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
         monkeypatch.setattr(
             image_repository,
@@ -434,30 +448,29 @@ class TestGenerateImageEndpoint:
     ) -> None:
         seen_calls: list[dict[str, object]] = []
 
-        class Pipeline:
-            def __call__(
-                self,
-                prompt: str,
-                *,
-                seed: int,
-                num_inference_steps: int,
-                negative_prompt: str | None = None,
-                width: int | None = None,
-                height: int | None = None,
-            ) -> FakeImageResult:
-                seen_calls.append(
-                    {
-                        "prompt": prompt,
-                        "seed": seed,
-                        "num_inference_steps": num_inference_steps,
-                        "negative_prompt": negative_prompt,
-                        "width": width,
-                        "height": height,
-                    }
-                )
-                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(80, 120, 200))])
+        def fake_run_image_inference(
+            pipeline: object,
+            *,
+            prompt: str,
+            seed: int,
+            negative_prompt: str | None = None,
+            width: int | None = None,
+            height: int | None = None,
+        ) -> object:
+            seen_calls.append(
+                {
+                    "prompt": prompt,
+                    "seed": seed,
+                    "negative_prompt": negative_prompt,
+                    "width": width,
+                    "height": height,
+                }
+            )
+            return Image.new("RGB", (1024, 1024), color=(80, 120, 200))
 
-        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        fake_pipeline = image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None)
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: fake_pipeline)
+        monkeypatch.setattr(image_repository, "run_image_inference", fake_run_image_inference)
         monkeypatch.setattr(image_repository, "upscale_image_with_realesrgan_anime", lambda image: image)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post("/api/generate-image", json={"prompt": "misty mountains"})
@@ -472,7 +485,6 @@ class TestGenerateImageEndpoint:
             {
                 "prompt": "score_9, score_8, best quality, highres, misty mountains",
                 "seed": 0,
-                "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
                 "negative_prompt": image_service.DEFAULT_NEGATIVE_PROMPT,
                 "width": 1024,
                 "height": 1024,
@@ -480,7 +492,6 @@ class TestGenerateImageEndpoint:
             {
                 "prompt": "score_9, score_8, best quality, highres, city sunset",
                 "seed": 0,
-                "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
                 "negative_prompt": image_service.DEFAULT_NEGATIVE_PROMPT,
                 "width": 1024,
                 "height": 1024,
@@ -490,11 +501,13 @@ class TestGenerateImageEndpoint:
     def test_generate_image_uses_requested_target_resolution(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        class Pipeline:
-            def __call__(self, prompt: str, **kwargs: object) -> FakeImageResult:
-                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(255, 255, 255))])
-
-        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        fake_pipeline = image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None)
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: fake_pipeline)
+        monkeypatch.setattr(
+            image_repository,
+            "run_image_inference",
+            lambda pipeline, **kwargs: Image.new("RGB", (720, 1280), color=(255, 255, 255)),
+        )
         monkeypatch.setattr(image_repository, "upscale_image_with_realesrgan_anime", lambda image: image)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
@@ -511,13 +524,27 @@ class TestGenerateImageEndpoint:
     ) -> None:
         seen: dict[str, object] = {}
 
-        class Pipeline:
-            def __call__(self, prompt: str, **kwargs: object) -> FakeImageResult:
-                seen["prompt"] = prompt
-                seen["kwargs"] = kwargs
-                return FakeImageResult([Image.new("RGB", (1024, 1024), color=(10, 10, 10))])
+        def fake_run_image_inference(
+            pipeline: object,
+            *,
+            prompt: str,
+            seed: int,
+            negative_prompt: str | None = None,
+            width: int | None = None,
+            height: int | None = None,
+        ) -> object:
+            seen["prompt"] = prompt
+            seen["kwargs"] = {
+                "seed": seed,
+                "negative_prompt": negative_prompt,
+                "width": width,
+                "height": height,
+            }
+            return Image.new("RGB", (1024, 1024), color=(10, 10, 10))
 
-        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: Pipeline())
+        fake_pipeline = image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None)
+        monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: fake_pipeline)
+        monkeypatch.setattr(image_repository, "run_image_inference", fake_run_image_inference)
         monkeypatch.setattr(image_repository, "upscale_image_with_realesrgan_anime", lambda image: image)
         with TestClient(app=main.app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
@@ -534,7 +561,6 @@ class TestGenerateImageEndpoint:
             "prompt": "score_9, score_8, best quality, highres, portrait of a cat",
             "kwargs": {
                 "seed": 0,
-                "num_inference_steps": constants.IMAGE_NUM_INFERENCE_STEPS,
                 "negative_prompt": f"{image_service.DEFAULT_NEGATIVE_PROMPT}, blurry, distorted",
                 "width": 1024,
                 "height": 1024,

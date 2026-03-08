@@ -2,29 +2,84 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from models.constants import (
-    IMAGE_DIFFUSION_MODEL_ID,
-    IMAGE_DIFFUSION_ORIGIN_PATTERN,
+    ANIMA_COMFY_CFG,
+    ANIMA_COMFY_CLIP,
+    ANIMA_COMFY_CLIP_TYPE,
+    ANIMA_COMFY_MODELS_DIR,
+    ANIMA_COMFY_SAMPLER,
+    ANIMA_COMFY_SCHEDULER,
+    ANIMA_COMFY_STEPS,
+    ANIMA_COMFY_UNET,
+    ANIMA_COMFY_VAE,
     IMAGE_NUM_INFERENCE_STEPS,
     REAL_ESRGAN_ANIME_WEIGHTS_FILENAME,
     REAL_ESRGAN_ANIME_WEIGHTS_URL,
     REAL_ESRGAN_SCALE,
-    IMAGE_QWEN_TOKENIZER_ID,
-    IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
-    IMAGE_SD35_TOKENIZER_ID,
-    IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN,
-    IMAGE_TEXT_ENCODER_MODEL_ID,
-    IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
-    IMAGE_VAE_MODEL_ID,
-    IMAGE_VAE_ORIGIN_PATTERN,
 )
 
 
-def load_image_pipeline() -> Any:
+class AnimaComfyPipeline(NamedTuple):
+    """Anima image pipeline: UNet + CLIP + VAE loaded via comfy-diffusion ModelManager."""
+
+    model: Any
+    clip: Any
+    vae: Any
+
+
+def _ensure_comfyui_vendor_on_path() -> None:
+    """Prepend our vendor ComfyUI to sys.path so comfy-diffusion finds it (PyPI wheel has no vendor)."""
+    backend_dir = Path(__file__).resolve().parents[1]
+    comfyui_dir = backend_dir / "vendor" / "comfy-diffusion" / "vendor" / "ComfyUI"
+    if comfyui_dir.is_dir() and (comfyui_dir / "comfyui_version.py").exists():
+        path_str = str(comfyui_dir)
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
+
+
+def _get_anima_models_dir() -> Path:
+    if not ANIMA_COMFY_MODELS_DIR or not ANIMA_COMFY_MODELS_DIR.strip():
+        raise RuntimeError(
+            "ANIMA_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR must be set to the comfy-diffusion models root "
+            "(directory containing diffusion_models/, text_encoders/, vae/)"
+        )
+    path = Path(ANIMA_COMFY_MODELS_DIR.strip())
+    if not path.is_dir():
+        raise RuntimeError(f"ANIMA_COMFY_MODELS_DIR is not an existing directory: {path}")
+    return path
+
+
+def _round_to_multiple_of_8(value: int) -> int:
+    """Latent dimensions must be multiples of 8."""
+    return max(8, (value + 4) // 8 * 8)
+
+
+def _empty_latent(width: int, height: int, batch_size: int = 1) -> dict[str, Any]:
+    """Build empty LATENT dict for txt2img (ComfyUI contract)."""
+    _ensure_comfyui_vendor_on_path()
+    from comfy_diffusion._runtime import ensure_comfyui_on_path
+
+    ensure_comfyui_on_path()
+    import torch
+    import comfy.model_management
+
+    device = comfy.model_management.intermediate_device()
+    latent = torch.zeros(
+        [batch_size, 4, height // 8, width // 8],
+        device=device,
+    )
+    return {"samples": latent, "downscale_ratio_spacial": 8}
+
+
+def load_image_pipeline() -> AnimaComfyPipeline:
+    """Load Anima UNet, CLIP, VAE via comfy-diffusion ModelManager (separate components)."""
+    _ensure_comfyui_vendor_on_path()
+
     try:
         import torch
     except ImportError as exc:
@@ -32,68 +87,40 @@ def load_image_pipeline() -> Any:
             "PyTorch is required for image generation. Install it with: uv add torch torchvision"
         ) from exc
 
-    from diffsynth.pipelines.anima_image import AnimaImagePipeline, ModelConfig
+    from comfy_diffusion import check_runtime
+    from comfy_diffusion.models import ModelManager
+
+    runtime = check_runtime()
+    if runtime.get("error"):
+        err = runtime["error"]
+        comfyui_dir = Path(__file__).resolve().parents[1] / "vendor" / "comfy-diffusion" / "vendor" / "ComfyUI"
+        if "comfyui_version" in str(err) and not (comfyui_dir / "comfyui_version.py").exists():
+            raise RuntimeError(
+                f"comfy-diffusion runtime check failed: {err}. "
+                "Install ComfyUI vendor with: bash backend/scripts/setup-comfy-diffusion.sh"
+            )
+        raise RuntimeError(f"comfy-diffusion runtime check failed: {err}")
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required to run the Anima image pipeline.")
 
-    vram_config = {
-        "offload_dtype": "disk",
-        "offload_device": "disk",
-        "onload_dtype": "disk",
-        "onload_device": "disk",
-        "preparing_dtype": torch.bfloat16,
-        "preparing_device": "cuda",
-        "computation_dtype": torch.bfloat16,
-        "computation_device": "cuda",
-    }
-    model_configs = [
-        ModelConfig(
-            model_id=IMAGE_DIFFUSION_MODEL_ID,
-            origin_file_pattern=IMAGE_DIFFUSION_ORIGIN_PATTERN,
-            skip_download=True,
-            **vram_config,
-        ),
-        ModelConfig(
-            model_id=IMAGE_TEXT_ENCODER_MODEL_ID,
-            origin_file_pattern=IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
-            skip_download=True,
-            **vram_config,
-        ),
-        ModelConfig(
-            model_id=IMAGE_VAE_MODEL_ID,
-            origin_file_pattern=IMAGE_VAE_ORIGIN_PATTERN,
-            skip_download=True,
-            **vram_config,
-        ),
-    ]
-    _free, _total = torch.cuda.mem_get_info()
-    vram_limit = _total / (1024**3) - 0.5
-    pipeline = AnimaImagePipeline.from_pretrained(
-        torch_dtype=torch.bfloat16,
-        device="cuda",
-        model_configs=model_configs,
-        tokenizer_config=ModelConfig(
-            model_id=IMAGE_QWEN_TOKENIZER_ID,
-            origin_file_pattern=IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
-            skip_download=True,
-        ),
-        tokenizer_t5xxl_config=ModelConfig(
-            model_id=IMAGE_SD35_TOKENIZER_ID,
-            origin_file_pattern=IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN,
-            skip_download=True,
-        ),
-        vram_limit=vram_limit,
-    )
-    return pipeline
+    models_dir = _get_anima_models_dir()
+    if not ANIMA_COMFY_UNET.strip():
+        raise RuntimeError("ANIMA_COMFY_UNET or PYCOMFY_ANIMA_UNET must be set")
+    if not ANIMA_COMFY_CLIP.strip():
+        raise RuntimeError("ANIMA_COMFY_CLIP or PYCOMFY_ANIMA_CLIP must be set")
+    if not ANIMA_COMFY_VAE.strip():
+        raise RuntimeError("ANIMA_COMFY_VAE or PYCOMFY_ANIMA_VAE must be set")
 
-
-def _round_to_multiple_of_16(value: int) -> int:
-    return max(16, (value + 8) // 16 * 16)
+    manager = ModelManager(str(models_dir))
+    model = manager.load_unet(ANIMA_COMFY_UNET.strip())
+    clip = manager.load_clip(ANIMA_COMFY_CLIP.strip(), clip_type=ANIMA_COMFY_CLIP_TYPE)
+    vae = manager.load_vae(ANIMA_COMFY_VAE.strip())
+    return AnimaComfyPipeline(model=model, clip=clip, vae=vae)
 
 
 def run_image_inference(
-    pipeline: Any,
+    pipeline: AnimaComfyPipeline,
     *,
     prompt: str,
     seed: int,
@@ -101,24 +128,35 @@ def run_image_inference(
     width: int | None = None,
     height: int | None = None,
 ) -> Any:
-    inference_kwargs: dict[str, Any] = {
-        "seed": seed,
-        "num_inference_steps": IMAGE_NUM_INFERENCE_STEPS,
-    }
-    if negative_prompt:
-        inference_kwargs["negative_prompt"] = negative_prompt
-    if width is not None:
-        inference_kwargs["width"] = _round_to_multiple_of_16(width)
-    if height is not None:
-        inference_kwargs["height"] = _round_to_multiple_of_16(height)
+    """Run txt2img with comfy-diffusion sample + vae_decode. Returns a single PIL Image."""
+    from comfy_diffusion import vae_decode
+    from comfy_diffusion.conditioning import encode_prompt
+    from comfy_diffusion.sampling import sample
 
-    result = pipeline(prompt, **inference_kwargs)
-    images = getattr(result, "images", None)
-    if isinstance(images, list) and images:
-        return images[0]
-    if hasattr(result, "size") and callable(getattr(result, "save", None)):
-        return result
-    raise RuntimeError("No generated image returned by model")
+    steps = IMAGE_NUM_INFERENCE_STEPS
+    w = _round_to_multiple_of_8(width) if width is not None else 1024
+    h = _round_to_multiple_of_8(height) if height is not None else 1024
+
+    positive = encode_prompt(pipeline.clip, prompt)
+    negative = encode_prompt(pipeline.clip, negative_prompt or "blurry, low quality, distorted")
+
+    latent = _empty_latent(w, h, batch_size=1)
+    denoised = sample(
+        pipeline.model,
+        positive,
+        negative,
+        latent,
+        steps=steps,
+        cfg=ANIMA_COMFY_CFG,
+        sampler_name=ANIMA_COMFY_SAMPLER,
+        scheduler=ANIMA_COMFY_SCHEDULER,
+        seed=seed,
+        denoise=1.0,
+    )
+    image = vae_decode(pipeline.vae, denoised)
+    if image is None:
+        raise RuntimeError("No generated image returned by model")
+    return image
 
 
 def _get_realesrgan_weights_dir() -> Path:

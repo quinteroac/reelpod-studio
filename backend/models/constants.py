@@ -20,24 +20,23 @@ QUERY_RESULT_PATH = "/query_result"
 POLL_INTERVAL_SECONDS = 0.5
 MAX_POLL_ATTEMPTS = 1200
 
-IMAGE_DIFFUSION_MODEL_ID = "circlestone-labs/Anima"
-IMAGE_TEXT_ENCODER_MODEL_ID = "circlestone-labs/Anima"
-IMAGE_VAE_MODEL_ID = "circlestone-labs/Anima"
-IMAGE_DIFFUSION_ORIGIN_PATTERN = "split_files/diffusion_models/anima-preview.safetensors"
-IMAGE_TEXT_ENCODER_ORIGIN_PATTERN = "split_files/text_encoders/qwen_3_06b_base.safetensors"
-IMAGE_VAE_ORIGIN_PATTERN = "split_files/vae/qwen_image_vae.safetensors"
-IMAGE_QWEN_TOKENIZER_ID = "Qwen/Qwen3-0.6B"
-IMAGE_SD35_TOKENIZER_ID = "stabilityai/stable-diffusion-3.5-large"
-IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN = "./"
-IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN = "tokenizer_3/"
+# Anima image generation via comfy-diffusion (separate UNet/CLIP/VAE)
+# https://github.com/quinteroac/comfy-diffusion/blob/master/examples/separate_components_example.py
+# Set ANIMA_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR; ANIMA_COMFY_UNET, ANIMA_COMFY_CLIP, ANIMA_COMFY_VAE to filenames.
+ANIMA_COMFY_MODELS_DIR = os.environ.get("ANIMA_COMFY_MODELS_DIR", "") or os.environ.get("PYCOMFY_MODELS_DIR", "")
+ANIMA_COMFY_UNET = os.environ.get("ANIMA_COMFY_UNET", "") or os.environ.get("PYCOMFY_ANIMA_UNET", "")
+ANIMA_COMFY_CLIP = os.environ.get("ANIMA_COMFY_CLIP", "") or os.environ.get("PYCOMFY_ANIMA_CLIP", "")
+ANIMA_COMFY_VAE = os.environ.get("ANIMA_COMFY_VAE", "") or os.environ.get("PYCOMFY_ANIMA_VAE", "")
+ANIMA_COMFY_CLIP_TYPE = os.environ.get("ANIMA_COMFY_CLIP_TYPE", "stable_diffusion")
+ANIMA_COMFY_STEPS = int(os.environ.get("ANIMA_COMFY_STEPS", "25"))
+ANIMA_COMFY_CFG = float(os.environ.get("ANIMA_COMFY_CFG", "7.0"))
+ANIMA_COMFY_SAMPLER = os.environ.get("ANIMA_COMFY_SAMPLER", "euler")
+ANIMA_COMFY_SCHEDULER = os.environ.get("ANIMA_COMFY_SCHEDULER", "normal")
+
 IMAGE_SIZE = 1024
-# Anima preview model ~1MP native resolutions (use these for inference, then pad to target)
-# Updated to align more closely with common social video aspect ratios:
-# - 16:9  -> 1280x720
-# - 9:16  -> 720x1280
-# - 1:1   -> 1024x1024
+# Anima ~1MP native resolutions (inference then pad to target)
 ANIMA_PREVIEW_SIZES = ((1280, 720), (720, 1280), (1024, 1024))
-IMAGE_NUM_INFERENCE_STEPS = 25
+IMAGE_NUM_INFERENCE_STEPS = ANIMA_COMFY_STEPS  # alias for backward compatibility
 IMAGE_ASPECT_TOLERANCE = 1e-6
 # Real-ESRGAN Anime 4× upscaler (PyTorch; weights auto-downloaded to backend/.realesrgan/)
 REAL_ESRGAN_MODEL_NAME = "realesrgan-x4plus-anime"
