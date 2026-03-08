@@ -7,6 +7,7 @@ Set WAN_COMFY_UNET_HIGH, WAN_COMFY_UNET_LOW, WAN_COMFY_CLIP, WAN_COMFY_VAE to mo
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -76,6 +77,16 @@ def pick_wan_resolution(target_width: int, target_height: int) -> tuple[int, int
     return best
 
 
+def _ensure_comfyui_vendor_on_path() -> None:
+    """Prepend our vendor ComfyUI to sys.path so comfy-diffusion finds it (PyPI wheel has no vendor)."""
+    backend_dir = Path(__file__).resolve().parents[1]
+    comfyui_dir = backend_dir / "vendor" / "comfy-diffusion" / "vendor" / "ComfyUI"
+    if comfyui_dir.is_dir() and (comfyui_dir / "comfyui_version.py").exists():
+        path_str = str(comfyui_dir)
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
+
+
 def load_video_pipeline() -> WanComfyPipeline:
     """Load Wan 2.2 I2V models via comfy-diffusion ModelManager.
 
@@ -83,6 +94,8 @@ def load_video_pipeline() -> WanComfyPipeline:
     (WAN_COMFY_UNET_HIGH, WAN_COMFY_UNET_LOW, WAN_COMFY_CLIP, WAN_COMFY_VAE).
     """
     global _cached_pipeline, _cached_load_error
+
+    _ensure_comfyui_vendor_on_path()
 
     try:
         import torch
@@ -96,7 +109,14 @@ def load_video_pipeline() -> WanComfyPipeline:
 
     runtime = check_runtime()
     if runtime.get("error"):
-        raise RuntimeError(f"comfy-diffusion runtime check failed: {runtime['error']}")
+        err = runtime["error"]
+        comfyui_dir = Path(__file__).resolve().parents[1] / "vendor" / "comfy-diffusion" / "vendor" / "ComfyUI"
+        if "comfyui_version" in str(err) and not (comfyui_dir / "comfyui_version.py").exists():
+            raise RuntimeError(
+                f"comfy-diffusion runtime check failed: {err}. "
+                "Install ComfyUI vendor with: bash backend/scripts/setup-comfy-diffusion.sh"
+            )
+        raise RuntimeError(f"comfy-diffusion runtime check failed: {err}")
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required to run the Wan video pipeline.")

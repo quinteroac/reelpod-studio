@@ -72,9 +72,9 @@ WAN_COMFY_CLIP = os.environ.get("WAN_COMFY_CLIP", "") or os.environ.get("PYCOMFY
 WAN_COMFY_VAE = os.environ.get("WAN_COMFY_VAE", "") or os.environ.get("PYCOMFY_WAN_VAE", "")
 
 # Two-stage sampling: high-noise steps then low-noise (Wan 2.2)
-WAN_COMFY_HIGH_STEPS = 10
-WAN_COMFY_STEPS = 20
-WAN_COMFY_CFG = 7.0
+WAN_COMFY_HIGH_STEPS = 2
+WAN_COMFY_STEPS = 4
+WAN_COMFY_CFG = 1.0
 WAN_COMFY_SAMPLER = "euler"
 WAN_COMFY_SCHEDULER = "normal"
 WAN_COMFY_SAMPLING_SHIFT = 5.0
