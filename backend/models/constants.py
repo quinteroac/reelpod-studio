@@ -54,7 +54,7 @@ MP4_DURATION_TOLERANCE_SECONDS = 0.2
 # Wan 2.2 Image-to-Video via comfy-diffusion (ComfyUI inference engine)
 # https://github.com/quinteroac/comfy-diffusion
 # Example: https://github.com/quinteroac/comfy-diffusion/blob/master/examples/wan_video_example.py
-WAN_VIDEO_CLIP_DURATION_SECONDS = 1
+WAN_VIDEO_CLIP_DURATION_SECONDS = 3
 WAN_VIDEO_FPS = 16.0
 # Supported resolutions for Wan I2V (multiples of 8; length must be (4*n)+1 frames)
 WAN_VIDEO_RESOLUTIONS: dict[str, tuple[int, int]] = {
