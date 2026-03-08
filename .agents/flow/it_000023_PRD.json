@@ -1,0 +1,135 @@
+{
+  "goals": [
+    "Replace the static image loop in the video pipeline with a Wan 2.2 animated clip.",
+    "Maintain all existing output quality guarantees (H.264 + AAC, correct resolution, duration within tolerance).",
+    "Reuse the DiffSynth Studio infrastructure already present in `backend/repositories/image_repository.py`."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Animate generated image with Wan 2.2",
+      "description": "As a creator, I want the generated video to show an animated scene so that the visual content is more engaging than a static freeze-frame.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "After the Anima image is generated, a 3-second video clip is produced by `WanVideoPipeline` (`diffsynth.pipelines.wan_video`) using `Wan-AI/Wan2.2-I2V-A14B` with the generated image as `input_image`."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Model weights are loaded via `WanVideoPipeline.from_pretrained` with `ModelConfig` entries (same pattern as `load_image_pipeline`); weights are auto-downloaded from ModelScope on first run."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The Wan inference input image is resized to a supported resolution that preserves the target aspect ratio (e.g. 832×480 for 16:9, 480×832 for 9:16, 720×720 for 1:1)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The output clip is saved as a temporary MP4 in the same temp directory used by the pipeline."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Loop animated clip to full audio duration",
+      "description": "As a creator, I want the animated clip to fill the entire audio duration so that the output video has no gaps or black frames.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A new function in `media_repository` loops a video file to a target duration using ffmpeg (`stream_loop=-1` + `-t <duration>` or equivalent), producing a looped MP4."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The looped clip duration is >= the audio duration (exact match within `MP4_DURATION_TOLERANCE_SECONDS`)."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Mux looped animated clip with audio — same validation as current",
+      "description": "As a creator, I want the final MP4 to pass the same quality checks as before so that nothing regresses.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The muxed output contains exactly one H.264 video stream and one AAC audio stream."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Frame dimensions of the output MP4 match `body.image_target_width` x `body.image_target_height` (ffmpeg letterbox applied to the Wan clip output, same as current)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "`abs(audio_duration - mp4_duration) <= MP4_DURATION_TOLERANCE_SECONDS`."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Existing `_validate_mp4_streams` and `_parse_video_dimensions` checks pass without modification."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Wan pipeline loader in image_repository",
+      "description": "As a developer, I want a `load_wan_pipeline` function following the same structure as `load_image_pipeline` so that the integration is consistent and testable.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "`load_wan_pipeline()` in `backend/repositories/image_repository.py` returns a `WanVideoPipeline` instance (imported from `diffsynth.pipelines.wan_video`) loaded with exactly the four `Wan-AI/Wan2.2-I2V-A14B` `ModelConfig` entries: `high_noise_model/diffusion_pytorch_model*.safetensors`, `low_noise_model/diffusion_pytorch_model*.safetensors`, `models_t5_umt5-xxl-enc-bf16.pth`, `Wan2.1_VAE.pth`; plus `tokenizer_config` pointing to `Wan-AI/Wan2.1-T2V-1.3B` / `google/umt5-xxl/`."
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "VRAM config uses the **low-VRAM disk-offload pattern** from `examples/wanvideo/model_inference_low_vram/Wan2.2-I2V-A14B.py`: `offload_dtype=\"disk\"`, `offload_device=\"disk\"`, `onload_dtype=torch.bfloat16`, `onload_device=\"cpu\"`, `preparing_dtype/device=bfloat16/cuda`, `computation_dtype/device=bfloat16/cuda`; `vram_limit = total_vram_gb - 2`."
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "`run_wan_inference(pipeline, *, image, prompt, seed, width, height) -> list[PIL.Image]` calls `pipe(prompt=..., input_image=image, seed=seed, num_inference_steps=20, tiled=True, switch_DiT_boundary=0.9)` and returns the video frames list."
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Add `load_wan_pipeline()` and `run_wan_inference()` to `backend/repositories/image_repository.py`. Both follow the **low-VRAM disk-offload pattern** from `examples/wanvideo/model_inference_low_vram/Wan2.2-I2V-A14B.py` (reference: `diffsynth.pipelines.wan_video.WanVideoPipeline`, `tiled=True`, `switch_DiT_boundary=0.9`, `fps=15`, `quality=5`)."
+    },
+    {
+      "id": "FR-2",
+      "description": "Add Wan 2.2 model ID and file-pattern constants to `backend/models/constants.py` (e.g. `WAN_I2V_MODEL_ID`, `WAN_I2V_HIGH_NOISE_PATTERN`, `WAN_I2V_LOW_NOISE_PATTERN`, `WAN_I2V_T5_PATTERN`, `WAN_I2V_VAE_PATTERN`, `WAN_I2V_TOKENIZER_MODEL_ID`, `WAN_I2V_TOKENIZER_PATTERN`, `WAN_CLIP_DURATION_SECONDS = 3`, `WAN_CLIP_FPS = 15`)."
+    },
+    {
+      "id": "FR-3",
+      "description": "Add `loop_video_to_duration(video_path, output_path, target_duration_seconds)` to `backend/repositories/media_repository.py`."
+    },
+    {
+      "id": "FR-4",
+      "description": "In `backend/services/video_service.py`, replace the `mux_image_and_audio_to_mp4` call with the sequence: `run_wan_inference` → save 3-sec clip → `loop_video_to_duration` → `mux_video_and_audio_to_mp4` (new or updated function that accepts a video input instead of a static image)."
+    },
+    {
+      "id": "FR-5",
+      "description": "Add `mux_video_and_audio_to_mp4` to `media_repository` (or update `mux_image_and_audio_to_mp4` signature) to accept a video file as the video input instead of a still image with `loop=1`."
+    },
+    {
+      "id": "FR-6",
+      "description": "All existing MP4 output validations (`_validate_mp4_streams`, `_parse_video_dimensions`, duration check) remain in place and must pass."
+    },
+    {
+      "id": "FR-7",
+      "description": "Update `VIDEO_GENERATION_TIMEOUT_SECONDS` in `constants.py` to `1800` (30 min) to accommodate Wan 2.2 inference time."
+    }
+  ]
+}

@@ -254,3 +254,4 @@ def test_upscale_image_with_realesrgan_anime_runs_real_upscale() -> None:
     assert out is not None
     assert out.size == (256, 256)
     assert out.mode == "RGB"
+

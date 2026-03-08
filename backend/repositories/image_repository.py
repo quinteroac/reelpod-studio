@@ -51,16 +51,19 @@ def load_image_pipeline() -> Any:
         ModelConfig(
             model_id=IMAGE_DIFFUSION_MODEL_ID,
             origin_file_pattern=IMAGE_DIFFUSION_ORIGIN_PATTERN,
+            skip_download=True,
             **vram_config,
         ),
         ModelConfig(
             model_id=IMAGE_TEXT_ENCODER_MODEL_ID,
             origin_file_pattern=IMAGE_TEXT_ENCODER_ORIGIN_PATTERN,
+            skip_download=True,
             **vram_config,
         ),
         ModelConfig(
             model_id=IMAGE_VAE_MODEL_ID,
             origin_file_pattern=IMAGE_VAE_ORIGIN_PATTERN,
+            skip_download=True,
             **vram_config,
         ),
     ]
@@ -73,10 +76,12 @@ def load_image_pipeline() -> Any:
         tokenizer_config=ModelConfig(
             model_id=IMAGE_QWEN_TOKENIZER_ID,
             origin_file_pattern=IMAGE_QWEN_TOKENIZER_ORIGIN_PATTERN,
+            skip_download=True,
         ),
         tokenizer_t5xxl_config=ModelConfig(
             model_id=IMAGE_SD35_TOKENIZER_ID,
             origin_file_pattern=IMAGE_SD35_TOKENIZER_ORIGIN_PATTERN,
+            skip_download=True,
         ),
         vram_limit=vram_limit,
     )

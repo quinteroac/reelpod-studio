@@ -20,7 +20,7 @@ from models.errors import (
     VideoGenerationTimeoutError,
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
-from repositories import media_repository
+from repositories import media_repository, video_repository
 from services import audio_service, image_service
 
 T = TypeVar("T")
@@ -35,6 +35,20 @@ if not logger.handlers:
     )
     logger.addHandler(_handler)
 logger.setLevel(logging.INFO)
+
+wan_pipeline: Any | None = None
+wan_pipeline_load_error: str | None = None
+
+
+def startup() -> None:
+    global wan_pipeline, wan_pipeline_load_error
+    try:
+        wan_pipeline = video_repository.load_video_pipeline()
+        wan_pipeline_load_error = None
+        logger.info("Video generation model loading completed")
+    except Exception as exc:  # pragma: no cover - startup fallback safety
+        wan_pipeline = None
+        wan_pipeline_load_error = str(exc)
 
 
 def build_image_prompt(body: GenerateRequestBody) -> str:
@@ -115,6 +129,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     audio_path = temp_dir.joinpath("audio.wav")
     trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
+    wan_clip_path = temp_dir.joinpath("wan_clip.mp4")
+    looped_clip_path = temp_dir.joinpath("looped_clip.mp4")
     output_path = temp_dir.joinpath("output.mp4")
 
     def remaining_seconds() -> float:
@@ -170,15 +186,67 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             image_path.stat().st_size,
         )
 
+        logger.info("Video pipeline: generating Wan I2V animated clip")
+        if wan_pipeline is None:
+            reason = wan_pipeline_load_error or "model unavailable"
+            raise VideoGenerationFailedError(f"Video generation failed: {reason}")
+
+        from PIL import Image as _PILImage
+
+        _pil_image = _PILImage.open(image_path)
+        _video_prompt = build_image_prompt(body)
+        _wan_pipeline = wan_pipeline
+        wan_clip_path = _run_with_timeout(
+            lambda: video_repository.run_video_inference(
+                _wan_pipeline,
+                input_image=_pil_image,
+                prompt=_video_prompt,
+                target_width=body.image_target_width,
+                target_height=body.image_target_height,
+                temp_dir=temp_dir,
+            ),
+            timeout_seconds=remaining_seconds(),
+            timeout_message="Video generation timed out while generating Wan I2V clip",
+        )
         logger.info(
-            "Video pipeline: muxing image %s and audio %s into MP4 at %s",
-            image_path,
+            "Video pipeline: Wan I2V clip saved to %s (%d bytes)",
+            wan_clip_path,
+            wan_clip_path.stat().st_size,
+        )
+
+        logger.info("Video pipeline: probing trimmed audio for duration")
+        source_audio_probe_data = media_repository.probe_media(audio_path)
+        source_audio_duration = _parse_duration_seconds(source_audio_probe_data)
+        logger.info("Video pipeline: audio duration = %.3fs", source_audio_duration)
+
+        logger.info(
+            "Video pipeline: looping Wan clip to %.3fs",
+            source_audio_duration,
+        )
+        _run_with_timeout(
+            lambda: media_repository.loop_video_to_duration(
+                wan_clip_path,
+                target_duration=source_audio_duration,
+                output_path=looped_clip_path,
+            ),
+            timeout_seconds=remaining_seconds(),
+            timeout_message="Video generation timed out while looping clip",
+        )
+        logger.info(
+            "Video pipeline: looped clip saved to %s (%d bytes)",
+            looped_clip_path,
+            looped_clip_path.stat().st_size,
+        )
+
+        logger.info(
+            "Video pipeline: muxing looped clip %s and audio %s into MP4 at %s (no scaling, native Wan resolution)",
+            looped_clip_path,
             audio_path,
             output_path,
         )
         _run_with_timeout(
-            lambda: media_repository.mux_image_and_audio_to_mp4(
-                image_path,
+            lambda: media_repository.mux_video_and_audio_to_mp4(
+                looped_clip_path,
                 audio_path,
                 output_path,
                 target_width=body.image_target_width,
@@ -191,13 +259,11 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         mp4_probe_data = media_repository.probe_media(output_path)
         _validate_mp4_streams(mp4_probe_data)
         actual_width, actual_height = _parse_video_dimensions(mp4_probe_data)
-        if (actual_width, actual_height) != (body.image_target_width, body.image_target_height):
+        if actual_width != body.image_target_width or actual_height != body.image_target_height:
             raise VideoGenerationFailedError(
-                "Muxed MP4 frame dimensions do not match requested target resolution"
+                "Muxed MP4 frame dimensions do not match target"
             )
 
-        source_audio_probe_data = media_repository.probe_media(audio_path)
-        source_audio_duration = _parse_duration_seconds(source_audio_probe_data)
         mp4_duration = _parse_duration_seconds(mp4_probe_data)
         if abs(source_audio_duration - mp4_duration) > MP4_DURATION_TOLERANCE_SECONDS:
             raise VideoGenerationFailedError("Muxed MP4 duration does not match generated audio")
@@ -217,7 +283,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     except Exception as exc:
         raise VideoGenerationFailedError(f"Video generation failed: {exc}") from exc
     finally:
-        for file_path in (audio_path, trimmed_audio_path, image_path, output_path):
+        for file_path in (audio_path, trimmed_audio_path, image_path, wan_clip_path, looped_clip_path, output_path):
             try:
                 file_path.unlink(missing_ok=True)
             except OSError:

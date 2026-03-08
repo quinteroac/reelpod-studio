@@ -22,12 +22,14 @@ export default defineConfig({
       '/api/generate-image': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        proxyTimeout: 300_000 // 5 min — SDXL inference can take 60–120+ seconds
+        proxyTimeout: 0, // no timeout — image generation can be slow
+        timeout: 0
       },
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        proxyTimeout: 300_000
+        proxyTimeout: 0, // no timeout — video generation with Wan I2V can take 10+ minutes
+        timeout: 0
       }
     }
   },

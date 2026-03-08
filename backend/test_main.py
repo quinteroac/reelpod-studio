@@ -22,8 +22,37 @@ from repositories import acestep_repository, image_repository
 from services import audio_service, image_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
-PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
+
+
+def _make_png_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), color=(1, 2, 3)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+PNG_HEADER = _make_png_bytes()
+
+
+def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_load_video_pipeline() -> object:
+        return object()
+
+    def fake_run_video_inference(
+        pipeline: object,
+        *,
+        input_image: object,
+        prompt: str,
+        target_width: int,
+        target_height: int,
+        temp_dir: Path,
+    ) -> Path:
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    monkeypatch.setattr(video_service.video_repository, "load_video_pipeline", fake_load_video_pipeline)
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
 
 
 class FakeImageResult:
@@ -146,6 +175,7 @@ class TestGenerateEndpoint:
     def test_generate_runs_video_pipeline_and_returns_muxed_mp4(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _patch_wan_i2v_noop(monkeypatch)
         seen: dict[str, object] = {}
 
         def fake_generate_audio_for_request(body):  # noqa: ANN001
@@ -160,8 +190,15 @@ class TestGenerateEndpoint:
         def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
             output_path.write_bytes(audio_path.read_bytes())
 
-        def fake_mux_image_and_audio_to_mp4(
-            image_path: Path,
+        def fake_loop_video_to_duration(
+            video_path: Path,
+            target_duration: float,
+            output_path: Path,
+        ) -> None:
+            output_path.write_bytes(video_path.read_bytes())
+
+        def fake_mux_video_and_audio_to_mp4(
+            video_path: Path,
             audio_path: Path,
             output_path: Path,
             *,
@@ -170,7 +207,6 @@ class TestGenerateEndpoint:
         ) -> None:
             seen["mux_target_width"] = target_width
             seen["mux_target_height"] = target_height
-            seen["mux_image_bytes"] = image_path.read_bytes()
             seen["mux_audio_bytes"] = audio_path.read_bytes()
             output_path.write_bytes(MP4_HEADER)
 
@@ -192,8 +228,13 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", fake_trim_trailing_silence)
         monkeypatch.setattr(
             video_service.media_repository,
-            "mux_image_and_audio_to_mp4",
-            fake_mux_image_and_audio_to_mp4,
+            "loop_video_to_duration",
+            fake_loop_video_to_duration,
+        )
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_video_and_audio_to_mp4",
+            fake_mux_video_and_audio_to_mp4,
         )
         monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
@@ -216,7 +257,6 @@ class TestGenerateEndpoint:
             "audio_body_mode": "text",
             "audio_body_prompt": "anima dreamscape over ocean",
             "image_prompt": "anima dreamscape over ocean",
-            "mux_image_bytes": PNG_HEADER,
             "mux_audio_bytes": WAV_HEADER,
             "mux_target_width": 1024,
             "mux_target_height": 1024,
@@ -225,6 +265,7 @@ class TestGenerateEndpoint:
     def test_generate_returns_mp4_when_realesrgan_upscale_fails(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        _patch_wan_i2v_noop(monkeypatch)
         monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
         monkeypatch.setattr(
             image_repository,
@@ -241,8 +282,13 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", lambda src, dst: dst.write_bytes(src.read_bytes()))
         monkeypatch.setattr(
             video_service.media_repository,
-            "mux_image_and_audio_to_mp4",
-            lambda _image, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
+            "loop_video_to_duration",
+            lambda video_path, target_duration, output_path: output_path.write_bytes(video_path.read_bytes()),
+        )
+        monkeypatch.setattr(
+            video_service.media_repository,
+            "mux_video_and_audio_to_mp4",
+            lambda _video, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
         )
 
         def fake_probe_media(path: Path) -> dict[str, object]:

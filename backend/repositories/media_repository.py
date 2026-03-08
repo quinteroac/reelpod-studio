@@ -75,6 +75,60 @@ def probe_media(path: Path) -> dict[str, Any]:
     return result
 
 
+def loop_video_to_duration(
+    video_path: Path,
+    target_duration: float,
+    output_path: Path,
+) -> None:
+    ffmpeg_module = _load_ffmpeg_module()
+    try:
+        (
+            ffmpeg_module.input(str(video_path), stream_loop=-1)
+            .output(str(output_path), t=target_duration, codec="copy")
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except ffmpeg_module.Error as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(detail or "ffmpeg loop failed") from exc
+
+
+def mux_video_and_audio_to_mp4(
+    video_path: Path,
+    audio_path: Path,
+    output_path: Path,
+    *,
+    target_width: int | None = None,
+    target_height: int | None = None,
+) -> None:
+    ffmpeg_module = _load_ffmpeg_module()
+    video_input = ffmpeg_module.input(str(video_path))
+    audio_input = ffmpeg_module.input(str(audio_path))
+    output_kwargs: dict[str, Any] = {
+        "vcodec": "libx264",
+        "acodec": "aac",
+        "pix_fmt": "yuv420p",
+        "shortest": None,
+        "movflags": "+faststart",
+    }
+    if target_width is not None and target_height is not None:
+        output_kwargs["vf"] = _build_letterbox_filter(target_width, target_height)
+    try:
+        (
+            ffmpeg_module.output(
+                video_input,
+                audio_input,
+                str(output_path),
+                **output_kwargs,
+            )
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except ffmpeg_module.Error as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(detail or "ffmpeg video mux failed") from exc
+
+
 def _load_ffmpeg_module() -> Any:
     try:
         import ffmpeg as ffmpeg_module
