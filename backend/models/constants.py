@@ -9,7 +9,7 @@ MAX_DURATION_SECONDS = 300
 DEFAULT_DURATION_SECONDS = 40
 
 INVALID_PAYLOAD_ERROR = (
-    "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', "
+    "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters'|'llm', "
     f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), "
     f"duration?: number ({MIN_DURATION_SECONDS}-{MAX_DURATION_SECONDS}), style?: string }}"
 )

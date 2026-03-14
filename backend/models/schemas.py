@@ -26,7 +26,7 @@ from models.constants import (
 class GenerateRequestBody(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    mode: Literal["text", "text+params", "text-and-parameters", "params", "parameters"] = "params"
+    mode: Literal["text", "text+params", "text-and-parameters", "params", "parameters", "llm"] = "params"
     prompt: Optional[StrictStr] = None
     mood: StrictStr = "chill"
     tempo: StrictInt = Field(default=80, ge=MIN_TEMPO, le=MAX_TEMPO)
@@ -70,7 +70,7 @@ class GenerateRequestBody(BaseModel):
 
     @model_validator(mode="after")
     def validate_prompt_for_mode(self) -> "GenerateRequestBody":
-        if self.mode in ("text", "text+params", "text-and-parameters") and self.prompt is None:
+        if self.mode in ("text", "text+params", "text-and-parameters", "llm") and self.prompt is None:
             raise ValueError("prompt is required in text modes.")
         return self
 

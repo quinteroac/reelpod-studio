@@ -90,6 +90,15 @@ class TestGenerateRequestBody:
         with pytest.raises(Exception):
             GenerateRequestBody(mode="text")
 
+    def test_llm_mode_without_prompt_rejected(self) -> None:
+        with pytest.raises(Exception):
+            GenerateRequestBody(mode="llm")
+
+    def test_llm_mode_with_prompt_is_valid(self) -> None:
+        body = GenerateRequestBody(mode="llm", prompt="  synthwave rooftop night set  ")
+        assert body.mode == "llm"
+        assert body.prompt == "synthwave rooftop night set"
+
 
 class TestGenerateImageRequestBodyContract:
     def test_schema_fields_and_aliases_remain_stable(self) -> None:

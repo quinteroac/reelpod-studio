@@ -244,6 +244,159 @@ def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytes
     }
 
 
+def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    seen: dict[str, object] = {}
+    fake_pipeline = object()
+
+    monkeypatch.setattr(
+        video_service.orchestration_service,
+        "orchestrate",
+        lambda prompt: video_service.orchestration_service.OrchestrationResult(
+            audio_prompt="future garage, introspective, 92 BPM, airy synths, vinyl texture",
+            image_prompt="score_9, score_8, best quality, highres, newest, safe, 1girl, city rooftop at dusk",
+            video_prompt="Slow dolly shot across a rainy rooftop as neon signs pulse in the background.",
+        ),
+    )
+
+    def fake_generate_audio_for_request(body):  # noqa: ANN001
+        seen["audio_mode"] = body.mode
+        seen["audio_prompt"] = body.prompt
+        return WAV_HEADER
+
+    def fake_generate_image_png(body):  # noqa: ANN001
+        seen["image_prompt"] = body.prompt
+        return PNG_HEADER
+
+    def fake_run_video_inference(
+        pipeline: object,
+        *,
+        input_image: object,
+        prompt: str,
+        target_width: int,
+        target_height: int,
+        temp_dir: Path,
+    ) -> Path:
+        seen["wan_prompt"] = prompt
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", fake_generate_audio_for_request)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    _patch_loop_and_mux_noop(monkeypatch)
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "probe_media",
+        lambda path: {"format": {"duration": "40.0"}}
+        if path.name == "audio_trimmed.wav"
+        else {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        },
+    )
+
+    body = GenerateRequestBody(mode="llm", prompt=" moody rooftop performance ")
+    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+
+    assert mp4_bytes == MP4_HEADER
+    assert seen["audio_mode"] == "text"
+    assert seen["audio_prompt"] == "future garage, introspective, 92 BPM, airy synths, vinyl texture"
+    assert seen["image_prompt"] == "score_9, score_8, best quality, highres, newest, safe, 1girl, city rooftop at dusk"
+    assert seen["wan_prompt"] == "Slow dolly shot across a rainy rooftop as neon signs pulse in the background."
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_prompt"),
+    [
+        (GenerateRequestBody(mode="text", prompt=" city skyline at twilight "), "city skyline at twilight"),
+        (
+            GenerateRequestBody(
+                mode="text-and-parameters",
+                prompt=" rainy street montage ",
+                mood="warm",
+                style="ambient",
+                tempo=90,
+                duration=40,
+            ),
+            "rainy street montage",
+        ),
+        (
+            GenerateRequestBody(mode="parameters", mood="warm", style="ambient", tempo=90, duration=40),
+            "warm ambient lofi artwork",
+        ),
+    ],
+)
+def test_generate_video_non_llm_modes_do_not_call_orchestration(
+    body: GenerateRequestBody,
+    expected_prompt: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        video_service.orchestration_service,
+        "orchestrate",
+        lambda _prompt: (_ for _ in ()).throw(AssertionError("orchestrate should not be called")),
+    )
+
+    def fake_generate_audio_for_request(received_body):  # noqa: ANN001
+        seen["audio_mode"] = received_body.mode
+        seen["audio_prompt"] = received_body.prompt
+        return WAV_HEADER
+
+    def fake_generate_image_png(image_body):  # noqa: ANN001
+        seen["image_prompt"] = image_body.prompt
+        return PNG_HEADER
+
+    def fake_run_video_inference(
+        pipeline: object,
+        *,
+        input_image: object,
+        prompt: str,
+        target_width: int,
+        target_height: int,
+        temp_dir: Path,
+    ) -> Path:
+        seen["wan_prompt"] = prompt
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    monkeypatch.setattr(video_service, "wan_pipeline", object())
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", fake_generate_audio_for_request)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    _patch_loop_and_mux_noop(monkeypatch)
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "probe_media",
+        lambda path: {"format": {"duration": "40.0"}}
+        if path.name == "audio_trimmed.wav"
+        else {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        },
+    )
+
+    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+
+    assert mp4_bytes == MP4_HEADER
+    assert seen["audio_mode"] == body.mode
+    assert seen["audio_prompt"] == body.prompt
+    assert seen["image_prompt"] == expected_prompt
+    assert seen["wan_prompt"] == expected_prompt
+
+
 def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
     _patch_wan_i2v_noop(monkeypatch)
