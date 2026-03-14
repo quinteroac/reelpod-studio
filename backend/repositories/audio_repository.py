@@ -194,6 +194,9 @@ def load_audio_pipeline() -> AceComfyPipeline:
         raise RuntimeError(_cached_load_error) from exc
 
 
+build_pipeline = load_audio_pipeline
+
+
 def generate_audio_bytes_for_prompt(
     prompt: str,
     tempo: int = 80,

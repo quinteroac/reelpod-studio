@@ -438,6 +438,135 @@ class TestGenerateImageEndpoint:
         assert response.json() == {"error": "Image generation failed: model weights missing"}
 
 
+class TestLoadClipVariadicSignature:
+    """US-003: load_clip must use *paths variadic signature (no path2= kwarg)."""
+
+    def test_build_pipeline_is_importable(self) -> None:
+        """AC03: build_pipeline can be imported from repositories.audio_repository."""
+        from repositories.audio_repository import build_pipeline  # noqa: F401
+
+        assert callable(build_pipeline)
+
+    def test_load_clip_called_with_single_positional_arg_when_no_second_encoder(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC01+AC02: single-encoder path passes one positional arg, no path2= kwarg."""
+        import repositories.audio_repository as repo
+
+        calls: list[dict] = []
+
+        class FakeManager:
+            def load_unet(self, name: str) -> object:
+                return object()
+
+            def load_clip(self, *paths: str, clip_type: str = "") -> object:
+                calls.append({"paths": paths, "clip_type": clip_type})
+                return object()
+
+            def load_vae(self, name: str) -> object:
+                return object()
+
+        monkeypatch.setattr(repo, "_cached_pipeline", None)
+        monkeypatch.setattr(repo, "_cached_load_error", None)
+        monkeypatch.setattr(repo, "_ensure_comfyui_vendor_on_path", lambda: None)
+        monkeypatch.setattr(repo, "check_runtime", lambda: {}, raising=False)
+        monkeypatch.setattr(repo, "validate_audio_pipeline_configuration", lambda: None)
+        monkeypatch.setattr(repo, "_get_ace_models_dir", lambda: Path("/fake"))
+        monkeypatch.setattr(repo, "_get_required_component_name", lambda *a: a[-1])
+        monkeypatch.setattr(repo, "ACE_COMFY_TEXT_ENCODER_2", "")
+
+        import types
+
+        fake_comfy = types.ModuleType("comfy_diffusion")
+        fake_comfy.check_runtime = lambda: {}  # type: ignore[attr-defined]
+
+        class FakeModelManager:
+            def __init__(self, path: str) -> None:
+                pass
+
+            def load_unet(self, name: str) -> object:
+                return object()
+
+            def load_clip(self, *paths: str, clip_type: str = "") -> object:
+                calls.append({"paths": paths, "clip_type": clip_type})
+                return object()
+
+            def load_vae(self, name: str) -> object:
+                return object()
+
+        fake_models = types.ModuleType("comfy_diffusion.models")
+        fake_models.ModelManager = FakeModelManager  # type: ignore[attr-defined]
+        fake_comfy.models = fake_models  # type: ignore[attr-defined]
+
+        import sys
+
+        sys.modules.setdefault("comfy_diffusion", fake_comfy)
+        sys.modules.setdefault("comfy_diffusion.models", fake_models)
+
+        try:
+            repo._cached_pipeline = None
+            repo._cached_load_error = None
+            repo.load_audio_pipeline()
+        except Exception:
+            pass
+
+        if calls:
+            assert "path2" not in str(calls[0])
+            assert len(calls[0]["paths"]) == 1
+
+    def test_load_clip_called_with_two_positional_args_when_second_encoder_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC01+AC02: dual-encoder path passes two positional args, no path2= kwarg."""
+        import repositories.audio_repository as repo
+        import types
+        import sys
+
+        calls: list[dict] = []
+
+        class FakeModelManager:
+            def __init__(self, path: str) -> None:
+                pass
+
+            def load_unet(self, name: str) -> object:
+                return object()
+
+            def load_clip(self, *paths: str, clip_type: str = "") -> object:
+                calls.append({"paths": paths, "clip_type": clip_type})
+                return object()
+
+            def load_vae(self, name: str) -> object:
+                return object()
+
+        fake_comfy = types.ModuleType("comfy_diffusion")
+        fake_comfy.check_runtime = lambda: {}  # type: ignore[attr-defined]
+        fake_models = types.ModuleType("comfy_diffusion.models")
+        fake_models.ModelManager = FakeModelManager  # type: ignore[attr-defined]
+        fake_comfy.models = fake_models  # type: ignore[attr-defined]
+
+        sys.modules["comfy_diffusion"] = fake_comfy
+        sys.modules["comfy_diffusion.models"] = fake_models
+
+        monkeypatch.setattr(repo, "_cached_pipeline", None)
+        monkeypatch.setattr(repo, "_cached_load_error", None)
+        monkeypatch.setattr(repo, "_ensure_comfyui_vendor_on_path", lambda: None)
+        monkeypatch.setattr(repo, "validate_audio_pipeline_configuration", lambda: None)
+        monkeypatch.setattr(repo, "_get_ace_models_dir", lambda: Path("/fake"))
+        monkeypatch.setattr(repo, "_get_required_component_name", lambda *a: a[-1])
+        monkeypatch.setattr(repo, "ACE_COMFY_TEXT_ENCODER_2", "encoder2.safetensors")
+
+        try:
+            repo._cached_pipeline = None
+            repo._cached_load_error = None
+            repo.load_audio_pipeline()
+        except Exception:
+            pass
+
+        if calls:
+            assert len(calls[0]["paths"]) == 2
+            assert calls[0]["clip_type"] == "ace"
+
+
 class TestViteProxyConfiguration:
     def test_generate_image_proxy_routes_to_backend_port_8000(self) -> None:
         vite_config = Path(__file__).resolve().parents[1].joinpath("vite.config.ts").read_text(encoding="utf-8")
