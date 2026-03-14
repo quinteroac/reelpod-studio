@@ -60,6 +60,9 @@
 - `backend/services/`: business/domain orchestration layer (audio queue flow and image processing rules) with no direct external transport calls
 - `backend/repositories/`: external integration layer for ACEStep/image model I/O and adapter utilities used by services
 
+## Roadmap
+- See [`ROADMAP.md`](../ROADMAP.md) at the project root for planned iterations and candidates.
+
 ## Implemented Capabilities
 <!-- Updated at the end of each iteration by bun nvst create project-context -->
 - ReelPod Studio branding; warm lofi theme

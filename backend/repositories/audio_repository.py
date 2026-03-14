@@ -179,9 +179,11 @@ def load_audio_pipeline() -> AceComfyPipeline:
     try:
         manager = ModelManager(str(models_dir))
         model = manager.load_unet(unet_name)
+        clip_paths = [text_encoder_name]
+        if text_encoder_2_name:
+            clip_paths.append(text_encoder_2_name)
         clip = manager.load_clip(
-            text_encoder_name,
-            path2=text_encoder_2_name,
+            *clip_paths,
             clip_type="ace" if text_encoder_2_name else "stable_diffusion",
         )
         vae = manager.load_vae(vae_name)

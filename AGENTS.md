@@ -7,3 +7,6 @@
 - **Rule:** All generated resources in this repo must be in English.
 - **MCP integration:** The ReelPod UI MCP server lives under `src/mcp/`. Use the `install-mcp` skill to configure the `reelpod-ui-mcp` server for your MCP host, and the `create-amv` skill to drive AMV generations via the `set_song_parameters`, `generate_audio`, and `add_to_queue` tools.
 - **Model artifacts:** Do not commit large model weights or vendor assets (e.g. under `backend/.realesrgan/` or external repos like SeedVR/SeedVR2). Treat them as local-only dependencies or download-time assets.
+
+- **Roadmap and new features:** [`ROADMAP.md`](ROADMAP.md) — full iteration plan.
+

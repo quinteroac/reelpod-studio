@@ -1,0 +1,76 @@
+{
+  "goals": [
+    "Confirm `backend/vendor/comfy-diffusion` is at `v1.1.0` and all its tests pass (or failures are documented).",
+    "Fix the one breaking change in the ReelPod backend caused by the `load_clip` signature change.",
+    "Verify the ReelPod backend still loads correctly after the fix."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "vendor/comfy-diffusion is updated to v1.1.0",
+      "description": "As a developer, I want `backend/vendor/comfy-diffusion` to be at `v1.1.0` so that LLM/VLM capabilities (and all other new modules) are available for future iterations.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`git -C backend/vendor/comfy-diffusion log --oneline -1` shows commit `1386a33` (v1.1.0)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "`cd backend/vendor/comfy-diffusion && uv run python -c \"import comfy_diffusion; print(comfy_diffusion.check_runtime())\"` exits without error."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "comfy-diffusion pytest suite passes",
+      "description": "As a developer, I want the full `uv run pytest` suite in `comfy-diffusion` to pass (or all failures to be explained) so that I know no regressions were introduced.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "`cd backend/vendor/comfy-diffusion && uv run pytest` reports at most the one known environmental"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "All other tests pass (baseline: 269 passing before this story is considered done)."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Fix ReelPod backend `load_clip` call to use new variadic signature",
+      "description": "As a developer, I want `audio_repository.py` to call `load_clip` using the new `*paths` variadic signature so that the backend does not crash on startup after the comfy-diffusion update.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "`backend/repositories/audio_repository.py` no longer passes `path2=` as a keyword argument."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The call passes both encoder paths as positional args when `text_encoder_2_name` is set, and a"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "`cd backend && uv run python -c \"from repositories.audio_repository import build_pipeline\"` imports without error."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "`backend/vendor/comfy-diffusion` MUST be at commit `1386a33` (v1.1.0)."
+    },
+    {
+      "id": "FR-2",
+      "description": "`comfy_diffusion.check_runtime()` MUST return a non-error result."
+    },
+    {
+      "id": "FR-3",
+      "description": "`ModelManager.load_clip(*paths, clip_type=...)` MUST be called with positional paths — `path2=` keyword is no longer valid."
+    },
+    {
+      "id": "FR-4",
+      "description": "No other ReelPod backend files require changes from this update."
+    }
+  ]
+}
