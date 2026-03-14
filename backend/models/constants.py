@@ -16,10 +16,15 @@ INVALID_PAYLOAD_ERROR = (
 
 # ACE Step 1.5 text-to-audio via comfy-diffusion
 # https://github.com/quinteroac/comfy-diffusion/blob/master/examples/ace_step_15_example.py
-# Set ACE_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR; ACE_COMFY_UNET, ACE_COMFY_TEXT_ENCODER,
-# and ACE_COMFY_VAE to component filenames under diffusion_models/, text_encoders/, and vae/.
+# Set ACE_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR; ACE_COMFY_DIFFUSION_MODEL,
+# ACE_COMFY_TEXT_ENCODER, and ACE_COMFY_VAE to component filenames under
+# diffusion_models/, text_encoders/, and vae/.
 ACE_COMFY_MODELS_DIR = os.environ.get("ACE_COMFY_MODELS_DIR", "") or os.environ.get("PYCOMFY_MODELS_DIR", "")
-ACE_COMFY_UNET = os.environ.get("ACE_COMFY_UNET", "") or os.environ.get("PYCOMFY_ACE_UNET", "")
+ACE_COMFY_DIFFUSION_MODEL = (
+    os.environ.get("ACE_COMFY_DIFFUSION_MODEL", "")
+    or os.environ.get("PYCOMFY_ACE_DIFFUSION_MODEL", "")
+    or os.environ.get("PYCOMFY_ACE_UNET", "")
+)
 ACE_COMFY_TEXT_ENCODER = os.environ.get("ACE_COMFY_TEXT_ENCODER", "") or os.environ.get("PYCOMFY_ACE_TEXT_ENCODER", "")
 ACE_COMFY_VAE = os.environ.get("ACE_COMFY_VAE", "") or os.environ.get("PYCOMFY_ACE_VAE", "")
 ACE_COMFY_STEPS = int(os.environ.get("ACE_COMFY_STEPS", "30"))

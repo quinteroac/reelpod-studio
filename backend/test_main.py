@@ -192,7 +192,7 @@ class TestGenerateEndpoint:
         attempted_inference = {"value": False}
 
         def fail_validation() -> None:
-            raise RuntimeError("ACE_COMFY_UNET or PYCOMFY_ACE_UNET must be set")
+            raise RuntimeError("ACE_COMFY_DIFFUSION_MODEL or PYCOMFY_ACE_DIFFUSION_MODEL must be set")
 
         def fake_generate_audio_bytes_for_prompt(*args, **kwargs):  # noqa: ANN002, ANN003
             attempted_inference["value"] = True
@@ -202,7 +202,7 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(audio_repository, "generate_audio_bytes_for_prompt", fake_generate_audio_bytes_for_prompt)
 
         with TestClient(app=main.app) as strict_client, pytest.raises(
-            RuntimeError, match="ACE_COMFY_UNET or PYCOMFY_ACE_UNET must be set"
+            RuntimeError, match="ACE_COMFY_DIFFUSION_MODEL or PYCOMFY_ACE_DIFFUSION_MODEL must be set"
         ):
             strict_client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
 

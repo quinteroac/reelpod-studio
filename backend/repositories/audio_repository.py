@@ -12,7 +12,7 @@ from typing import Any, NamedTuple
 from models.constants import (
     DEFAULT_DURATION_SECONDS,
     ACE_COMFY_MODELS_DIR,
-    ACE_COMFY_UNET,
+    ACE_COMFY_DIFFUSION_MODEL,
     ACE_COMFY_TEXT_ENCODER,
     ACE_COMFY_VAE,
     ACE_COMFY_STEPS,
@@ -75,9 +75,9 @@ def _get_required_component_name(component_name: str, fallback_env_name: str, va
 def validate_audio_pipeline_configuration() -> None:
     models_dir = _get_ace_models_dir()
     component_paths = {
-        "ACE_COMFY_UNET": (
-            "PYCOMFY_ACE_UNET",
-            ACE_COMFY_UNET,
+        "ACE_COMFY_DIFFUSION_MODEL": (
+            "PYCOMFY_ACE_DIFFUSION_MODEL",
+            ACE_COMFY_DIFFUSION_MODEL,
             models_dir / "diffusion_models",
         ),
         "ACE_COMFY_TEXT_ENCODER": (
@@ -156,7 +156,11 @@ def load_audio_pipeline() -> AceComfyPipeline:
         _cached_load_error = str(exc)
         raise
 
-    unet_name = _get_required_component_name("ACE_COMFY_UNET", "PYCOMFY_ACE_UNET", ACE_COMFY_UNET)
+    unet_name = _get_required_component_name(
+        "ACE_COMFY_DIFFUSION_MODEL",
+        "PYCOMFY_ACE_DIFFUSION_MODEL",
+        ACE_COMFY_DIFFUSION_MODEL,
+    )
     text_encoder_name = _get_required_component_name(
         "ACE_COMFY_TEXT_ENCODER",
         "PYCOMFY_ACE_TEXT_ENCODER",

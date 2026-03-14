@@ -29,7 +29,7 @@ queue_stop_event = threading.Event()
 def _has_audio_configuration_override() -> bool:
     configured_values = (
         audio_repository.ACE_COMFY_MODELS_DIR,
-        audio_repository.ACE_COMFY_UNET,
+        audio_repository.ACE_COMFY_DIFFUSION_MODEL,
         audio_repository.ACE_COMFY_TEXT_ENCODER,
         audio_repository.ACE_COMFY_VAE,
     )
