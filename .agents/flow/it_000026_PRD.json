@@ -1,0 +1,149 @@
+{
+  "goals": [
+    "Reduce creator friction: one free-text brief replaces all parameter fields.",
+    "Delegate creative decisions: the LLM acts as a creative director, proposing a cohesive",
+    "Ensure cross-pipeline coherence: music, image, and video prompts share a unified artistic concept",
+    "Run 100% locally: no cloud API calls; the LLM is loaded via `comfy_diffusion.textgen` and the"
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Frontend single-prompt input",
+      "description": "As a content creator, I want to type a single free-text description of my idea so that I do not need to fill in mood, style, tempo, or duration fields.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "When the app is in `\"llm\"` mode, all parameter controls (mood, style, tempo, duration) are"
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The textarea accepts any non-empty text (no character limit enforced client-side beyond"
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Clicking \"Generate\" sends `{ mode: \"llm\", prompt: \"<user text>\", targetWidth, targetHeight }`"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "A loading indicator is shown during generation (same as existing loading state)."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "On success the generated video plays in the existing player UI."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "On error an error message is shown (same as existing error handling)."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "The textarea placeholder text reflects the creative director role, e.g."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "Visually verified in browser: parameter form is hidden, textarea is visible, generation"
+        },
+        {
+          "id": "US-001-AC09",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Backend LLM orchestration service — creative director role",
+      "description": "As a backend system, I want the LLM to act as a creative director that proposes a complete video-with-soundtrack from a short user brief so that each generation pipeline receives a purposeful, coherent prompt it did not need the user to spell out.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A new module `backend/services/orchestration_service.py` exposes:"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The LLM system prompt instructs the model to act as a **creative director**: given the user's"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "`audio_prompt` is a creative music brief for ACEStep: genre, mood, tempo hint (e.g. \"90 BPM\"),"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "`image_prompt` follows Danbooru tag order strictly:"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "`video_prompt` is a single-paragraph action-focused scene description in LTX-Video 2 format"
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "If the LLM pipeline failed to load at startup, `orchestrate()` raises"
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Unit tests in `backend/test_orchestration_service.py` cover: successful orchestration"
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "`cd backend && uv run pytest test_orchestration_service.py` passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Wire LLM orchestration into the video generation pipeline",
+      "description": "As a backend system, I want `\"llm\"` mode requests to run LLM orchestration before invoking ACEStep, Anima, and WAN so that all three pipelines use LLM-derived prompts automatically.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "`GenerateRequestBody` accepts `mode: \"llm\"` as a valid literal; `prompt` is required when"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "`video_service.generate_video_mp4_for_request()` detects `mode == \"llm\"`, calls"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "For all other modes (`\"text\"`, `\"text-and-parameters\"`, `\"parameters\"`), existing behaviour"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "`cd backend && uv run pytest` passes (all existing tests remain green)."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "A new `\"llm\"` literal is added to the `mode` field of `GenerateRequestBody`; `prompt` is"
+    },
+    {
+      "id": "FR-2",
+      "description": "`orchestration_service.load_llm_pipeline()` uses `comfy_diffusion` (specifically"
+    },
+    {
+      "id": "FR-3",
+      "description": "The Anima image prompt generated by the LLM MUST follow Danbooru tag order:"
+    },
+    {
+      "id": "FR-4",
+      "description": "`video_service.generate_video_mp4_for_request()` must remain the single orchestration"
+    },
+    {
+      "id": "FR-5",
+      "description": "`orchestration_service` startup is registered in `backend/main.py` alongside"
+    },
+    {
+      "id": "FR-6",
+      "description": "If `REELPOD_LLM_MODEL_PATH` is not set, `load_llm_pipeline()` logs a warning and returns"
+    },
+    {
+      "id": "FR-7",
+      "description": "The LLM model checkpoint and type are operator-supplied via environment variables:"
+    },
+    {
+      "id": "FR-8",
+      "description": "LLM output for each pipeline MUST be sanitised and validated using **Pydantic** (the"
+    }
+  ]
+}
