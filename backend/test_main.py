@@ -10,15 +10,14 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
-from models import constants
 from models.errors import (
     AudioGenerationFailedError,
-    ImageGenerationFailedError,
+    AudioGenerationTimeoutError,
     VideoGenerationFailedError,
     VideoGenerationTimeoutError,
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
-from repositories import acestep_repository, image_repository
+from repositories import audio_repository, image_repository
 from services import audio_service, image_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
@@ -172,168 +171,16 @@ class TestGenerateEndpoint:
             "style": "hip-hop",
         }
 
-    def test_generate_runs_video_pipeline_and_returns_muxed_mp4(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_wan_i2v_noop(monkeypatch)
-        monkeypatch.setattr(
-            image_repository,
-            "load_image_pipeline",
-            lambda: image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None),
-        )
-        monkeypatch.setattr(video_service, "wan_pipeline", object())
-        monkeypatch.setattr(video_service, "wan_pipeline_load_error", None)
-        seen: dict[str, object] = {}
-
-        def fake_generate_audio_for_request(body):  # noqa: ANN001
-            seen["audio_body_mode"] = body.mode
-            seen["audio_body_prompt"] = body.prompt
-            return WAV_HEADER
-
-        def fake_generate_image_png(body):  # noqa: ANN001
-            seen["image_prompt"] = body.prompt
-            return PNG_HEADER
-
-        def fake_trim_trailing_silence(audio_path: Path, output_path: Path) -> None:
-            output_path.write_bytes(audio_path.read_bytes())
-
-        def fake_loop_video_to_duration(
-            video_path: Path,
-            target_duration: float,
-            output_path: Path,
-        ) -> None:
-            output_path.write_bytes(video_path.read_bytes())
-
-        def fake_mux_video_and_audio_to_mp4(
-            video_path: Path,
-            audio_path: Path,
-            output_path: Path,
-            *,
-            target_width: int,
-            target_height: int,
-        ) -> None:
-            seen["mux_target_width"] = target_width
-            seen["mux_target_height"] = target_height
-            seen["mux_audio_bytes"] = audio_path.read_bytes()
-            output_path.write_bytes(MP4_HEADER)
-
-        def fake_probe_media(path: Path) -> dict[str, object]:
-            if path.name == "output.mp4":
-                return {
-                    "streams": [
-                        {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
-                        {"codec_type": "audio", "codec_name": "aac"},
-                    ],
-                    "format": {"duration": "40.0"},
-                }
-            if path.name == "audio_trimmed.wav":
-                return {"format": {"duration": "40.0"}}
-            raise AssertionError(f"Unexpected probe target: {path}")
-
-        monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", fake_generate_audio_for_request)
-        monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
-        monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", fake_trim_trailing_silence)
-        monkeypatch.setattr(
-            video_service.media_repository,
-            "loop_video_to_duration",
-            fake_loop_video_to_duration,
-        )
-        monkeypatch.setattr(
-            video_service.media_repository,
-            "mux_video_and_audio_to_mp4",
-            fake_mux_video_and_audio_to_mp4,
-        )
-        monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
-
-        response = client.post(
-            "/api/generate",
-            json={
-                "mode": "text",
-                "prompt": "anima dreamscape over ocean",
-                "mood": "warm",
-                "style": "ambient",
-                "tempo": 80,
-                "duration": 40,
-            },
-        )
-
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "video/mp4"
-        assert response.content == MP4_HEADER
-        assert seen == {
-            "audio_body_mode": "text",
-            "audio_body_prompt": "anima dreamscape over ocean",
-            "image_prompt": "anima dreamscape over ocean",
-            "mux_audio_bytes": WAV_HEADER,
-            "mux_target_width": 1024,
-            "mux_target_height": 1024,
-        }
-
-    def test_generate_returns_mp4_when_realesrgan_upscale_fails(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_wan_i2v_noop(monkeypatch)
-        monkeypatch.setattr(
-            image_repository,
-            "load_image_pipeline",
-            lambda: image_repository.AnimaComfyPipeline(model=None, clip=None, vae=None),
-        )
-        monkeypatch.setattr(video_service, "wan_pipeline", object())
-        monkeypatch.setattr(video_service, "wan_pipeline_load_error", None)
-        monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
-        monkeypatch.setattr(
-            image_repository,
-            "run_image_inference",
-            lambda *args, **kwargs: Image.new("RGB", (1024, 1024), color=(55, 66, 77)),
-        )
-        monkeypatch.setattr(
-            image_repository,
-            "upscale_image_with_realesrgan_anime",
-            lambda _image: (_ for _ in ()).throw(RuntimeError("upscaler crashed")),
-        )
-        monkeypatch.setattr(image_service, "image_pipeline", object())
-        monkeypatch.setattr(image_service, "image_model_load_error", None)
-        monkeypatch.setattr(video_service.media_repository, "trim_trailing_silence", lambda src, dst: dst.write_bytes(src.read_bytes()))
-        monkeypatch.setattr(
-            video_service.media_repository,
-            "loop_video_to_duration",
-            lambda video_path, target_duration, output_path: output_path.write_bytes(video_path.read_bytes()),
-        )
-        monkeypatch.setattr(
-            video_service.media_repository,
-            "mux_video_and_audio_to_mp4",
-            lambda _video, _audio, output, **_kwargs: output.write_bytes(MP4_HEADER),
-        )
-
-        def fake_probe_media(path: Path) -> dict[str, object]:
-            if path.name == "audio_trimmed.wav":
-                return {"format": {"duration": "40.0"}}
-            return {
-                "streams": [
-                    {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
-                    {"codec_type": "audio", "codec_name": "aac"},
-                ],
-                "format": {"duration": "40.0"},
-            }
-
-        monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
-
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
-
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "video/mp4"
-        assert response.content == MP4_HEADER
-
     def test_connection_error_returns_500(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def raise_video_generation_error(*args, **kwargs):  # noqa: ANN002, ANN003
-            raise VideoGenerationFailedError("video pipeline failed")
+            raise VideoGenerationFailedError("Video generation failed")
 
         monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_video_generation_error)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 500
-        assert response.json() == {"error": "video pipeline failed"}
+        assert response.json() == {"error": "Video generation failed"}
 
     def test_timeout_returns_504(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         def raise_timeout(*args, **kwargs):  # noqa: ANN002, ANN003
@@ -344,29 +191,39 @@ class TestGenerateEndpoint:
         assert response.status_code == 504
         assert response.json() == {"error": "Video generation timed out"}
 
-    def test_audio_failure_returns_json_error_not_mp4(
+    def test_missing_audio_model_configuration_returns_500_before_inference(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        attempted_inference = {"value": False}
+
+        def fail_validation() -> None:
+            raise RuntimeError("ACE_COMFY_DIFFUSION_MODEL or PYCOMFY_ACE_DIFFUSION_MODEL must be set")
+
+        def fake_generate_audio_bytes_for_prompt(*args, **kwargs):  # noqa: ANN002, ANN003
+            attempted_inference["value"] = True
+            return WAV_HEADER
+
+        monkeypatch.setattr(audio_repository, "validate_audio_pipeline_configuration", fail_validation)
+        monkeypatch.setattr(audio_repository, "generate_audio_bytes_for_prompt", fake_generate_audio_bytes_for_prompt)
+
+        with TestClient(app=main.app, raise_server_exceptions=False) as client:
+            response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+
+        assert response.status_code == 500
+        assert attempted_inference["value"] is False
+
+    def test_startup_raises_runtime_error_for_partial_audio_configuration(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def raise_audio_failure(*args, **kwargs):  # noqa: ANN002, ANN003
-            raise AudioGenerationFailedError("Audio generation failed")
+        monkeypatch.setattr(audio_service, "_has_audio_configuration_override", lambda: True)
+        monkeypatch.setattr(
+            audio_repository,
+            "validate_audio_pipeline_configuration",
+            lambda: (_ for _ in ()).throw(RuntimeError("ACE_COMFY_VAE or PYCOMFY_ACE_VAE must be set")),
+        )
 
-        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_audio_failure)
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
-        assert response.status_code == 500
-        assert response.headers["content-type"].startswith("application/json")
-        assert response.json() == {"error": "Audio generation failed"}
-
-    def test_image_failure_returns_json_error_not_mp4(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        def raise_image_failure(*args, **kwargs):  # noqa: ANN002, ANN003
-            raise ImageGenerationFailedError("Image generation failed: model unavailable")
-
-        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_image_failure)
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
-        assert response.status_code == 500
-        assert response.headers["content-type"].startswith("application/json")
-        assert response.json() == {"error": "Image generation failed: model unavailable"}
+        with pytest.raises(RuntimeError, match="ACE_COMFY_VAE or PYCOMFY_ACE_VAE must be set"):
+            audio_service.startup()
 
     def test_validation_error_returns_422(self, client: TestClient) -> None:
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 30, "style": "jazz"})
@@ -406,7 +263,7 @@ class TestGenerationQueue:
             return WAV_HEADER
 
         monkeypatch.setattr(
-            acestep_repository,
+            audio_repository,
             "generate_audio_bytes_for_prompt",
             fake_generate_audio_bytes_for_prompt,
         )

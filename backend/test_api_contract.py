@@ -7,7 +7,7 @@ from routes import api as api_routes
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
-MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
+MP4_HEADER = b"\x00\x00\x00\x20" + b"ftyp" + b"\x00" * 28
 
 
 def test_post_generate_preserves_contract(monkeypatch) -> None:
@@ -33,7 +33,7 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "video/mp4"
-    assert response.content.startswith(b"\x00\x00\x00")
+    assert response.content.startswith(b"\x00\x00\x00\x20ftyp")
     assert seen == {
         "mode": "params",
         "mood": "warm",

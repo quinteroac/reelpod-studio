@@ -3,8 +3,6 @@ from __future__ import annotations
 import threading
 from collections import deque
 from uuid import uuid4
-from urllib.error import HTTPError, URLError
-import json
 import logging
 import time
 
@@ -17,7 +15,7 @@ from models.errors import (
 )
 from models.queue import GenerationQueueItem
 from models.schemas import GenerateRequestBody
-from repositories import acestep_repository
+from repositories import audio_repository
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +24,16 @@ queue_order: deque[str] = deque()
 queue_condition = threading.Condition()
 queue_worker_thread: threading.Thread | None = None
 queue_stop_event = threading.Event()
+
+
+def _has_audio_configuration_override() -> bool:
+    configured_values = (
+        audio_repository.ACE_COMFY_MODELS_DIR,
+        audio_repository.ACE_COMFY_DIFFUSION_MODEL,
+        audio_repository.ACE_COMFY_TEXT_ENCODER,
+        audio_repository.ACE_COMFY_VAE,
+    )
+    return any(value.strip() for value in configured_values)
 
 
 def build_prompt(body: GenerateRequestBody) -> str:
@@ -119,13 +127,13 @@ def _queue_worker() -> None:
             queue_condition.notify_all()
 
         try:
-            wav_bytes = acestep_repository.generate_audio_bytes_for_prompt(
+            wav_bytes = audio_repository.generate_audio_bytes_for_prompt(
                 item.prompt,
                 tempo=item.tempo,
                 duration=item.duration,
             )
-        except (RuntimeError, URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
-            logger.error("ACE-Step API error: %s: %s", type(exc).__name__, exc)
+        except RuntimeError as exc:
+            logger.error("Audio generation error: %s: %s", type(exc).__name__, exc)
             with queue_condition:
                 failed_item = queue_items.get(next_item_id)
                 if failed_item is not None:
@@ -181,6 +189,7 @@ def reset_generation_queue_for_tests() -> None:
 
 
 def generate_audio_for_request(body: GenerateRequestBody) -> bytes:
+    audio_repository.validate_audio_pipeline_configuration()
     ensure_queue_worker_running()
     item = enqueue_generation_request(body)
     completed_item = wait_for_terminal_status(item.id, timeout_seconds=QUEUE_WAIT_TIMEOUT_SECONDS)
@@ -218,6 +227,8 @@ def get_generation_request_audio(item_id: str) -> bytes:
 
 
 def startup() -> None:
+    if _has_audio_configuration_override():
+        audio_repository.validate_audio_pipeline_configuration()
     ensure_queue_worker_running()
 
 

@@ -1,6 +1,6 @@
 ---
 name: implement-user-story
-description: "Implements a single user story from the PRD: writes code and tests, follows project conventions. Invoked by: bun nvst create prototype."
+description: "Implements a single user story from the PRD: writes code and tests, follows project conventions. Invoked by: nvst create prototype."
 user-invocable: false
 ---
 
