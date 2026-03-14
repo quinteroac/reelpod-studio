@@ -7,23 +7,24 @@ from routes import api as api_routes
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+MP4_HEADER = b"\x00\x00\x00\x20" + b"ftyp" + b"\x00" * 28
 
 
 def test_post_generate_preserves_contract(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
-    def fake_generate_audio_for_request(body):  # noqa: ANN001
+    def fake_generate_video_mp4_for_request(body):  # noqa: ANN001
         seen["mode"] = body.mode
         seen["mood"] = body.mood
         seen["tempo"] = body.tempo
         seen["duration"] = body.duration
         seen["style"] = body.style
-        return WAV_HEADER
+        return MP4_HEADER
 
     monkeypatch.setattr(
-        api_routes.audio_service,
-        "generate_audio_for_request",
-        fake_generate_audio_for_request,
+        api_routes.video_service,
+        "generate_video_mp4_for_request",
+        fake_generate_video_mp4_for_request,
     )
 
     with TestClient(app=main.app, raise_server_exceptions=False) as client:
@@ -31,8 +32,8 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
         wrong_method = client.get("/api/generate")
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "audio/wav"
-    assert response.content.startswith(b"RIFF")
+    assert response.headers["content-type"] == "video/mp4"
+    assert response.content.startswith(b"\x00\x00\x00\x20ftyp")
     assert seen == {
         "mode": "params",
         "mood": "warm",

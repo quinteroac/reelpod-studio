@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import main
-from models.errors import AudioGenerationFailedError, AudioGenerationTimeoutError
+from models.errors import (
+    AudioGenerationFailedError,
+    AudioGenerationTimeoutError,
+    VideoGenerationFailedError,
+    VideoGenerationTimeoutError,
+)
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from repositories import audio_repository, image_repository
 from services import audio_service, image_service, video_service
@@ -133,21 +138,21 @@ class TestBackendDependencies:
 
 
 class TestGenerateEndpoint:
-    def test_generate_returns_audio_wav(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_generate_returns_video_mp4(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         seen: dict[str, object] = {}
 
-        def fake_generate_audio_for_request(body):  # noqa: ANN001
+        def fake_generate_video_mp4_for_request(body):  # noqa: ANN001
             seen["mode"] = body.mode
             seen["mood"] = body.mood
             seen["tempo"] = body.tempo
             seen["duration"] = body.duration
             seen["style"] = body.style
-            return WAV_HEADER
+            return MP4_HEADER
 
         monkeypatch.setattr(
-            audio_service,
-            "generate_audio_for_request",
-            fake_generate_audio_for_request,
+            video_service,
+            "generate_video_mp4_for_request",
+            fake_generate_video_mp4_for_request,
         )
 
         response = client.post(
@@ -156,8 +161,8 @@ class TestGenerateEndpoint:
         )
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "audio/wav"
-        assert response.content == WAV_HEADER
+        assert response.headers["content-type"] == "video/mp4"
+        assert response.content == MP4_HEADER
         assert seen == {
             "mode": "params",
             "mood": "warm",
@@ -169,24 +174,24 @@ class TestGenerateEndpoint:
     def test_connection_error_returns_500(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def raise_audio_generation_error(*args, **kwargs):  # noqa: ANN002, ANN003
-            raise AudioGenerationFailedError("Audio generation failed")
+        def raise_video_generation_error(*args, **kwargs):  # noqa: ANN002, ANN003
+            raise VideoGenerationFailedError("Video generation failed")
 
-        monkeypatch.setattr(audio_service, "generate_audio_for_request", raise_audio_generation_error)
+        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_video_generation_error)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 500
-        assert response.json() == {"error": "Audio generation failed"}
+        assert response.json() == {"error": "Video generation failed"}
 
     def test_timeout_returns_504(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         def raise_timeout(*args, **kwargs):  # noqa: ANN002, ANN003
-            raise AudioGenerationTimeoutError("Audio generation timed out")
+            raise VideoGenerationTimeoutError("Video generation timed out")
 
-        monkeypatch.setattr(audio_service, "generate_audio_for_request", raise_timeout)
+        monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_timeout)
         response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
         assert response.status_code == 504
-        assert response.json() == {"error": "Audio generation timed out"}
+        assert response.json() == {"error": "Video generation timed out"}
 
-    def test_missing_audio_model_configuration_raises_runtime_error_before_inference(
+    def test_missing_audio_model_configuration_returns_500_before_inference(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         attempted_inference = {"value": False}
@@ -201,11 +206,10 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(audio_repository, "validate_audio_pipeline_configuration", fail_validation)
         monkeypatch.setattr(audio_repository, "generate_audio_bytes_for_prompt", fake_generate_audio_bytes_for_prompt)
 
-        with TestClient(app=main.app) as strict_client, pytest.raises(
-            RuntimeError, match="ACE_COMFY_DIFFUSION_MODEL or PYCOMFY_ACE_DIFFUSION_MODEL must be set"
-        ):
-            strict_client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        with TestClient(app=main.app, raise_server_exceptions=False) as client:
+            response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
 
+        assert response.status_code == 500
         assert attempted_inference["value"] is False
 
     def test_startup_raises_runtime_error_for_partial_audio_configuration(

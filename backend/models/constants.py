@@ -26,6 +26,9 @@ ACE_COMFY_DIFFUSION_MODEL = (
     or os.environ.get("PYCOMFY_ACE_UNET", "")
 )
 ACE_COMFY_TEXT_ENCODER = os.environ.get("ACE_COMFY_TEXT_ENCODER", "") or os.environ.get("PYCOMFY_ACE_TEXT_ENCODER", "")
+# Optional second text encoder for ACE Step 1.5 dual-encoder setup (DualCLIPLoader).
+# When set, both encoders are loaded together (e.g. qwen_0.6b + qwen_1.7b).
+ACE_COMFY_TEXT_ENCODER_2 = os.environ.get("ACE_COMFY_TEXT_ENCODER_2", "") or os.environ.get("PYCOMFY_ACE_TEXT_ENCODER_2", "")
 ACE_COMFY_VAE = os.environ.get("ACE_COMFY_VAE", "") or os.environ.get("PYCOMFY_ACE_VAE", "")
 ACE_COMFY_STEPS = int(os.environ.get("ACE_COMFY_STEPS", "30"))
 ACE_COMFY_CFG = float(os.environ.get("ACE_COMFY_CFG", "2.0"))

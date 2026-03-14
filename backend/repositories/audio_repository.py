@@ -14,6 +14,7 @@ from models.constants import (
     ACE_COMFY_MODELS_DIR,
     ACE_COMFY_DIFFUSION_MODEL,
     ACE_COMFY_TEXT_ENCODER,
+    ACE_COMFY_TEXT_ENCODER_2,
     ACE_COMFY_VAE,
     ACE_COMFY_STEPS,
     ACE_COMFY_CFG,
@@ -98,6 +99,12 @@ def validate_audio_pipeline_configuration() -> None:
         if not component_path.is_file():
             raise RuntimeError(f"{env_name} points to a missing model file: {component_path}")
 
+    # Validate optional second text encoder if configured.
+    if ACE_COMFY_TEXT_ENCODER_2 and ACE_COMFY_TEXT_ENCODER_2.strip():
+        te2_path = models_dir / "text_encoders" / ACE_COMFY_TEXT_ENCODER_2.strip()
+        if not te2_path.is_file():
+            raise RuntimeError(f"ACE_COMFY_TEXT_ENCODER_2 points to a missing model file: {te2_path}")
+
 
 def _negative_conditioning_ace(clip: Any, duration: float) -> Any:
     """Return negative conditioning for ACE (empty tags, minimal duration)."""
@@ -166,12 +173,17 @@ def load_audio_pipeline() -> AceComfyPipeline:
         "PYCOMFY_ACE_TEXT_ENCODER",
         ACE_COMFY_TEXT_ENCODER,
     )
+    text_encoder_2_name = ACE_COMFY_TEXT_ENCODER_2.strip() or None
     vae_name = _get_required_component_name("ACE_COMFY_VAE", "PYCOMFY_ACE_VAE", ACE_COMFY_VAE)
 
     try:
         manager = ModelManager(str(models_dir))
         model = manager.load_unet(unet_name)
-        clip = manager.load_clip(text_encoder_name)
+        clip = manager.load_clip(
+            text_encoder_name,
+            path2=text_encoder_2_name,
+            clip_type="ace" if text_encoder_2_name else "stable_diffusion",
+        )
         vae = manager.load_vae(vae_name)
         _cached_pipeline = AceComfyPipeline(model=model, clip=clip, vae=vae)
         return _cached_pipeline
