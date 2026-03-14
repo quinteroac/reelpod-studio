@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "accelerate>=1.12.0",
     "av>=14.2.0",
-    "comfy-diffusion[comfyui]>=0.1.1",
+    "comfy-diffusion[comfyui]",
     "ffmpeg-python>=0.2.0",
     "fastapi==0.116.1",
     "python-dotenv==1.1.1",
@@ -21,6 +21,9 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
 ]
+
+[tool.uv.sources]
+comfy-diffusion = { path = "./vendor/comfy-diffusion" }
 
 [tool.uv]
 # Use only PyPI so pillow>=12.1.1 and other deps resolve. For CUDA 12.8 torch, install after sync:
