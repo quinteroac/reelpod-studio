@@ -1,11 +1,8 @@
 import { EventEmitter } from 'node:events';
 
 export interface SongParameters {
-  mood: 'chill' | 'melancholic' | 'upbeat';
-  tempo: number;
-  style: 'jazz' | 'hip-hop' | 'ambient';
   duration: number;
-  mode?: 'text' | 'text-and-parameters' | 'parameters';
+  mode?: 'llm';
   prompt?: string;
 }
 

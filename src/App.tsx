@@ -3,9 +3,6 @@ import type { SongParameters } from './mcp/parameter-store';
 import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
 
-type Mood = 'chill' | 'melancholic' | 'upbeat';
-type Style = 'jazz' | 'hip-hop' | 'ambient';
-type GenerationMode = 'text' | 'text-and-parameters' | 'parameters';
 type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
 
 interface SocialFormatPreset {
@@ -17,11 +14,8 @@ interface SocialFormatPreset {
 }
 
 interface GenerationParams {
-  mood: Mood;
-  tempo: number;
-  style: Style;
   duration: number;
-  mode?: GenerationMode;
+  mode: 'llm';
   prompt?: string;
 }
 import {
@@ -53,19 +47,9 @@ interface QueueEntry {
 }
 
 const defaultParams: GenerationParams = {
-  mood: 'chill',
-  tempo: 80,
-  style: 'jazz',
+  mode: 'llm',
   duration: 40
 };
-const generationModeOptions: ReadonlyArray<{
-  value: GenerationMode;
-  label: string;
-}> = [
-    { value: 'text', label: 'Text' },
-    { value: 'text-and-parameters', label: 'Text + Parameters' },
-    { value: 'parameters', label: 'Parameters' }
-  ];
 const socialFormatOptions: ReadonlyArray<SocialFormatPreset> = [
   {
     id: 'youtube',
@@ -130,10 +114,9 @@ const SEEK_MIN = 0;
 const SEEK_MAX = 100;
 const SEEK_POLL_INTERVAL_MS = 500;
 const TEXT_PROMPT_MAX_SUMMARY_CHARS = 60;
-const TEXT_MODE_DEFAULT_TEMPO = 80;
 const DURATION_MIN_SECONDS = 40;
 const DURATION_MAX_SECONDS = 300;
-const MUSIC_PROMPT_REQUIRED_ERROR = 'Please enter a music prompt.';
+const MUSIC_PROMPT_REQUIRED_ERROR = 'Please enter a creative brief.';
 const DURATION_RANGE_ERROR = `Duration must be between ${DURATION_MIN_SECONDS} and ${DURATION_MAX_SECONDS} seconds.`;
 
 function getErrorMessage(error: unknown): string {
@@ -160,19 +143,8 @@ function truncatePromptSummary(prompt: string): string {
 function buildQueueSummary(params: GenerationParams): string {
   const promptText = typeof params.prompt === 'string' ? params.prompt : null;
   const hasPrompt = promptText !== null && promptText.trim().length > 0;
-  const hasTextMode = params.mode === 'text';
-  const hasTextAndParamsMode = params.mode === 'text-and-parameters';
-
-  if (hasPrompt && (hasTextMode || hasTextAndParamsMode)) {
-    const truncatedPrompt = truncatePromptSummary(promptText);
-    if (hasTextMode) {
-      return truncatedPrompt;
-    }
-
-    return `${truncatedPrompt} · Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
-  }
-
-  return `Mood: ${params.mood} · Tempo: ${params.tempo} BPM · Style: ${params.style}`;
+  const brief = hasPrompt ? truncatePromptSummary(promptText!) : 'No brief';
+  return `${brief} · ${params.duration}s`;
 }
 
 async function requestGeneratedVideo(
@@ -231,9 +203,6 @@ export function App() {
   const activeVideoObjectUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
   const [params, setParams] = useState<GenerationParams>(defaultParams);
-  const [generationMode, setGenerationMode] = useState<GenerationMode>(
-    'text'
-  );
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
     string | null
@@ -247,17 +216,8 @@ export function App() {
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [imagePromptErrorMessage, setImagePromptErrorMessage] = useState<
-    string | null
-  >(null);
   const [visualImageUrl] = useState<string | null>(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
-  const [imagePrompt, setImagePrompt] = useState(
-    'lofi cafe at night, cinematic lighting'
-  );
-  const [useSamePromptForImage, setUseSamePromptForImage] = useState(true);
-  const [imagePromptBeforeSharedToggle, setImagePromptBeforeSharedToggle] =
-    useState(imagePrompt);
   const [socialFormatId, setSocialFormatId] =
     useState<SocialFormatId>(defaultSocialFormatId);
   const [hasGeneratedTrack, setHasGeneratedTrack] = useState(false);
@@ -287,16 +247,11 @@ export function App() {
 
   const handleAgentParametersUpdate = useCallback((agentParams: SongParameters) => {
     setParams({
-      mood: agentParams.mood,
-      tempo: agentParams.tempo,
-      style: agentParams.style,
+      mode: 'llm',
       duration: agentParams.duration,
     });
     setDurationInput(String(agentParams.duration));
     setDurationErrorMessage(null);
-    if (agentParams.mode) {
-      setGenerationMode(agentParams.mode);
-    }
     if (agentParams.prompt !== undefined) {
       setMusicPrompt(agentParams.prompt);
       setMusicPromptErrorMessage(null);
@@ -309,12 +264,9 @@ export function App() {
     const nextEntry: QueueEntry = {
       id: queueIdRef.current++,
       params: {
-        mood: command.parameters.mood,
-        tempo: command.parameters.tempo,
-        style: command.parameters.style,
-        duration: command.parameters.duration,
-        mode: command.parameters.mode,
+        mode: 'llm',
         prompt: command.parameters.prompt,
+        duration: command.parameters.duration,
       },
       imagePrompt: command.imagePrompt,
       targetWidth: command.targetWidth,
@@ -677,7 +629,13 @@ export function App() {
 
   function handleGenerate(): void {
     setErrorMessage(null);
-    setImagePromptErrorMessage(null);
+
+    const trimmedBrief = musicPrompt.trim();
+    if (!trimmedBrief) {
+      setMusicPromptErrorMessage(MUSIC_PROMPT_REQUIRED_ERROR);
+      return;
+    }
+
     const parsedDuration = Number(durationInput);
     const hasValidDuration =
       Number.isInteger(parsedDuration) &&
@@ -689,81 +647,21 @@ export function App() {
       return;
     }
 
-    setDurationErrorMessage(null);
-    const nextParams: GenerationParams = {
-      ...params,
-      duration: parsedDuration
-    };
-
-    const requiresPrompt =
-      generationMode === 'text' || generationMode === 'text-and-parameters';
-    const trimmedMusicPrompt = musicPrompt.trim();
-    if (requiresPrompt) {
-      if (!trimmedMusicPrompt) {
-        setMusicPromptErrorMessage(MUSIC_PROMPT_REQUIRED_ERROR);
-        return;
-      }
-
-      setMusicPromptErrorMessage(null);
-    }
-
-    const trimmedImagePrompt = useSamePromptForImage
-      ? trimmedMusicPrompt
-      : imagePrompt.trim();
-    if (!trimmedImagePrompt) {
-      setImagePromptErrorMessage('Please enter an image prompt.');
-      return;
-    }
-
-    if (requiresPrompt && generationMode === 'text') {
-      const nextEntry: QueueEntry = {
-        id: queueIdRef.current++,
-        params: {
-          ...nextParams,
-          mode: 'text',
-          prompt: trimmedMusicPrompt,
-          tempo: TEXT_MODE_DEFAULT_TEMPO
-        },
-        imagePrompt: trimmedImagePrompt,
-        targetWidth: selectedSocialFormat.width,
-        targetHeight: selectedSocialFormat.height,
-        status: 'queued',
-        errorMessage: null,
-        videoBlob: null
-      };
-      setQueueEntries((prev) => [...prev, nextEntry]);
-      return;
-    }
-
-    if (requiresPrompt && generationMode === 'text-and-parameters') {
-      const nextEntry: QueueEntry = {
-        id: queueIdRef.current++,
-        params: {
-          ...nextParams,
-          mode: 'text-and-parameters',
-          prompt: trimmedMusicPrompt
-        },
-        imagePrompt: trimmedImagePrompt,
-        targetWidth: selectedSocialFormat.width,
-        targetHeight: selectedSocialFormat.height,
-        status: 'queued',
-        errorMessage: null,
-        videoBlob: null
-      };
-      setQueueEntries((prev) => [...prev, nextEntry]);
-      return;
-    }
-
     setMusicPromptErrorMessage(null);
+    setDurationErrorMessage(null);
     const nextEntry: QueueEntry = {
       id: queueIdRef.current++,
-      params: nextParams,
-      imagePrompt: trimmedImagePrompt,
+      params: {
+        mode: 'llm',
+        prompt: trimmedBrief,
+        duration: parsedDuration,
+      },
+      imagePrompt: '',
       targetWidth: selectedSocialFormat.width,
       targetHeight: selectedSocialFormat.height,
       status: 'queued',
       errorMessage: null,
-      videoBlob: null
+      videoBlob: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
@@ -915,153 +813,27 @@ export function App() {
                   aria-label="Generation parameters"
                   className="space-y-4 rounded-lg bg-lofi-panel p-5"
                 >
-                  <fieldset
-                    role="radiogroup"
-                    aria-label="Generation mode"
-                    className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-                  >
-                    <legend className="text-sm font-semibold text-lofi-text">
-                      Generation mode
-                    </legend>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {generationModeOptions.map((option) => {
-                        const isSelected = generationMode === option.value;
-                        return (
-                          <label
-                            key={option.value}
-                            className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
-                              ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
-                              : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
-                              }`}
-                          >
-                            <input
-                              type="radio"
-                              name="generation-mode"
-                              value={option.value}
-                              checked={isSelected}
-                              onChange={() => setGenerationMode(option.value)}
-                              className="sr-only"
-                            />
-                            <span>{option.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-
-                  {generationMode !== 'parameters' && (
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="music-prompt"
-                        className="block text-sm font-semibold text-lofi-text"
-                      >
-                        Music prompt
-                      </label>
-                      <textarea
-                        id="music-prompt"
-                        rows={3}
-                        value={musicPrompt}
-                        onChange={(event) => {
-                          setMusicPrompt(event.target.value);
-                          if (musicPromptErrorMessage) {
-                            setMusicPromptErrorMessage(null);
-                          }
-                        }}
-                        className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                        placeholder="Describe the music you want..."
-                      />
-                    </div>
-                  )}
-
-                  {generationMode !== 'text' && (
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <fieldset
-                        data-testid="mood-control-card"
-                        className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-                      >
-                        <legend className="text-sm font-semibold text-lofi-text">
-                          Mood
-                        </legend>
-                        <label htmlFor="mood" className="sr-only">
-                          Mood
-                        </label>
-                        <select
-                          id="mood"
-                          className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                          value={params.mood}
-                          onChange={(event) =>
-                            setParams((prev) => ({
-                              ...prev,
-                              mood: event.target.value as Mood
-                            }))
-                          }
-                        >
-                          <option value="chill">chill</option>
-                          <option value="melancholic">melancholic</option>
-                          <option value="upbeat">upbeat</option>
-                        </select>
-                      </fieldset>
-
-                      <fieldset
-                        data-testid="tempo-control-card"
-                        className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-                      >
-                        <legend className="text-sm font-semibold text-lofi-text">
-                          Tempo
-                        </legend>
-                        <label htmlFor="tempo" className="sr-only">
-                          Tempo (BPM)
-                        </label>
-                        <input
-                          id="tempo"
-                          type="range"
-                          className="w-full cursor-pointer accent-lofi-accent outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                          min={60}
-                          max={120}
-                          value={params.tempo}
-                          onChange={(event) =>
-                            setParams((prev) => ({
-                              ...prev,
-                              tempo: Number(event.target.value)
-                            }))
-                          }
-                        />
-                        <output
-                          htmlFor="tempo"
-                          className="block text-sm text-stone-300"
-                        >
-                          {params.tempo} BPM
-                        </output>
-                      </fieldset>
-
-                      <fieldset
-                        data-testid="style-control-card"
-                        className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
-                      >
-                        <legend className="text-sm font-semibold text-lofi-text">
-                          Style
-                        </legend>
-                        <label htmlFor="style" className="sr-only">
-                          Style
-                        </label>
-                        <select
-                          id="style"
-                          className="w-full rounded-md border border-stone-500 bg-stone-900 px-2 py-2 text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                          value={params.style}
-                          onChange={(event) =>
-                            setParams((prev) => ({
-                              ...prev,
-                              style: event.target.value as Style
-                            }))
-                          }
-                        >
-                          <option value="jazz">jazz</option>
-                          <option value="hip-hop">hip-hop</option>
-                          <option value="ambient">ambient</option>
-                        </select>
-                      </fieldset>
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="music-prompt"
+                      className="block text-sm font-semibold text-lofi-text"
+                    >
+                      Creative brief
+                    </label>
+                    <textarea
+                      id="music-prompt"
+                      rows={5}
+                      value={musicPrompt}
+                      onChange={(event) => {
+                        setMusicPrompt(event.target.value);
+                        if (musicPromptErrorMessage) {
+                          setMusicPromptErrorMessage(null);
+                        }
+                      }}
+                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                      placeholder="Describe your concept — the AI creative director will choose the music style, mood, tempo, imagery, and scene automatically..."
+                    />
+                  </div>
 
                   <div className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3">
                     <label
@@ -1120,74 +892,6 @@ export function App() {
                       })}
                     </div>
                   </fieldset>
-                </section>
-                <section
-                  aria-label="Visual prompt"
-                  className="space-y-3 rounded-lg bg-lofi-panel p-4"
-                >
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="visual-prompt"
-                      className="block text-sm font-semibold text-lofi-text"
-                    >
-                      Image prompt
-                    </label>
-                    <label className="inline-flex items-center gap-2 text-sm text-stone-200">
-                      <input
-                        type="checkbox"
-                        checked={useSamePromptForImage}
-                        onChange={(event) => {
-                          const nextChecked = event.target.checked;
-                          setUseSamePromptForImage(nextChecked);
-
-                          if (nextChecked) {
-                            setImagePromptBeforeSharedToggle(imagePrompt);
-                            setImagePrompt(musicPrompt);
-                          } else {
-                            setImagePrompt(imagePromptBeforeSharedToggle);
-                          }
-
-                          if (imagePromptErrorMessage) {
-                            setImagePromptErrorMessage(null);
-                          }
-                        }}
-                        className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
-                      />
-                      <span>Use same prompt for image</span>
-                    </label>
-                  </div>
-
-                  {!useSamePromptForImage && (
-                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                      <input
-                        id="visual-prompt"
-                        type="text"
-                        value={imagePrompt}
-                        onChange={(event) => {
-                          setImagePrompt(event.target.value);
-                          if (imagePromptErrorMessage) {
-                            setImagePromptErrorMessage(null);
-                          }
-                        }}
-                        className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                        placeholder="Describe your lofi scene..."
-                      />
-                    </div>
-                  )}
-
-                  {useSamePromptForImage && (
-                    <p className="text-sm text-stone-300">
-                      Image prompt will use the current music prompt.
-                    </p>
-                  )}
-
-                  <div data-testid="visual-prompt-feedback" className="space-y-2">
-                    {imagePromptErrorMessage && (
-                      <p role="alert" className="text-sm font-semibold text-red-100">
-                        {imagePromptErrorMessage}
-                      </p>
-                    )}
-                  </div>
                 </section>
               </>
             )}

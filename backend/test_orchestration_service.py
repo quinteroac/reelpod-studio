@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from models.errors import OrchestrationFailedError
+from services import orchestration_service
+
+
+@pytest.fixture(autouse=True)
+def restore_orchestration_state() -> None:
+    previous_pipeline = orchestration_service.llm_pipeline
+    previous_error = orchestration_service.llm_pipeline_load_error
+    orchestration_service.llm_pipeline = object()
+    orchestration_service.llm_pipeline_load_error = None
+    yield
+    orchestration_service.llm_pipeline = previous_pipeline
+    orchestration_service.llm_pipeline_load_error = previous_error
+
+
+def test_orchestrate_successful_with_creative_director_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+    image_prompt = (
+        "score_9, score_8, best quality, highres, newest, safe, 1girl, hatsune miku, "
+        "vocaloid, kantoku, city lights, night, neon, rain"
+    )
+    payload = {
+        "audio_prompt": "synthwave, moody, 90 BPM, analog bass, dreamy pads, lyrics about neon solitude",
+        "image_prompt": image_prompt,
+        "video_prompt": "A lone singer crosses a neon intersection while rain streaks over the camera lens.",
+    }
+
+    def fake_generate_json_concept(_clip: object, user_prompt: str) -> str:
+        seen["user_prompt"] = user_prompt
+        seen["system_prompt"] = orchestration_service._build_orchestration_prompt(user_prompt)
+        return json.dumps(payload)
+
+    def fake_generate_video_prompt_ltx2(_clip: object, seed_prompt: str) -> str:
+        seen["video_seed"] = seed_prompt
+        return (
+            "Style: cinematic anime. A vocalist is walking through a rainy crosswalk as the camera tracks "
+            "beside her and neon reflections ripple on wet asphalt while distant traffic hum and soft synth "
+            "arpeggios blend with her measured footsteps."
+        )
+
+    monkeypatch.setattr(orchestration_service, "_generate_json_concept", fake_generate_json_concept)
+    monkeypatch.setattr(
+        orchestration_service,
+        "_generate_video_prompt_ltx2",
+        fake_generate_video_prompt_ltx2,
+    )
+
+    result = orchestration_service.orchestrate("night city performance clip with introspective mood")
+
+    assert result.audio_prompt == payload["audio_prompt"]
+    assert result.image_prompt == image_prompt
+    assert "creative director" in seen["system_prompt"].lower()
+    assert "audio_prompt" in seen["system_prompt"]
+    assert "image_prompt" in seen["system_prompt"]
+    assert "video_prompt" in seen["system_prompt"]
+    assert seen["video_seed"] == payload["video_prompt"]
+    assert result.video_prompt.startswith("Style: cinematic anime.")
+    assert "\n" not in result.video_prompt
+
+
+def test_orchestrate_retries_json_parse_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"count": 0}
+
+    def fake_generate_json_concept(_clip: object, _user_prompt: str) -> str:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return "not-json"
+        return json.dumps(
+            {
+                "audio_prompt": "lofi house, warm mood, 110 BPM, drum machine, jazzy keys, lyrics about sunrise",
+                "image_prompt": (
+                    "score_9, score_8, best quality, highres, newest, safe, 1girl, original, "
+                    "unknown artist, sunrise, apartment balcony, coffee mug"
+                ),
+                "video_prompt": "A creator opens curtains as early sunlight enters a small studio apartment.",
+            }
+        )
+
+    monkeypatch.setattr(orchestration_service, "_generate_json_concept", fake_generate_json_concept)
+    monkeypatch.setattr(
+        orchestration_service,
+        "_generate_video_prompt_ltx2",
+        lambda _clip, seed: f"Style: cinematic. {seed} Soft room tone and distant birds are audible.",
+    )
+
+    result = orchestration_service.orchestrate("morning studio vibe")
+
+    assert calls["count"] == 2
+    assert result.audio_prompt.startswith("lofi house")
+    assert result.image_prompt.startswith("score_9, score_8, best quality, highres")
+
+
+def test_orchestrate_raises_error_when_pipeline_failed_to_load() -> None:
+    orchestration_service.llm_pipeline = None
+    orchestration_service.llm_pipeline_load_error = "REELPOD_LLM_MODEL_PATH does not point to a file"
+
+    with pytest.raises(OrchestrationFailedError) as exc_info:
+        orchestration_service.orchestrate("retro cyberpunk alley performance")
+
+    assert "LLM orchestration unavailable" in str(exc_info.value)
+    assert "REELPOD_LLM_MODEL_PATH does not point to a file" in str(exc_info.value)
+
+
+def test_startup_captures_load_failure_and_orchestrate_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        orchestration_service,
+        "load_llm_pipeline",
+        lambda: (_ for _ in ()).throw(RuntimeError("runtime init failed")),
+    )
+
+    orchestration_service.startup()
+
+    assert orchestration_service.llm_pipeline is None
+    assert orchestration_service.llm_pipeline_load_error == "runtime init failed"
+    with pytest.raises(OrchestrationFailedError):
+        orchestration_service.orchestrate("ambient forest timelapse")

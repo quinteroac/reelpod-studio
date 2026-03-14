@@ -9,9 +9,9 @@ MAX_DURATION_SECONDS = 300
 DEFAULT_DURATION_SECONDS = 40
 
 INVALID_PAYLOAD_ERROR = (
-    "Invalid payload. Expected { mode?: 'text'|'text+params'|'text-and-parameters'|'params'|'parameters', "
-    f"prompt?: string, mood?: string, tempo?: number ({MIN_TEMPO}-{MAX_TEMPO}), "
-    f"duration?: number ({MIN_DURATION_SECONDS}-{MAX_DURATION_SECONDS}), style?: string }}"
+    "Invalid payload. Expected { mode?: 'llm', prompt: string, "
+    f"duration?: number ({MIN_DURATION_SECONDS}-{MAX_DURATION_SECONDS}), "
+    "targetWidth?: number, targetHeight?: number }"
 )
 
 # ACE Step 1.5 text-to-audio via comfy-diffusion

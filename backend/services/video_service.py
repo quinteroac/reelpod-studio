@@ -21,7 +21,7 @@ from models.errors import (
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from repositories import media_repository, video_repository
-from services import audio_service, image_service
+from services import audio_service, image_service, orchestration_service
 
 T = TypeVar("T")
 
@@ -52,10 +52,17 @@ def startup() -> None:
         logger.error("Wan video pipeline failed to load: %s", exc)
 
 
-def build_image_prompt(body: GenerateRequestBody) -> str:
-    if body.prompt is not None:
-        return body.prompt
-    return f"{body.mood} {body.style} lofi artwork"
+def _resolve_pipeline_prompts(
+    body: GenerateRequestBody,
+) -> tuple[GenerateRequestBody, str, str]:
+    orchestration = orchestration_service.orchestrate(body.prompt or "")
+    audio_request_body = body.model_copy(
+        update={
+            "mode": "text",
+            "prompt": orchestration.audio_prompt,
+        }
+    )
+    return audio_request_body, orchestration.image_prompt, orchestration.video_prompt
 
 
 def _run_with_timeout(func: Callable[[], T], timeout_seconds: float, timeout_message: str) -> T:
@@ -141,16 +148,17 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         return remaining
 
     try:
+        audio_request_body, image_prompt, video_prompt = _resolve_pipeline_prompts(body)
         logger.info(
             "Video pipeline: starting audio generation (mode=%s, mood=%s, tempo=%s, duration=%s, style=%s)",
-            body.mode,
-            body.mood,
-            body.tempo,
-            body.duration,
-            body.style,
+            audio_request_body.mode,
+            audio_request_body.mood,
+            audio_request_body.tempo,
+            audio_request_body.duration,
+            audio_request_body.style,
         )
         audio_bytes = _run_with_timeout(
-            lambda: audio_service.generate_audio_for_request(body),
+            lambda: audio_service.generate_audio_for_request(audio_request_body),
             timeout_seconds=remaining_seconds(),
             timeout_message="Video generation timed out while generating audio",
         )
@@ -171,7 +179,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         )
 
         image_request = GenerateImageRequestBody(
-            prompt=build_image_prompt(body),
+            prompt=image_prompt,
             targetWidth=body.image_target_width,
             targetHeight=body.image_target_height,
         )
@@ -195,7 +203,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         from PIL import Image as _PILImage
 
         _pil_image = _PILImage.open(image_path)
-        _video_prompt = build_image_prompt(body)
+        _video_prompt = video_prompt
         _wan_pipeline = wan_pipeline
         wan_clip_path = _run_with_timeout(
             lambda: video_repository.run_video_inference(

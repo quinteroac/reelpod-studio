@@ -15,10 +15,8 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
 
     def fake_generate_video_mp4_for_request(body):  # noqa: ANN001
         seen["mode"] = body.mode
-        seen["mood"] = body.mood
-        seen["tempo"] = body.tempo
+        seen["prompt"] = body.prompt
         seen["duration"] = body.duration
-        seen["style"] = body.style
         return MP4_HEADER
 
     monkeypatch.setattr(
@@ -28,19 +26,18 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
     )
 
     with TestClient(app=main.app, raise_server_exceptions=False) as client:
-        response = client.post("/api/generate", json={"mood": "warm", "tempo": 95, "duration": 90, "style": "hip-hop"})
+        response = client.post(
+            "/api/generate",
+            json={"mode": "llm", "prompt": "warm hip-hop beat", "duration": 90},
+        )
         wrong_method = client.get("/api/generate")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "video/mp4"
     assert response.content.startswith(b"\x00\x00\x00\x20ftyp")
-    assert seen == {
-        "mode": "params",
-        "mood": "warm",
-        "tempo": 95,
-        "duration": 90,
-        "style": "hip-hop",
-    }
+    assert seen["mode"] == "llm"
+    assert seen["prompt"] == "warm hip-hop beat"
+    assert seen["duration"] == 90
     assert wrong_method.status_code == 405
 
 
@@ -49,28 +46,25 @@ def test_post_generate_requests_preserves_contract(monkeypatch) -> None:
 
     def fake_create_generation_request(body):  # noqa: ANN001
         seen["mode"] = body.mode
-        seen["mood"] = body.mood
-        seen["tempo"] = body.tempo
+        seen["prompt"] = body.prompt
         seen["duration"] = body.duration
-        seen["style"] = body.style
         return {"id": "req-123", "status": "queued"}
 
     monkeypatch.setattr(main.audio_service, "create_generation_request", fake_create_generation_request)
 
     with TestClient(app=main.app, raise_server_exceptions=False) as client:
-        response = client.post("/api/generate-requests", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        response = client.post(
+            "/api/generate-requests",
+            json={"mode": "llm", "prompt": "chill jazz", "duration": 40},
+        )
         wrong_method = client.get("/api/generate-requests")
 
     assert response.status_code == 200
     assert response.json() == {"id": "req-123", "status": "queued"}
     assert set(response.json().keys()) == {"id", "status"}
-    assert seen == {
-        "mode": "params",
-        "mood": "chill",
-        "tempo": 80,
-        "duration": 40,
-        "style": "jazz",
-    }
+    assert seen["mode"] == "llm"
+    assert seen["prompt"] == "chill jazz"
+    assert seen["duration"] == 40
     assert wrong_method.status_code == 405
 
 

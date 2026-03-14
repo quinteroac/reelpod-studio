@@ -93,14 +93,12 @@ describe('MCP Server', () => {
       }
     });
 
-    it('set_song_parameters schema defines mood, tempo, style, duration properties', () => {
+    it('set_song_parameters schema defines duration and optional prompt', () => {
       const tool = tools.find((t) => t.name === 'set_song_parameters');
       expect(tool).toBeDefined();
       const props = tool!.inputSchema.properties ?? {};
-      expect(props).toHaveProperty('mood');
-      expect(props).toHaveProperty('tempo');
-      expect(props).toHaveProperty('style');
       expect(props).toHaveProperty('duration');
+      expect(props).toHaveProperty('prompt');
     });
 
     it('generate_audio schema defines imagePrompt property', () => {
@@ -145,50 +143,35 @@ describe('US-002 – set_song_parameters tool', () => {
     await client.close();
   });
 
-  // US-002-AC01: Tool accepts genre, lyrics, tempo, and other relevant fields
-  describe('AC01 – tool accepts mood, style, tempo, duration, mode, prompt', () => {
-    it('accepts all parameters and returns success', async () => {
+  describe('AC01 – tool accepts duration and optional prompt', () => {
+    it('accepts duration and prompt and returns success', async () => {
       const result = await client.callTool({
         name: 'set_song_parameters',
         arguments: {
-          mood: 'upbeat',
-          tempo: 100,
-          style: 'hip-hop',
           duration: 120,
-          mode: 'text-and-parameters',
           prompt: 'energetic hip-hop beat',
         },
       });
 
       expect(result.content).toHaveLength(1);
       const parsed = parseToolResult(result);
-      expect(parsed.parameters.mood).toBe('upbeat');
-      expect(parsed.parameters.tempo).toBe(100);
-      expect(parsed.parameters.style).toBe('hip-hop');
       expect(parsed.parameters.duration).toBe(120);
-      expect(parsed.parameters.mode).toBe('text-and-parameters');
       expect(parsed.parameters.prompt).toBe('energetic hip-hop beat');
+      expect(parsed.parameters.mode).toBe('llm');
     });
 
-    it('accepts only required parameters (mode and prompt are optional)', async () => {
+    it('accepts only required duration (prompt optional)', async () => {
       const result = await client.callTool({
         name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 80,
-          style: 'ambient',
-          duration: 60,
-        },
+        arguments: { duration: 60 },
       });
 
       const parsed = parseToolResult(result);
       expect(parsed.status).toBe('parameters_set');
-      expect(parsed.parameters.mood).toBe('chill');
-      expect(parsed.parameters.style).toBe('ambient');
+      expect(parsed.parameters.duration).toBe(60);
     });
   });
 
-  // US-002-AC02: Parameters are applied to the application state
   describe('AC02 – parameters are applied to the parameter store', () => {
     it('updates the parameter store when tool is called', async () => {
       const listener = vi.fn();
@@ -197,11 +180,7 @@ describe('US-002 – set_song_parameters tool', () => {
       await client.callTool({
         name: 'set_song_parameters',
         arguments: {
-          mood: 'melancholic',
-          tempo: 70,
-          style: 'jazz',
           duration: 200,
-          mode: 'text',
           prompt: 'sad piano melody',
         },
       });
@@ -209,11 +188,8 @@ describe('US-002 – set_song_parameters tool', () => {
       expect(listener).toHaveBeenCalledOnce();
       const storedParams = parameterStore.get();
       expect(storedParams).toEqual({
-        mood: 'melancholic',
-        tempo: 70,
-        style: 'jazz',
         duration: 200,
-        mode: 'text',
+        mode: 'llm',
         prompt: 'sad piano melody',
       });
 
@@ -221,82 +197,28 @@ describe('US-002 – set_song_parameters tool', () => {
     });
   });
 
-  // US-002-AC03: Tool returns confirmation with the parameters that were set
   describe('AC03 – tool returns confirmation with parameters', () => {
-    it('returns status "parameters_set" and echoes all parameters', async () => {
+    it('returns status "parameters_set" and echoes parameters', async () => {
       const result = await client.callTool({
         name: 'set_song_parameters',
-        arguments: {
-          mood: 'upbeat',
-          tempo: 110,
-          style: 'hip-hop',
-          duration: 45,
-        },
+        arguments: { duration: 45, prompt: 'short clip' },
       });
 
       const parsed = parseToolResult(result);
       expect(parsed.status).toBe('parameters_set');
       expect(parsed.parameters).toEqual({
-        mood: 'upbeat',
-        tempo: 110,
-        style: 'hip-hop',
         duration: 45,
-        mode: undefined,
-        prompt: undefined,
+        mode: 'llm',
+        prompt: 'short clip',
       });
     });
   });
 
-  // US-002-AC04: Invalid parameters return a clear error message
   describe('AC04 – invalid parameters return clear error', () => {
-    it('rejects invalid mood value', async () => {
-      const result = await client.callTool({
-        name: 'set_song_parameters',
-        arguments: {
-          mood: 'angry',
-          tempo: 80,
-          style: 'jazz',
-          duration: 60,
-        },
-      });
-      expect(result.isError).toBe(true);
-    });
-
-    it('rejects tempo below minimum (60)', async () => {
-      const result = await client.callTool({
-        name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 30,
-          style: 'jazz',
-          duration: 60,
-        },
-      });
-      expect(result.isError).toBe(true);
-    });
-
-    it('rejects tempo above maximum (120)', async () => {
-      const result = await client.callTool({
-        name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 200,
-          style: 'jazz',
-          duration: 60,
-        },
-      });
-      expect(result.isError).toBe(true);
-    });
-
     it('rejects duration below minimum (40)', async () => {
       const result = await client.callTool({
         name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 80,
-          style: 'jazz',
-          duration: 10,
-        },
+        arguments: { duration: 10 },
       });
       expect(result.isError).toBe(true);
     });
@@ -304,38 +226,7 @@ describe('US-002 – set_song_parameters tool', () => {
     it('rejects duration above maximum (300)', async () => {
       const result = await client.callTool({
         name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 80,
-          style: 'jazz',
-          duration: 500,
-        },
-      });
-      expect(result.isError).toBe(true);
-    });
-
-    it('rejects invalid style value', async () => {
-      const result = await client.callTool({
-        name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 80,
-          style: 'rock',
-          duration: 60,
-        },
-      });
-      expect(result.isError).toBe(true);
-    });
-
-    it('rejects non-integer tempo', async () => {
-      const result = await client.callTool({
-        name: 'set_song_parameters',
-        arguments: {
-          mood: 'chill',
-          tempo: 80.5,
-          style: 'jazz',
-          duration: 60,
-        },
+        arguments: { duration: 500 },
       });
       expect(result.isError).toBe(true);
     });
@@ -377,10 +268,9 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
 
   it('POSTs to /mcp/generate on the SSE server instead of /api/generate', async () => {
     parameterStore.set({
-      mood: 'chill',
-      tempo: 80,
-      style: 'jazz',
       duration: 60,
+      mode: 'llm',
+      prompt: 'chill lofi',
     });
 
     mockFetch.mockResolvedValueOnce(
@@ -401,7 +291,8 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
     expect(options.method).toBe('POST');
 
     const body = JSON.parse(options.body);
-    expect(body.parameters.mood).toBe('chill');
+    expect(body.parameters.duration).toBe(60);
+    expect(body.parameters.prompt).toBe('chill lofi');
     expect(body.imagePrompt).toBe('sunset beach');
     expect(body.targetWidth).toBe(1920);
     expect(body.targetHeight).toBe(1080);
@@ -413,10 +304,8 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
 
   it('returns error when SSE bridge is unreachable', async () => {
     parameterStore.set({
-      mood: 'chill',
-      tempo: 80,
-      style: 'jazz',
       duration: 60,
+      mode: 'llm',
     });
 
     mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
@@ -432,7 +321,6 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
   });
 
   it('also POSTs parameters to /mcp/parameters when set_song_parameters is called', async () => {
-    // First call for /mcp/parameters bridge
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ status: 'ok' }), {
         status: 200,
@@ -442,12 +330,7 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
 
     await client.callTool({
       name: 'set_song_parameters',
-      arguments: {
-        mood: 'upbeat',
-        tempo: 100,
-        style: 'hip-hop',
-        duration: 45,
-      },
+      arguments: { duration: 45, prompt: 'upbeat hip-hop' },
     });
 
     expect(mockFetch).toHaveBeenCalledOnce();
@@ -456,8 +339,8 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
     expect(options.method).toBe('POST');
 
     const body = JSON.parse(options.body);
-    expect(body.mood).toBe('upbeat');
-    expect(body.tempo).toBe(100);
+    expect(body.duration).toBe(45);
+    expect(body.prompt).toBe('upbeat hip-hop');
   });
 });
 
@@ -494,14 +377,12 @@ describe('US-003 – generate_audio tool', () => {
     mockFetch.mockReset();
   });
 
-  // US-003-AC01: generate_audio triggers the same flow as clicking the Generate button
   describe('AC01 – triggers the same generation flow as the Generate button', () => {
-    it('POSTs to /api/generate with parameters from the store', async () => {
+    it('POSTs to /api/generate-requests with parameters from the store', async () => {
       parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
         duration: 60,
+        mode: 'llm',
+        prompt: 'chill jazz',
       });
 
       mockFetch.mockResolvedValueOnce(
@@ -518,14 +399,13 @@ describe('US-003 – generate_audio tool', () => {
 
       expect(mockFetch).toHaveBeenCalledOnce();
       const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toBe(`${BACKEND_BASE_URL}/api/generate`);
+      expect(url).toBe(`${BACKEND_BASE_URL}/api/generate-requests`);
       expect(options.method).toBe('POST');
 
       const body = JSON.parse(options.body);
-      expect(body.mood).toBe('chill');
-      expect(body.tempo).toBe(80);
-      expect(body.style).toBe('jazz');
       expect(body.duration).toBe(60);
+      expect(body.prompt).toBe('chill jazz');
+      expect(body.mode).toBe('llm');
       expect(body.imagePrompt).toBe('sunset beach');
       expect(body.targetWidth).toBe(1920);
       expect(body.targetHeight).toBe(1080);
@@ -533,10 +413,9 @@ describe('US-003 – generate_audio tool', () => {
 
     it('uses default image prompt when none provided', async () => {
       parameterStore.set({
-        mood: 'upbeat',
-        tempo: 100,
-        style: 'hip-hop',
         duration: 45,
+        mode: 'llm',
+        prompt: 'upbeat beat',
       });
 
       mockFetch.mockResolvedValueOnce(
@@ -585,12 +464,7 @@ describe('US-003 – generate_audio tool', () => {
   // US-003-AC02: Tool returns a result indicating success or failure
   describe('AC02 – returns success or failure result', () => {
     it('returns status "completed" on successful generation', async () => {
-      parameterStore.set({
-        mood: 'melancholic',
-        tempo: 70,
-        style: 'ambient',
-        duration: 120,
-      });
+      parameterStore.set({ duration: 120, mode: 'llm' });
 
       mockFetch.mockResolvedValueOnce(
         new Response(new Blob(), {
@@ -610,12 +484,7 @@ describe('US-003 – generate_audio tool', () => {
     });
 
     it('returns status "failed" on backend error', async () => {
-      parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
-        duration: 60,
-      });
+      parameterStore.set({ duration: 60, mode: 'llm' });
 
       mockFetch.mockResolvedValueOnce(
         new Response(JSON.stringify({ error: 'ACEStep timeout' }), {
@@ -638,12 +507,7 @@ describe('US-003 – generate_audio tool', () => {
   // US-003-AC03: If generation fails, the error message from the backend is forwarded
   describe('AC03 – backend error message is forwarded to the agent', () => {
     it('forwards the error field from a JSON error response', async () => {
-      parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
-        duration: 60,
-      });
+      parameterStore.set({ duration: 60, mode: 'llm' });
 
       mockFetch.mockResolvedValueOnce(
         new Response(
@@ -666,12 +530,7 @@ describe('US-003 – generate_audio tool', () => {
     });
 
     it('forwards the detail field from a JSON error response', async () => {
-      parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
-        duration: 60,
-      });
+      parameterStore.set({ duration: 60, mode: 'llm' });
 
       mockFetch.mockResolvedValueOnce(
         new Response(
@@ -693,12 +552,7 @@ describe('US-003 – generate_audio tool', () => {
     });
 
     it('provides a fallback message for non-JSON error responses', async () => {
-      parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
-        duration: 60,
-      });
+      parameterStore.set({ duration: 60, mode: 'llm' });
 
       mockFetch.mockResolvedValueOnce(
         new Response('Internal Server Error', {
@@ -717,12 +571,7 @@ describe('US-003 – generate_audio tool', () => {
     });
 
     it('forwards network errors', async () => {
-      parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
-        duration: 60,
-      });
+      parameterStore.set({ duration: 60, mode: 'llm' });
 
       mockFetch.mockRejectedValueOnce(new Error('fetch failed'));
 
@@ -801,12 +650,7 @@ describe('US-004 – add_to_queue tool', () => {
     });
 
     it('returns an error when the last generation failed', async () => {
-      parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
-        duration: 60,
-      });
+      parameterStore.set({ duration: 60, mode: 'llm' });
 
       mockFetch.mockResolvedValueOnce(
         new Response(JSON.stringify({ error: 'ACEStep timeout' }), {
@@ -835,10 +679,8 @@ describe('US-004 – add_to_queue tool', () => {
   describe('AC01 – adds current song to the queue', () => {
     it('adds a successfully generated song to the queue', async () => {
       parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
         duration: 60,
+        mode: 'llm',
         prompt: 'mellow jazz vibes',
       });
 
@@ -863,9 +705,7 @@ describe('US-004 – add_to_queue tool', () => {
       const parsed = parseToolResult(result);
       expect(parsed.status).toBe('added_to_queue');
       expect(parsed.queue.length).toBe(1);
-      expect(parsed.queue[0].parameters.mood).toBe('chill');
-      expect(parsed.queue[0].parameters.tempo).toBe(80);
-      expect(parsed.queue[0].parameters.style).toBe('jazz');
+      expect(parsed.queue[0].parameters.duration).toBe(60);
       expect(parsed.queue[0].parameters.prompt).toBe('mellow jazz vibes');
     });
   });
@@ -873,12 +713,9 @@ describe('US-004 – add_to_queue tool', () => {
   // US-004-AC02: Tool returns the updated queue with song count and song metadata
   describe('AC02 – returns updated queue with song count and metadata', () => {
     it('returns songCount and queue metadata after adding', async () => {
-      // Generate a second song and add it
       parameterStore.set({
-        mood: 'upbeat',
-        tempo: 110,
-        style: 'hip-hop',
         duration: 45,
+        mode: 'llm',
         prompt: 'energetic beat',
       });
 
@@ -903,11 +740,8 @@ describe('US-004 – add_to_queue tool', () => {
       expect(parsed.songCount).toBe(2);
       expect(parsed.queue).toHaveLength(2);
 
-      // Verify metadata of the second song
       const second = parsed.queue[1];
-      expect(second.parameters.mood).toBe('upbeat');
-      expect(second.parameters.tempo).toBe(110);
-      expect(second.parameters.style).toBe('hip-hop');
+      expect(second.parameters.duration).toBe(45);
       expect(second.parameters.prompt).toBe('energetic beat');
       expect(second.imagePrompt).toBe('neon city');
       expect(typeof second.id).toBe('number');
@@ -985,10 +819,8 @@ describe('US-005 – get_queue tool', () => {
 
       // Add two songs to the queue
       parameterStore.set({
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
         duration: 60,
+        mode: 'llm',
         prompt: 'mellow jazz vibes',
       });
       mockFetch.mockResolvedValueOnce(
@@ -998,10 +830,8 @@ describe('US-005 – get_queue tool', () => {
       await client.callTool({ name: 'add_to_queue', arguments: {} });
 
       parameterStore.set({
-        mood: 'upbeat',
-        tempo: 110,
-        style: 'hip-hop',
         duration: 45,
+        mode: 'llm',
       });
       mockFetch.mockResolvedValueOnce(
         new Response(new Blob(), { status: 200 }),
@@ -1027,7 +857,7 @@ describe('US-005 – get_queue tool', () => {
       expect(parsed.queue).toHaveLength(2);
     });
 
-    it('each entry includes name, genre, tempo, duration, and position', async () => {
+    it('each entry includes name, duration, and position', async () => {
       const result = await client.callTool({
         name: 'get_queue',
         arguments: {},
@@ -1037,29 +867,23 @@ describe('US-005 – get_queue tool', () => {
       const first = parsed.queue[0];
       expect(first.position).toBe(1);
       expect(first.name).toBe('mellow jazz vibes');
-      expect(first.genre).toBe('jazz');
-      expect(first.tempo).toBe(80);
       expect(first.duration).toBe(60);
 
       const second = parsed.queue[1];
       expect(second.position).toBe(2);
-      expect(second.name).toBe('upbeat hip-hop');
-      expect(second.genre).toBe('hip-hop');
-      expect(second.tempo).toBe(110);
+      expect(second.name).toBe('Creative brief');
       expect(second.duration).toBe(45);
     });
 
-    it('uses prompt as name when available, falls back to mood+style', async () => {
+    it('uses prompt as name when available, falls back to Creative brief', async () => {
       const result = await client.callTool({
         name: 'get_queue',
         arguments: {},
       });
 
       const parsed = parseToolResult(result);
-      // First song had a prompt
       expect(parsed.queue[0].name).toBe('mellow jazz vibes');
-      // Second song had no prompt — falls back to "mood style"
-      expect(parsed.queue[1].name).toBe('upbeat hip-hop');
+      expect(parsed.queue[1].name).toBe('Creative brief');
     });
 
     it('preserves queue order (first added is position 1)', async () => {
