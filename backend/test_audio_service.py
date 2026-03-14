@@ -7,7 +7,7 @@ import pytest
 
 from models.queue import GenerationQueueItem
 from models.schemas import GenerateRequestBody
-from repositories import acestep_repository
+from repositories import audio_repository
 from services import audio_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
@@ -172,7 +172,7 @@ class TestQueueWorker:
             return WAV_HEADER
 
         monkeypatch.setattr(
-            acestep_repository,
+            audio_repository,
             "generate_audio_bytes_for_prompt",
             fake_generate_audio_bytes_for_prompt,
         )

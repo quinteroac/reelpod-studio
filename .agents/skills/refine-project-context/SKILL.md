@@ -1,6 +1,6 @@
 ---
 name: refine-project-context
-description: "Refines .agents/PROJECT_CONTEXT.md via editor mode or challenge mode. Challenge mode validates the document against the actual codebase and detects compliance issues. Triggered by: bun nvst refine project-context."
+description: "Refines .agents/PROJECT_CONTEXT.md via editor mode or challenge mode. Challenge mode validates the document against the actual codebase and detects compliance issues. Triggered by: nvst refine project-context."
 user-invocable: true
 ---
 

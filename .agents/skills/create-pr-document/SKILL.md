@@ -1,6 +1,6 @@
 ---
 name: create-pr-document
-description: "Gathers the requirement from the user and produces it_{iteration}_product-requirement-document.md. Triggered by: bun nvst define requirement."
+description: "Gathers the requirement from the user and produces it_{iteration}_product-requirement-document.md. Triggered by: nvst define requirement."
 user-invocable: true
 ---
 
@@ -113,6 +113,20 @@ Each story must be small enough to implement in one focused session.
 
 ---
 
+---
+
+## After writing the PRD: Resolve open questions
+
+**CRITICAL: Do this at the end of the session, after you have written the PRD file and before you update `state.json`.**
+
+1. **Detect open questions.** Read the PRD file you just wrote (`.agents/flow/it_{current_iteration}_product-requirement-document.md`). If it contains a section `## Open Questions` with one or more list items (lines starting with `-` or `*` or a number), treat each list item as an open question. Skip placeholders such as "None", "…", or "TBD" — only ask items that are real questions.
+2. **Ask the open questions one by one.** For each open question (in order), ask the user that question. **When asking each open question, always include valid suggestions or inferred options** (e.g. lettered choices A, B, C, or "Other: [specify]") so the user has helpful context to provide an answer. Infer options from the PRD context when possible; if none fit, offer at least 2–3 plausible options plus "Other".
+3. **Wait for the user's answer before proceeding.** After asking a question, wait for the user to respond. Only then ask the next question (or, if there are no more, proceed to update `state.json` and finish).
+
+If there are no open questions (section missing or only placeholders), skip this block and go straight to updating `state.json`.
+
+---
+
 ## Checklist
 
 Before saving:
@@ -122,4 +136,5 @@ Before saving:
 - [ ] Functional requirements are numbered and unambiguous
 - [ ] Non-goals define clear scope boundaries
 - [ ] File written to `.agents/flow/it_{current_iteration}_product-requirement-document.md`
+- [ ] **Open questions (if any) asked one by one with suggestions/options per question, and user answers collected**
 - [ ] `state.json` → `requirement_definition.status` = `"in_progress"`, `requirement_definition.file` set

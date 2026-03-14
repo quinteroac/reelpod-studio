@@ -18,7 +18,7 @@ from models.errors import (
     VideoGenerationTimeoutError,
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
-from repositories import acestep_repository, image_repository
+from repositories import audio_repository, image_repository
 from services import audio_service, image_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
@@ -406,7 +406,7 @@ class TestGenerationQueue:
             return WAV_HEADER
 
         monkeypatch.setattr(
-            acestep_repository,
+            audio_repository,
             "generate_audio_bytes_for_prompt",
             fake_generate_audio_bytes_for_prompt,
         )

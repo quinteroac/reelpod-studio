@@ -3,8 +3,6 @@ from __future__ import annotations
 import threading
 from collections import deque
 from uuid import uuid4
-from urllib.error import HTTPError, URLError
-import json
 import logging
 import time
 
@@ -17,7 +15,7 @@ from models.errors import (
 )
 from models.queue import GenerationQueueItem
 from models.schemas import GenerateRequestBody
-from repositories import acestep_repository
+from repositories import audio_repository
 
 logger = logging.getLogger(__name__)
 
@@ -119,13 +117,13 @@ def _queue_worker() -> None:
             queue_condition.notify_all()
 
         try:
-            wav_bytes = acestep_repository.generate_audio_bytes_for_prompt(
+            wav_bytes = audio_repository.generate_audio_bytes_for_prompt(
                 item.prompt,
                 tempo=item.tempo,
                 duration=item.duration,
             )
-        except (RuntimeError, URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
-            logger.error("ACE-Step API error: %s: %s", type(exc).__name__, exc)
+        except RuntimeError as exc:
+            logger.error("Audio generation error: %s: %s", type(exc).__name__, exc)
             with queue_condition:
                 failed_item = queue_items.get(next_item_id)
                 if failed_item is not None:

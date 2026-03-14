@@ -1,21 +1,41 @@
 {
-  "current_iteration": "000023",
-  "current_phase": "prototype",
+  "current_iteration": "000024",
+  "current_phase": "define",
   "phases": {
     "define": {
+      "ideation": {
+        "status": "pending",
+        "file": null
+      },
       "requirement_definition": {
         "status": "approved",
-        "file": "it_000023_product-requirement-document.md"
+        "file": "it_000024_product-requirement-document.md"
       },
       "prd_generation": {
         "status": "completed",
-        "file": "it_000023_PRD.json"
+        "file": "it_000024_PRD.json"
       }
     },
     "prototype": {
+      "prototype_creation": {
+        "status": "pending",
+        "file": null
+      },
+      "prototype_audit": {
+        "status": "pending",
+        "file": null
+      },
+      "prototype_refactor": {
+        "status": "pending",
+        "file": null
+      },
+      "prototype_approval": {
+        "status": "pending",
+        "file": null
+      },
       "project_context": {
-        "status": "created",
-        "file": ".agents/PROJECT_CONTEXT.md"
+        "status": "pending",
+        "file": null
       },
       "test_plan": {
         "status": "pending",
@@ -26,8 +46,8 @@
         "file": null
       },
       "prototype_build": {
-        "status": "created",
-        "file": "it_000023_progress.json"
+        "status": "pending",
+        "file": null
       },
       "test_execution": {
         "status": "pending",
@@ -54,118 +74,13 @@
       }
     }
   },
-  "last_updated": "2026-03-06T07:12:13.625Z",
-  "updated_by": "nvst:create-prototype",
+  "last_updated": "2026-03-14T04:52:49.328Z",
+  "updated_by": "nvst:approve-requirement",
   "history": [
     {
       "iteration": "000001",
-      "archived_at": "2026-02-27T22:16:26.884Z",
+      "archived_at": "2026-03-14T04:41:07.623Z",
       "archived_path": ".agents/flow/archived/000001"
-    },
-    {
-      "iteration": "000002",
-      "archived_at": "2026-02-27T22:56:53.129Z",
-      "archived_path": ".agents/flow/archived/000002"
-    },
-    {
-      "iteration": "000003",
-      "archived_at": "2026-02-28T00:24:53.638Z",
-      "archived_path": ".agents/flow/archived/000003"
-    },
-    {
-      "iteration": "000004",
-      "archived_at": "2026-02-28T01:03:57.101Z",
-      "archived_path": ".agents/flow/archived/000004"
-    },
-    {
-      "iteration": "000005",
-      "archived_at": "2026-02-28T01:26:49.803Z",
-      "archived_path": ".agents/flow/archived/000005"
-    },
-    {
-      "iteration": "000006",
-      "archived_at": "2026-02-28T02:09:06.921Z",
-      "archived_path": ".agents/flow/archived/000006"
-    },
-    {
-      "iteration": "000007",
-      "archived_at": "2026-02-28T03:25:14.622Z",
-      "archived_path": ".agents/flow/archived/000007"
-    },
-    {
-      "iteration": "000008",
-      "archived_at": "2026-02-28T04:36:22.696Z",
-      "archived_path": ".agents/flow/archived/000008"
-    },
-    {
-      "iteration": "000009",
-      "archived_at": "2026-02-28T15:23:16.620Z",
-      "archived_path": ".agents/flow/archived/000009"
-    },
-    {
-      "iteration": "000010",
-      "archived_at": "2026-02-28T19:19:38.609Z",
-      "archived_path": ".agents/flow/archived/000010"
-    },
-    {
-      "iteration": "000011",
-      "archived_at": "2026-02-28T23:55:27.992Z",
-      "archived_path": ".agents/flow/archived/000011"
-    },
-    {
-      "iteration": "000012",
-      "archived_at": "2026-03-01T00:37:19.175Z",
-      "archived_path": ".agents/flow/archived/000012"
-    },
-    {
-      "iteration": "000013",
-      "archived_at": "2026-03-01T02:53:57.798Z",
-      "archived_path": ".agents/flow/archived/000013"
-    },
-    {
-      "iteration": "000014",
-      "archived_at": "2026-03-01T03:20:59.598Z",
-      "archived_path": ".agents/flow/archived/000014"
-    },
-    {
-      "iteration": "000015",
-      "archived_at": "2026-03-01T04:48:49.282Z",
-      "archived_path": ".agents/flow/archived/000015"
-    },
-    {
-      "iteration": "000016",
-      "archived_at": "2026-03-02T04:00:19.361Z",
-      "archived_path": ".agents/flow/archived/000016"
-    },
-    {
-      "iteration": "000017",
-      "archived_at": "2026-03-03T13:16:38.544Z",
-      "archived_path": ".agents/flow/archived/000017"
-    },
-    {
-      "iteration": "000018",
-      "archived_at": "2026-03-04T05:36:54.159Z",
-      "archived_path": ".agents/flow/archived/000018"
-    },
-    {
-      "iteration": "000019",
-      "archived_at": "2026-03-04T06:00:17.776Z",
-      "archived_path": ".agents/flow/archived/000019"
-    },
-    {
-      "iteration": "000020",
-      "archived_at": "2026-03-04T18:51:25.086Z",
-      "archived_path": ".agents/flow/archived/000020"
-    },
-    {
-      "iteration": "000021",
-      "archived_at": "2026-03-05T05:07:36.109Z",
-      "archived_path": ".agents/flow/archived/000021"
-    },
-    {
-      "iteration": "000022",
-      "archived_at": "2026-03-06T06:24:05.005Z",
-      "archived_path": ".agents/flow/archived/000022"
     }
   ]
 }

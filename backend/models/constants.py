@@ -14,11 +14,16 @@ INVALID_PAYLOAD_ERROR = (
     f"duration?: number ({MIN_DURATION_SECONDS}-{MAX_DURATION_SECONDS}), style?: string }}"
 )
 
-DEFAULT_ACESTEP_API_URL = "http://localhost:8001"
-RELEASE_TASK_PATH = "/release_task"
-QUERY_RESULT_PATH = "/query_result"
-POLL_INTERVAL_SECONDS = 0.5
-MAX_POLL_ATTEMPTS = 1200
+# ACE Step 1.5 text-to-audio via comfy-diffusion
+# https://github.com/quinteroac/comfy-diffusion/blob/master/examples/ace_step_15_example.py
+# Set ACE_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR; ACE_COMFY_CHECKPOINT to checkpoint filename (e.g. ace_step_1.5_turbo_aio.safetensors).
+ACE_COMFY_MODELS_DIR = os.environ.get("ACE_COMFY_MODELS_DIR", "") or os.environ.get("PYCOMFY_MODELS_DIR", "")
+ACE_COMFY_CHECKPOINT = os.environ.get("ACE_COMFY_CHECKPOINT", "") or os.environ.get("PYCOMFY_ACE_CHECKPOINT", "")
+ACE_COMFY_STEPS = int(os.environ.get("ACE_COMFY_STEPS", "30"))
+ACE_COMFY_CFG = float(os.environ.get("ACE_COMFY_CFG", "2.0"))
+ACE_COMFY_SAMPLER = os.environ.get("ACE_COMFY_SAMPLER", "euler")
+ACE_COMFY_SCHEDULER = os.environ.get("ACE_COMFY_SCHEDULER", "normal")
+ACE_COMFY_TRIM_END_SECONDS = float(os.environ.get("ACE_COMFY_TRIM_END", "5.0"))
 
 # Anima image generation via comfy-diffusion (separate UNet/CLIP/VAE)
 # https://github.com/quinteroac/comfy-diffusion/blob/master/examples/separate_components_example.py
@@ -67,6 +72,11 @@ WAN_VIDEO_RESOLUTIONS: dict[str, tuple[int, int]] = {
 WAN_COMFY_MODELS_DIR = os.environ.get("WAN_COMFY_MODELS_DIR", "") or os.environ.get("PYCOMFY_MODELS_DIR", "")
 WAN_COMFY_UNET_HIGH = os.environ.get("WAN_COMFY_UNET_HIGH", "") or os.environ.get("PYCOMFY_WAN_UNET_HIGH", "")
 WAN_COMFY_UNET_LOW = os.environ.get("WAN_COMFY_UNET_LOW", "") or os.environ.get("PYCOMFY_WAN_UNET_LOW", "")
+# LoRA applied to the low-noise model (optional)
+WAN_COMFY_LORA_LOW = os.environ.get("WAN_COMFY_LORA_LOW", "") or os.environ.get("PYCOMFY_WAN_LORA_LOW", "")
+WAN_COMFY_LORA_LOW_STRENGTH = float(os.environ.get("WAN_COMFY_LORA_LOW_STRENGTH", "1.0"))
+# Trigger keyword for the low LoRA; concatenated to the start of the prompt when WAN_COMFY_LORA_LOW is set.
+WAN_COMFY_LORA_LOW_TRIGGER = os.environ.get("WAN_COMFY_LORA_LOW_TRIGGER", "") or os.environ.get("PYCOMFY_WAN_LORA_LOW_TRIGGER", "")
 WAN_COMFY_CLIP = os.environ.get("WAN_COMFY_CLIP", "") or os.environ.get("PYCOMFY_WAN_CLIP", "")
 WAN_COMFY_VAE = os.environ.get("WAN_COMFY_VAE", "") or os.environ.get("PYCOMFY_WAN_VAE", "")
 

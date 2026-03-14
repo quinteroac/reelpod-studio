@@ -42,14 +42,13 @@ def test_us001_ac04_services_have_no_urllib_or_pipeline_calls() -> None:
     assert "DiffusionPipeline" not in image_source
 
 
-def test_us001_ac05_repositories_contain_external_io() -> None:
-    audio_source = BACKEND_DIR.joinpath("repositories", "acestep_repository.py").read_text(encoding="utf-8")
+def test_us001_ac05_repositories_use_comfy_diffusion() -> None:
+    audio_source = BACKEND_DIR.joinpath("repositories", "audio_repository.py").read_text(encoding="utf-8")
     image_source = BACKEND_DIR.joinpath("repositories", "image_repository.py").read_text(encoding="utf-8")
 
-    assert "from urllib.request import Request, urlopen" in audio_source
-    assert "urlopen(" in audio_source
-    assert "AnimaImagePipeline" in image_source
-    assert "diffsynth.pipelines.anima_image" in image_source
-    assert "DiffusionPipeline" not in image_source
+    assert "generate_audio_bytes_for_prompt" in audio_source
+    assert "comfy_diffusion" in audio_source
+    assert "AnimaComfyPipeline" in image_source
+    assert "comfy_diffusion" in image_source
     assert "from fastapi" not in audio_source
     assert "from fastapi" not in image_source

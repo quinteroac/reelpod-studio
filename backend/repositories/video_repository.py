@@ -18,6 +18,9 @@ from models.constants import (
     WAN_COMFY_MODELS_DIR,
     WAN_COMFY_UNET_HIGH,
     WAN_COMFY_UNET_LOW,
+    WAN_COMFY_LORA_LOW,
+    WAN_COMFY_LORA_LOW_STRENGTH,
+    WAN_COMFY_LORA_LOW_TRIGGER,
     WAN_COMFY_CLIP,
     WAN_COMFY_VAE,
     WAN_COMFY_HIGH_STEPS,
@@ -65,6 +68,35 @@ def _get_models_dir() -> Path:
     if not path.is_dir():
         raise RuntimeError(f"WAN_COMFY_MODELS_DIR is not an existing directory: {path}")
     return path
+
+
+def _apply_lora_to_model(
+    models_dir: Path,
+    model: Any,
+    clip: Any,
+    lora_name: str,
+    strength_model: float,
+    strength_clip: float = 0.0,
+) -> tuple[Any, Any]:
+    """Load a LoRA file and apply it to the model and CLIP via comfy-diffusion apply_lora."""
+    from comfy_diffusion.lora import apply_lora
+
+    lora_path: str | None = None
+    p = Path(lora_name.strip())
+    if p.is_absolute() and p.is_file():
+        lora_path = str(p)
+    elif p.is_file():
+        lora_path = str(p.resolve())
+    elif models_dir:
+        fallback = models_dir / "loras" / p.name
+        if fallback.is_file():
+            lora_path = str(fallback)
+    if lora_path is None:
+        raise FileNotFoundError(
+            f"LoRA file not found: {lora_name!r} (tried cwd and <models-dir>/loras/)"
+        )
+    model_patched, clip_patched = apply_lora(model, clip, lora_path, strength_model, strength_clip)
+    return model_patched, clip_patched
 
 
 def pick_wan_resolution(target_width: int, target_height: int) -> tuple[int, int]:
@@ -137,10 +169,29 @@ def load_video_pipeline() -> WanComfyPipeline:
         )
 
     manager = ModelManager(str(models_dir))
-    model_high = manager.load_unet(WAN_COMFY_UNET_HIGH.strip())
-    model_low = manager.load_unet(WAN_COMFY_UNET_LOW.strip())
-    clip = manager.load_clip(WAN_COMFY_CLIP.strip(), clip_type="wan")
-    vae = manager.load_vae(WAN_COMFY_VAE.strip())
+    try:
+        model_high = manager.load_unet(WAN_COMFY_UNET_HIGH.strip())
+    except Exception as exc:
+        raise RuntimeError(f"Wan pipeline failed while loading UNET (high): {exc}") from exc
+    try:
+        model_low = manager.load_unet(WAN_COMFY_UNET_LOW.strip())
+    except Exception as exc:
+        raise RuntimeError(f"Wan pipeline failed while loading UNET (low): {exc}") from exc
+    try:
+        clip = manager.load_clip(WAN_COMFY_CLIP.strip(), clip_type="wan")
+    except Exception as exc:
+        raise RuntimeError(f"Wan pipeline failed while loading CLIP: {exc}") from exc
+    if WAN_COMFY_LORA_LOW and WAN_COMFY_LORA_LOW.strip():
+        try:
+            model_low, clip = _apply_lora_to_model(
+                models_dir, model_low, clip, WAN_COMFY_LORA_LOW.strip(), WAN_COMFY_LORA_LOW_STRENGTH
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Wan pipeline failed while applying LoRA (low): {exc}") from exc
+    try:
+        vae = manager.load_vae(WAN_COMFY_VAE.strip())
+    except Exception as exc:
+        raise RuntimeError(f"Wan pipeline failed while loading VAE: {exc}") from exc
 
     if WAN_COMFY_SAMPLING_SHIFT != 1.0:
         model_high = apply_model_sampling_shift(model_high, shift=WAN_COMFY_SAMPLING_SHIFT)
@@ -192,8 +243,13 @@ def run_video_inference(
     target_frames = int(WAN_VIDEO_CLIP_DURATION_SECONDS * WAN_VIDEO_FPS)
     length = max(5, ((target_frames - 1) // 4) * 4 + 1)
 
+    # If low LoRA trigger keyword is set, prepend it to the prompt
+    effective_prompt = prompt
+    if WAN_COMFY_LORA_LOW_TRIGGER and WAN_COMFY_LORA_LOW_TRIGGER.strip():
+        effective_prompt = f"{WAN_COMFY_LORA_LOW_TRIGGER.strip()}, {prompt}"
+
     # Encode prompts
-    positive = encode_prompt(pipeline.clip, prompt)
+    positive = encode_prompt(pipeline.clip, effective_prompt)
     negative = encode_prompt(pipeline.clip, WAN_COMFY_NEGATIVE_PROMPT)
 
     # Start image tensor (batch=1, [1, H, W, 3])

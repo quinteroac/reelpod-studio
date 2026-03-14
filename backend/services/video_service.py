@@ -49,6 +49,7 @@ def startup() -> None:
     except Exception as exc:  # pragma: no cover - startup fallback safety
         wan_pipeline = None
         wan_pipeline_load_error = str(exc)
+        logger.error("Wan video pipeline failed to load: %s", exc)
 
 
 def build_image_prompt(body: GenerateRequestBody) -> str:
