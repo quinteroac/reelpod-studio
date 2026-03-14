@@ -27,3 +27,7 @@ class VideoGenerationFailedError(RuntimeError):
 
 class VideoGenerationTimeoutError(RuntimeError):
     pass
+
+
+class OrchestrationFailedError(RuntimeError):
+    pass
