@@ -14,25 +14,22 @@ from models.errors import (
     AudioNotReadyError,
     ImageGenerationFailedError,
     QueueItemNotFoundError,
-    VideoGenerationFailedError,
-    VideoGenerationTimeoutError,
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from services import audio_service, image_service
-from services import video_service
 
 router = APIRouter()
 
 
 @router.post("/api/generate")
-def generate_video(body: GenerateRequestBody) -> StreamingResponse:
+def generate_audio(body: GenerateRequestBody) -> StreamingResponse:
     try:
-        mp4_bytes = video_service.generate_video_mp4_for_request(body)
-    except (AudioGenerationTimeoutError, VideoGenerationTimeoutError) as exc:
+        wav_bytes = audio_service.generate_audio_for_request(body)
+    except AudioGenerationTimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except (AudioGenerationFailedError, ImageGenerationFailedError, VideoGenerationFailedError) as exc:
+    except AudioGenerationFailedError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return StreamingResponse(io.BytesIO(mp4_bytes), media_type="video/mp4")
+    return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav")
 
 
 @router.post("/api/generate-requests")

@@ -29,6 +29,13 @@ def test_load_audio_pipeline_loads_separate_components(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pytest.TempPathFactory,
 ) -> None:
+    (tmp_path / "diffusion_models").mkdir()
+    (tmp_path / "text_encoders").mkdir()
+    (tmp_path / "vae").mkdir()
+    (tmp_path / "diffusion_models" / "ace-unet.safetensors").write_bytes(b"unet")
+    (tmp_path / "text_encoders" / "ace-text-encoder.safetensors").write_bytes(b"clip")
+    (tmp_path / "vae" / "ace-vae.safetensors").write_bytes(b"vae")
+
     monkeypatch.setattr(audio_repository, "ACE_COMFY_MODELS_DIR", str(tmp_path))
     monkeypatch.setattr(audio_repository, "ACE_COMFY_UNET", "ace-unet.safetensors")
     monkeypatch.setattr(audio_repository, "ACE_COMFY_TEXT_ENCODER", "ace-text-encoder.safetensors")
@@ -90,6 +97,13 @@ def test_load_audio_pipeline_requires_each_separate_component_name(
     attribute_value: str,
     expected_message: str,
 ) -> None:
+    (tmp_path / "diffusion_models").mkdir()
+    (tmp_path / "text_encoders").mkdir()
+    (tmp_path / "vae").mkdir()
+    (tmp_path / "diffusion_models" / "ace-unet.safetensors").write_bytes(b"unet")
+    (tmp_path / "text_encoders" / "ace-text-encoder.safetensors").write_bytes(b"clip")
+    (tmp_path / "vae" / "ace-vae.safetensors").write_bytes(b"vae")
+
     monkeypatch.setattr(audio_repository, "ACE_COMFY_MODELS_DIR", str(tmp_path))
     monkeypatch.setattr(audio_repository, "ACE_COMFY_UNET", "ace-unet.safetensors")
     monkeypatch.setattr(audio_repository, "ACE_COMFY_TEXT_ENCODER", "ace-text-encoder.safetensors")
@@ -102,6 +116,25 @@ def test_load_audio_pipeline_requires_each_separate_component_name(
 
     with pytest.raises(RuntimeError, match=expected_message):
         audio_repository.load_audio_pipeline()
+
+
+def test_validate_audio_pipeline_configuration_requires_component_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    (tmp_path / "diffusion_models").mkdir()
+    (tmp_path / "text_encoders").mkdir()
+    (tmp_path / "vae").mkdir()
+    (tmp_path / "diffusion_models" / "ace-unet.safetensors").write_bytes(b"unet")
+    (tmp_path / "vae" / "ace-vae.safetensors").write_bytes(b"vae")
+
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_MODELS_DIR", str(tmp_path))
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_UNET", "ace-unet.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_TEXT_ENCODER", "missing-text-encoder.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_VAE", "ace-vae.safetensors")
+
+    with pytest.raises(RuntimeError, match="ACE_COMFY_TEXT_ENCODER points to a missing model file"):
+        audio_repository.validate_audio_pipeline_configuration()
 
 
 def test_generate_audio_bytes_for_prompt_returns_wav_bytes(

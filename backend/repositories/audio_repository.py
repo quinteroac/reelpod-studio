@@ -65,6 +65,40 @@ def _get_ace_models_dir() -> Path:
     return path
 
 
+def _get_required_component_name(component_name: str, fallback_env_name: str, value: str) -> str:
+    stripped_value = value.strip()
+    if not stripped_value:
+        raise RuntimeError(f"{component_name} or {fallback_env_name} must be set")
+    return stripped_value
+
+
+def validate_audio_pipeline_configuration() -> None:
+    models_dir = _get_ace_models_dir()
+    component_paths = {
+        "ACE_COMFY_UNET": (
+            "PYCOMFY_ACE_UNET",
+            ACE_COMFY_UNET,
+            models_dir / "diffusion_models",
+        ),
+        "ACE_COMFY_TEXT_ENCODER": (
+            "PYCOMFY_ACE_TEXT_ENCODER",
+            ACE_COMFY_TEXT_ENCODER,
+            models_dir / "text_encoders",
+        ),
+        "ACE_COMFY_VAE": (
+            "PYCOMFY_ACE_VAE",
+            ACE_COMFY_VAE,
+            models_dir / "vae",
+        ),
+    }
+
+    for env_name, (fallback_env_name, configured_name, parent_dir) in component_paths.items():
+        component_name = _get_required_component_name(env_name, fallback_env_name, configured_name)
+        component_path = parent_dir / component_name
+        if not component_path.is_file():
+            raise RuntimeError(f"{env_name} points to a missing model file: {component_path}")
+
+
 def _negative_conditioning_ace(clip: Any, duration: float) -> Any:
     """Return negative conditioning for ACE (empty tags, minimal duration)."""
     from comfy_diffusion.audio import encode_ace_step_15_audio
@@ -116,21 +150,25 @@ def load_audio_pipeline() -> AceComfyPipeline:
         raise RuntimeError(_cached_load_error)
 
     models_dir = _get_ace_models_dir()
-    if not ACE_COMFY_UNET.strip():
-        _cached_load_error = "ACE_COMFY_UNET or PYCOMFY_ACE_UNET must be set"
-        raise RuntimeError(_cached_load_error)
-    if not ACE_COMFY_TEXT_ENCODER.strip():
-        _cached_load_error = "ACE_COMFY_TEXT_ENCODER or PYCOMFY_ACE_TEXT_ENCODER must be set"
-        raise RuntimeError(_cached_load_error)
-    if not ACE_COMFY_VAE.strip():
-        _cached_load_error = "ACE_COMFY_VAE or PYCOMFY_ACE_VAE must be set"
-        raise RuntimeError(_cached_load_error)
+    try:
+        validate_audio_pipeline_configuration()
+    except RuntimeError as exc:
+        _cached_load_error = str(exc)
+        raise
+
+    unet_name = _get_required_component_name("ACE_COMFY_UNET", "PYCOMFY_ACE_UNET", ACE_COMFY_UNET)
+    text_encoder_name = _get_required_component_name(
+        "ACE_COMFY_TEXT_ENCODER",
+        "PYCOMFY_ACE_TEXT_ENCODER",
+        ACE_COMFY_TEXT_ENCODER,
+    )
+    vae_name = _get_required_component_name("ACE_COMFY_VAE", "PYCOMFY_ACE_VAE", ACE_COMFY_VAE)
 
     try:
         manager = ModelManager(str(models_dir))
-        model = manager.load_unet(ACE_COMFY_UNET.strip())
-        clip = manager.load_clip(ACE_COMFY_TEXT_ENCODER.strip())
-        vae = manager.load_vae(ACE_COMFY_VAE.strip())
+        model = manager.load_unet(unet_name)
+        clip = manager.load_clip(text_encoder_name)
+        vae = manager.load_vae(vae_name)
         _cached_pipeline = AceComfyPipeline(model=model, clip=clip, vae=vae)
         return _cached_pipeline
     except Exception as exc:

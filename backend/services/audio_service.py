@@ -26,6 +26,16 @@ queue_worker_thread: threading.Thread | None = None
 queue_stop_event = threading.Event()
 
 
+def _has_audio_configuration_override() -> bool:
+    configured_values = (
+        audio_repository.ACE_COMFY_MODELS_DIR,
+        audio_repository.ACE_COMFY_UNET,
+        audio_repository.ACE_COMFY_TEXT_ENCODER,
+        audio_repository.ACE_COMFY_VAE,
+    )
+    return any(value.strip() for value in configured_values)
+
+
 def build_prompt(body: GenerateRequestBody) -> str:
     if body.mode == "text":
         return body.prompt or ""
@@ -179,6 +189,7 @@ def reset_generation_queue_for_tests() -> None:
 
 
 def generate_audio_for_request(body: GenerateRequestBody) -> bytes:
+    audio_repository.validate_audio_pipeline_configuration()
     ensure_queue_worker_running()
     item = enqueue_generation_request(body)
     completed_item = wait_for_terminal_status(item.id, timeout_seconds=QUEUE_WAIT_TIMEOUT_SECONDS)
@@ -216,6 +227,8 @@ def get_generation_request_audio(item_id: str) -> bytes:
 
 
 def startup() -> None:
+    if _has_audio_configuration_override():
+        audio_repository.validate_audio_pipeline_configuration()
     ensure_queue_worker_running()
 
 
