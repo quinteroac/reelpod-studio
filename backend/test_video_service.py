@@ -109,14 +109,26 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
 
     monkeypatch.setattr(video_service.tempfile, "mkdtemp", lambda prefix: str(temp_dir))
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="warm ambient lofi, 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, warm ambient lofi artwork",
+            video_prompt="A calm scene with warm ambient lighting and lofi vibes.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
+
     def fake_generate_audio_for_request(body):  # noqa: ANN001
-        assert body.mood == "warm"
+        assert body.prompt == "warm ambient lofi, 90 BPM"
+        assert body.duration == 40
         calls.append("audio")
         return WAV_HEADER
 
     def fake_generate_image_png(body):  # noqa: ANN001
         assert body.__class__.__name__ == "GenerateImageRequestBody"
-        assert body.prompt == "warm ambient lofi artwork"
+        assert body.prompt == "score_9, score_8, best quality, highres, warm ambient lofi artwork"
         assert body.target_width == 1024
         assert body.target_height == 1024
         calls.append("image")
@@ -178,7 +190,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
     )
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
-    body = GenerateRequestBody(mood="warm", style="ambient", tempo=90, duration=40)
+    body = GenerateRequestBody(prompt="warm ambient lofi", duration=40)
     mp4_bytes = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
@@ -194,11 +206,23 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
     assert not temp_dir.exists()
 
 
-def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_video_uses_orchestration_image_prompt_and_target_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _patch_trim_trailing_silence_to_copy(monkeypatch)
     _patch_wan_i2v_noop(monkeypatch)
     seen: dict[str, object] = {}
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="cinematic ambient, 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, cinematic skyline at blue hour",
+            video_prompt="A cinematic shot of the skyline at blue hour.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
 
     def fake_generate_image_png(body):  # noqa: ANN001
@@ -224,11 +248,7 @@ def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytes
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
     body = GenerateRequestBody(
-        mode="text",
         prompt=" cinematic skyline at blue hour ",
-        mood="warm",
-        style="ambient",
-        tempo=90,
         duration=40,
         targetWidth=1080,
         targetHeight=1920,
@@ -238,7 +258,7 @@ def test_generate_video_uses_user_prompt_for_image_generation(monkeypatch: pytes
 
     assert mp4_bytes == MP4_HEADER
     assert seen == {
-        "prompt": "cinematic skyline at blue hour",
+        "prompt": "score_9, score_8, best quality, highres, cinematic skyline at blue hour",
         "target_width": 1080,
         "target_height": 1920,
     }
@@ -301,7 +321,7 @@ def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.Monke
         },
     )
 
-    body = GenerateRequestBody(mode="llm", prompt=" moody rooftop performance ")
+    body = GenerateRequestBody(mode="llm", prompt=" moody rooftop performance ", duration=40)
     mp4_bytes = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
@@ -309,92 +329,6 @@ def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.Monke
     assert seen["audio_prompt"] == "future garage, introspective, 92 BPM, airy synths, vinyl texture"
     assert seen["image_prompt"] == "score_9, score_8, best quality, highres, newest, safe, 1girl, city rooftop at dusk"
     assert seen["wan_prompt"] == "Slow dolly shot across a rainy rooftop as neon signs pulse in the background."
-
-
-@pytest.mark.parametrize(
-    ("body", "expected_prompt"),
-    [
-        (GenerateRequestBody(mode="text", prompt=" city skyline at twilight "), "city skyline at twilight"),
-        (
-            GenerateRequestBody(
-                mode="text-and-parameters",
-                prompt=" rainy street montage ",
-                mood="warm",
-                style="ambient",
-                tempo=90,
-                duration=40,
-            ),
-            "rainy street montage",
-        ),
-        (
-            GenerateRequestBody(mode="parameters", mood="warm", style="ambient", tempo=90, duration=40),
-            "warm ambient lofi artwork",
-        ),
-    ],
-)
-def test_generate_video_non_llm_modes_do_not_call_orchestration(
-    body: GenerateRequestBody,
-    expected_prompt: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_trim_trailing_silence_to_copy(monkeypatch)
-    seen: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        video_service.orchestration_service,
-        "orchestrate",
-        lambda _prompt: (_ for _ in ()).throw(AssertionError("orchestrate should not be called")),
-    )
-
-    def fake_generate_audio_for_request(received_body):  # noqa: ANN001
-        seen["audio_mode"] = received_body.mode
-        seen["audio_prompt"] = received_body.prompt
-        return WAV_HEADER
-
-    def fake_generate_image_png(image_body):  # noqa: ANN001
-        seen["image_prompt"] = image_body.prompt
-        return PNG_HEADER
-
-    def fake_run_video_inference(
-        pipeline: object,
-        *,
-        input_image: object,
-        prompt: str,
-        target_width: int,
-        target_height: int,
-        temp_dir: Path,
-    ) -> Path:
-        seen["wan_prompt"] = prompt
-        clip_path = temp_dir / "wan_clip.mp4"
-        clip_path.write_bytes(MP4_HEADER)
-        return clip_path
-
-    monkeypatch.setattr(video_service, "wan_pipeline", object())
-    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", fake_generate_audio_for_request)
-    monkeypatch.setattr(video_service.image_service, "generate_image_png", fake_generate_image_png)
-    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
-    _patch_loop_and_mux_noop(monkeypatch)
-    monkeypatch.setattr(
-        video_service.media_repository,
-        "probe_media",
-        lambda path: {"format": {"duration": "40.0"}}
-        if path.name == "audio_trimmed.wav"
-        else {
-            "streams": [
-                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
-                {"codec_type": "audio", "codec_name": "aac"},
-            ],
-            "format": {"duration": "40.0"},
-        },
-    )
-
-    mp4_bytes = video_service.generate_video_mp4_for_request(body)
-
-    assert mp4_bytes == MP4_HEADER
-    assert seen["audio_mode"] == body.mode
-    assert seen["audio_prompt"] == body.prompt
-    assert seen["image_prompt"] == expected_prompt
-    assert seen["wan_prompt"] == expected_prompt
 
 
 def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -417,8 +351,18 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     with pytest.raises(VideoGenerationFailedError, match="AAC"):
-        video_service.generate_video_mp4_for_request(GenerateRequestBody())
+        video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
 
 
 def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -441,8 +385,18 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     with pytest.raises(VideoGenerationFailedError, match="duration"):
-        video_service.generate_video_mp4_for_request(GenerateRequestBody())
+        video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
 
 
 def test_generate_video_times_out_when_audio_step_exceeds_deadline(
@@ -458,8 +412,18 @@ def test_generate_video_times_out_when_audio_step_exceeds_deadline(
 
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", slow_audio)
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     with pytest.raises(VideoGenerationTimeoutError, match="timed out while generating audio"):
-        video_service.generate_video_mp4_for_request(GenerateRequestBody())
+        video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
 
 
 def test_generate_video_cleans_intermediate_files_when_muxing_fails(
@@ -498,8 +462,18 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
 
     monkeypatch.setattr(video_service.media_repository, "mux_video_and_audio_to_mp4", fail_mux)
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     with pytest.raises(VideoGenerationFailedError, match="mux failed"):
-        video_service.generate_video_mp4_for_request(GenerateRequestBody())
+        video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
 
     assert not temp_dir.exists()
 
@@ -561,11 +535,19 @@ def test_generate_video_completes_for_platform_presets(
     )
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="warm ambient 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, warm ambient artwork",
+            video_prompt="A warm ambient scene.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     mp4_bytes = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(
-            mood="warm",
-            style="ambient",
-            tempo=90,
+            prompt="warm ambient",
             duration=40,
             targetWidth=target_width,
             targetHeight=target_height,
@@ -598,9 +580,19 @@ def test_generate_video_rejects_mismatched_final_frame_dimensions(
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     with pytest.raises(VideoGenerationFailedError, match="frame dimensions"):
         video_service.generate_video_mp4_for_request(
-            GenerateRequestBody(targetWidth=1080, targetHeight=1920)
+            GenerateRequestBody(prompt="lofi", duration=40, targetWidth=1080, targetHeight=1920)
         )
 
 
@@ -636,7 +628,19 @@ def test_us003_ac01_muxed_output_has_one_h264_and_one_aac_stream(
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
-    mp4_bytes = video_service.generate_video_mp4_for_request(GenerateRequestBody())
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
+    mp4_bytes = video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(prompt="lofi", duration=40)
+    )
 
     assert mp4_bytes == MP4_HEADER
     # Verify that _validate_mp4_streams was reached and passed
@@ -691,7 +695,17 @@ def test_us003_ac02_frame_dimensions_match_target(
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
-    body = GenerateRequestBody(targetWidth=1080, targetHeight=1920)
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
+    body = GenerateRequestBody(prompt="lofi", duration=40, targetWidth=1080, targetHeight=1920)
     mp4_bytes = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
@@ -721,7 +735,20 @@ def test_us003_ac03_duration_within_tolerance_passes(
         }
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
-    mp4_bytes = video_service.generate_video_mp4_for_request(GenerateRequestBody())
+
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
+    mp4_bytes = video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(prompt="lofi", duration=40)
+    )
     assert mp4_bytes == MP4_HEADER
 
 
@@ -747,8 +774,21 @@ def test_us003_ac03_duration_outside_tolerance_fails(
         }
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
+
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     with pytest.raises(VideoGenerationFailedError, match="duration"):
-        video_service.generate_video_mp4_for_request(GenerateRequestBody())
+        video_service.generate_video_mp4_for_request(
+            GenerateRequestBody(prompt="lofi", duration=40)
+        )
 
 
 def test_us003_ac04_validate_mp4_streams_and_parse_dimensions_unchanged() -> None:
@@ -837,7 +877,19 @@ def test_us003_pipeline_loops_wan_clip_to_audio_duration(
 
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
-    video_service.generate_video_mp4_for_request(GenerateRequestBody())
+    from services.orchestration_service import OrchestrationResult
+
+    def fake_orchestrate(_prompt: str) -> OrchestrationResult:
+        return OrchestrationResult(
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        )
+
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
+    video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(prompt="lofi", duration=42)
+    )
 
     assert len(loop_calls) == 1
     assert loop_calls[0]["video_name"] == "wan_clip.mp4"

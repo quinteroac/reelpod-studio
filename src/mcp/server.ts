@@ -2,12 +2,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ParameterStore, SongParameters } from './parameter-store.js';
 
-const MOODS = ['chill', 'melancholic', 'upbeat'] as const;
-const STYLES = ['jazz', 'hip-hop', 'ambient'] as const;
-const MODES = ['text', 'text-and-parameters', 'parameters'] as const;
-
-const MIN_TEMPO = 60;
-const MAX_TEMPO = 120;
 const MIN_DURATION = 40;
 const MAX_DURATION = 300;
 
@@ -49,33 +43,21 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
   server.registerTool('set_song_parameters', {
     title: 'Set Song Parameters',
     description:
-      'Set the song generation parameters including mood, tempo, style, duration, generation mode, and prompt.',
+      'Set the song generation parameters: creative brief (prompt) and duration. Generation uses LLM orchestration only.',
     inputSchema: {
-      mood: z.enum(MOODS).describe('The mood of the song'),
-      tempo: z
-        .number()
-        .int()
-        .min(MIN_TEMPO)
-        .max(MAX_TEMPO)
-        .describe(`Tempo in BPM (${MIN_TEMPO}–${MAX_TEMPO})`),
-      style: z.enum(STYLES).describe('The musical style'),
       duration: z
         .number()
         .int()
         .min(MIN_DURATION)
         .max(MAX_DURATION)
         .describe(`Duration in seconds (${MIN_DURATION}–${MAX_DURATION})`),
-      mode: z
-        .enum(MODES)
-        .optional()
-        .describe('Generation mode: text, text-and-parameters, or parameters'),
       prompt: z
         .string()
         .optional()
-        .describe('Text prompt describing the desired song'),
+        .describe('Creative brief describing the desired concept'),
     },
-  }, async ({ mood, tempo, style, duration, mode, prompt }) => {
-    const params: SongParameters = { mood, tempo, style, duration, mode, prompt };
+  }, async ({ duration, prompt }) => {
+    const params: SongParameters = { duration, mode: 'llm', prompt };
 
     if (parameterStore) {
       parameterStore.set(params);
@@ -382,9 +364,7 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
           songCount: queue.length,
           queue: queue.map((e, index) => ({
             position: index + 1,
-            name: e.parameters.prompt ?? `${e.parameters.mood} ${e.parameters.style}`,
-            genre: e.parameters.style,
-            tempo: e.parameters.tempo,
+            name: e.parameters.prompt ?? 'Creative brief',
             duration: e.parameters.duration,
             id: e.id,
             parameters: e.parameters,

@@ -37,7 +37,7 @@ def _has_audio_configuration_override() -> bool:
 
 
 def build_prompt(body: GenerateRequestBody) -> str:
-    if body.mode == "text":
+    if body.mode in ("text", "llm"):
         return body.prompt or ""
     if body.mode in ("text+params", "text-and-parameters"):
         return f"{body.prompt or ''}, {body.mood}, {body.style}, {body.tempo} BPM"
@@ -62,7 +62,7 @@ def get_queue_item_snapshot(item_id: str) -> GenerationQueueItem | None:
 
 
 def enqueue_generation_request(body: GenerateRequestBody) -> GenerationQueueItem:
-    tempo = 80 if body.mode == "text" else body.tempo
+    tempo = 80 if body.mode in ("text", "llm") else body.tempo
     item = GenerationQueueItem(
         id=str(uuid4()),
         prompt=build_prompt(body),

@@ -42,9 +42,9 @@ CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
 
 
 class OrchestrationResult(BaseModel):
-    audio_prompt: str = Field(min_length=10, max_length=500)
-    image_prompt: str = Field(min_length=10, max_length=500)
-    video_prompt: str = Field(min_length=20, max_length=1000)
+    audio_prompt: str = Field(min_length=10, max_length=10000)
+    image_prompt: str = Field(min_length=10, max_length=10000)
+    video_prompt: str = Field(min_length=20, max_length=10000)
 
     @field_validator("audio_prompt", "image_prompt", "video_prompt")
     @classmethod
@@ -92,8 +92,6 @@ def load_llm_pipeline() -> Any:
     if not model_path.is_file():
         raise RuntimeError(f"REELPOD_LLM_MODEL_PATH does not point to a file: {model_path}")
 
-    clip_type = os.environ.get("REELPOD_LLM_CLIP_TYPE", "llm").strip() or "llm"
-
     from comfy_diffusion import check_runtime
     from comfy_diffusion.models import ModelManager
 
@@ -101,8 +99,10 @@ def load_llm_pipeline() -> Any:
     if runtime.get("error"):
         raise RuntimeError(f"comfy-diffusion runtime check failed: {runtime['error']}")
 
-    manager = ModelManager(str(model_path.parent))
-    return manager.load_clip(str(model_path.resolve()), clip_type=clip_type)
+    # Use models_dir from the LLM file's parent so folder_paths can resolve embeddings, etc.
+    models_dir = model_path.parent
+    manager = ModelManager(str(models_dir))
+    return manager.load_llm(model_path)
 
 
 def startup() -> None:
@@ -173,6 +173,7 @@ def orchestrate(user_prompt: str) -> OrchestrationResult:
 
     for _ in range(attempts):
         raw_output = _generate_json_concept(llm_pipeline, user_prompt)
+        logger.info("LLM JSON output: %s", raw_output)
         try:
             payload = _extract_json_object(raw_output)
             break

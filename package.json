@@ -24,8 +24,10 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/postprocessing": "^3.0.4",
+    "impeccable": "pbakaus/impeccable",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "skills": "^1.4.5",
     "three": "^0.183.1",
     "tsx": "^4.21.0"
   },

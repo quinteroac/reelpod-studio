@@ -127,13 +127,13 @@ describe('App unified generate flow (US-003)', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
-  it('posts one unified generation request and includes image prompt fields', async () => {
+  it('posts one unified generation request with creative brief and duration', async () => {
     const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
       target: { value: 'neon city street at night' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
@@ -142,16 +142,14 @@ describe('App unified generate flow (US-003)', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          mood: 'chill',
-          tempo: 80,
-          style: 'jazz',
-          duration: 40,
-          imagePrompt: 'neon city street at night',
-          targetWidth: 1920,
-          targetHeight: 1080
-        })
+        body: expect.stringContaining('"mode":"llm"')
       });
+      const call = fetchMock.mock.calls[0];
+      const body = JSON.parse(call[1].body as string);
+      expect(body.prompt).toBe('neon city street at night');
+      expect(body.duration).toBe(40);
+      expect(body.targetWidth).toBe(1920);
+      expect(body.targetHeight).toBe(1080);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
@@ -219,8 +217,14 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'first concept' }
+    });
     const generateButton = screen.getByRole('button', { name: 'Generate' });
     fireEvent.click(generateButton);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'second concept' }
+    });
     fireEvent.click(generateButton);
 
     expect(generateButton).toBeEnabled();
@@ -258,6 +262,9 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'fail me' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -272,7 +279,7 @@ describe('App unified generate flow (US-003)', () => {
   it('shows completed generation with playback controls ready', async () => {
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
       target: { value: 'sunset highway with grainy film look' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
@@ -293,6 +300,9 @@ describe('App unified generate flow (US-003)', () => {
   it('binds generated MP4 playback to the canvas video texture and keeps audio unmuted', async () => {
     render(<App />);
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'night drive synthwave' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -319,6 +329,9 @@ describe('App unified generate flow (US-003)', () => {
   it('uses the video element for play/pause/seek and updates audio timing props from video time', async () => {
     render(<App />);
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'ambient room tone' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -358,6 +371,9 @@ describe('App unified generate flow (US-003)', () => {
 
     render(<App />);
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'lofi beat' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -371,20 +387,19 @@ describe('App unified generate flow (US-003)', () => {
     expect(screen.queryByRole('button', { name: 'Play generation 1' })).not.toBeInTheDocument();
   });
 
-  it('validates image prompt before enqueueing a unified generation request', () => {
+  it('validates creative brief before enqueueing a unified generation request', () => {
     const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
       target: { value: '   ' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
-    const visualFeedback = screen.getByTestId('visual-prompt-feedback');
-    expect(within(visualFeedback).getByRole('alert')).toHaveTextContent(
-      'Please enter an image prompt.'
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Please enter a creative brief.'
     );
     expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -396,6 +411,9 @@ describe('App unified generate flow (US-003)', () => {
     );
 
     render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'cinematic intro' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -415,6 +433,9 @@ describe('App unified generate flow (US-003)', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
     render(<App />);
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'first concept' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -422,6 +443,9 @@ describe('App unified generate flow (US-003)', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'second concept' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -475,7 +499,6 @@ describe('App controls panel layout (US-001)', () => {
       .map((section) => section.getAttribute('aria-label'));
     expect(sectionLabels).toEqual([
       'Generation parameters',
-      'Visual prompt',
       'Generation actions'
     ]);
   });
@@ -487,13 +510,9 @@ describe('App controls panel layout (US-001)', () => {
     const parametersSection = within(controlsColumn).getByRole('region', { name: 'Generation parameters' });
     const actionsSection = within(controlsColumn).getByRole('region', { name: 'Generation actions' });
 
-    expect(within(parametersSection).getByRole('radiogroup', { name: 'Generation mode' })).toBeInTheDocument();
-    expect(within(parametersSection).getByLabelText('Mood')).toBeInTheDocument();
-    expect(within(parametersSection).getByLabelText('Tempo (BPM)')).toBeInTheDocument();
-    expect(within(parametersSection).getByLabelText('Style')).toBeInTheDocument();
+    expect(within(parametersSection).getByLabelText('Creative brief')).toBeInTheDocument();
     expect(within(parametersSection).getByLabelText('Duration (s)')).toBeInTheDocument();
     expect(within(parametersSection).getByRole('radiogroup', { name: 'Social format' })).toBeInTheDocument();
-    expect(within(controlsColumn).getByLabelText('Image prompt')).toBeInTheDocument();
     expect(within(actionsSection).getByRole('button', { name: 'Generate' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -506,6 +525,9 @@ describe('App controls panel layout (US-001)', () => {
     expect(within(visualPromptSection).getByRole('group', { name: 'Post-processing effects' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'test brief for queue' }
+    });
     fireEvent.click(within(screen.getByRole('region', { name: 'Generation actions' })).getByRole('button', { name: 'Generate' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -544,6 +566,9 @@ describe('App right column preview and playback layout (US-002)', () => {
       within(previewColumn).queryByRole('region', { name: 'Playback controls' })
     ).not.toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'ambient scene' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => {
       fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -610,6 +635,9 @@ describe('App right column preview and playback layout (US-002)', () => {
       screen.queryByTestId('playback-controls-section')
     ).not.toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'short clip' }
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     await waitFor(() => {
       expect(screen.getByTestId('playback-controls-section')).toBeInTheDocument();
@@ -634,7 +662,7 @@ describe('App effects toggles (US-002)', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
-  it('lists all 7 effect types and defaults to no effects enabled', () => {
+  it('lists all 8 effect types and defaults to no effects enabled', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
@@ -645,14 +673,15 @@ describe('App effects toggles (US-002)', () => {
       'filmGrain',
       'chromaticAberration',
       'scanLines',
-      'colorDrift'
+      'colorDrift',
+      'lightingMovement'
     ];
 
     const effectSection = screen.getByRole('group', {
       name: 'Post-processing effects'
     });
     const checkboxes = within(effectSection).getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(7);
+    expect(checkboxes).toHaveLength(8);
 
     expectedEffects.forEach((effect) => {
       expect(within(effectSection).getByRole('checkbox', { name: effect })).toBeInTheDocument();
@@ -662,7 +691,7 @@ describe('App effects toggles (US-002)', () => {
     expect(screen.getByRole('checkbox', { name: 'zoom' })).not.toBeChecked();
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'none'
+      ''
     );
   });
 
@@ -673,9 +702,14 @@ describe('App effects toggles (US-002)', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'zoom' }));
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'zoom,colorDrift'
+      'zoom'
     );
 
+    fireEvent.click(screen.getByRole('checkbox', { name: 'colorDrift' }));
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-effects',
+      'zoom,colorDrift'
+    );
     fireEvent.click(screen.getByRole('checkbox', { name: 'colorDrift' }));
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
@@ -695,7 +729,7 @@ describe('App effects toggles (US-002)', () => {
 
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'zoom,chromaticAberration,scanLines,colorDrift'
+      'zoom,chromaticAberration,scanLines'
     );
   });
 });
@@ -722,12 +756,12 @@ describe('App effect reorder (US-003)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Visual Settings' }));
     const rowZoom = screen.getByTestId('effect-row-zoom');
-    const rowColorDrift = screen.getByTestId('effect-row-colorDrift');
+    const rowLightingMovement = screen.getByTestId('effect-row-lightingMovement');
 
     expect(within(rowZoom).getByRole('button', { name: 'Up' })).toBeDisabled();
     expect(within(rowZoom).getByRole('button', { name: 'Down' })).toBeEnabled();
-    expect(within(rowColorDrift).getByRole('button', { name: 'Up' })).toBeEnabled();
-    expect(within(rowColorDrift).getByRole('button', { name: 'Down' })).toBeDisabled();
+    expect(within(rowLightingMovement).getByRole('button', { name: 'Up' })).toBeEnabled();
+    expect(within(rowLightingMovement).getByRole('button', { name: 'Down' })).toBeDisabled();
   });
 
   it('moves effects up and down and updates VisualScene effects immediately', () => {
@@ -738,7 +772,7 @@ describe('App effect reorder (US-003)', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'filmGrain' }));
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'vignette,filmGrain,colorDrift'
+      'vignette,filmGrain'
     );
 
     fireEvent.click(
@@ -748,7 +782,7 @@ describe('App effect reorder (US-003)', () => {
     );
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'filmGrain,vignette,colorDrift'
+      'filmGrain,vignette'
     );
 
     fireEvent.click(
@@ -758,7 +792,7 @@ describe('App effect reorder (US-003)', () => {
     );
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-effects',
-      'vignette,filmGrain,colorDrift'
+      'vignette,filmGrain'
     );
   });
 
@@ -867,49 +901,15 @@ describe('App shared prompt toggle (US-005)', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
   });
 
-  it('defaults to independent music and image prompts and shows the toggle', () => {
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
-
-    const musicPromptField = screen.getByLabelText('Music prompt');
-    expect(musicPromptField).toBeInTheDocument();
-
-    const imagePromptField = screen.getByLabelText('Image prompt');
-    const samePromptToggle = screen.getByRole('checkbox', {
-      name: 'Use same prompt for image'
-    });
-
-    expect(imagePromptField).toBeInTheDocument();
-    expect(samePromptToggle).toBeVisible();
-    expect(samePromptToggle).not.toBeChecked();
-
-    fireEvent.change(screen.getByLabelText('Music prompt'), { target: { value: 'dusty jazz trio' } });
-
-    expect(screen.getByLabelText('Image prompt')).toHaveValue('lofi cafe at night, cinematic lighting');
-  });
-
-  it('hides image prompt and sends the music prompt as imagePrompt in text mode when enabled', async () => {
+  it('sends mode llm with creative brief and duration when generating', async () => {
     const fetchMock = mockVideoFetch();
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
-    fireEvent.change(screen.getByLabelText('Music prompt'), {
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
       target: { value: 'rainy midnight synthwave' }
     });
-
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
-      target: { value: 'old value that should be ignored' }
-    });
-
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Use same prompt for image' })
-    );
-
-    expect(screen.queryByLabelText('Image prompt')).not.toBeInTheDocument();
-
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
@@ -917,73 +917,11 @@ describe('App shared prompt toggle (US-005)', () => {
     });
 
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(requestInit.method).toBe('POST');
-    expect(requestInit.headers).toEqual({ 'content-type': 'application/json' });
     const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
     expect(payload).toMatchObject({
-      mode: 'text',
+      mode: 'llm',
       prompt: 'rainy midnight synthwave',
-      mood: 'chill',
-      tempo: 80,
-      style: 'jazz',
       duration: 40,
-      imagePrompt: 'rainy midnight synthwave',
-      targetWidth: 1920,
-      targetHeight: 1080
-    });
-  });
-
-  it('restores previous image prompt value when toggle is turned off', () => {
-    render(<App />);
-
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
-      target: { value: 'neon alley in tokyo rain' }
-    });
-
-    const samePromptToggle = screen.getByRole('checkbox', {
-      name: 'Use same prompt for image'
-    });
-    fireEvent.click(samePromptToggle);
-    expect(screen.queryByLabelText('Image prompt')).not.toBeInTheDocument();
-
-    fireEvent.click(samePromptToggle);
-    expect(screen.getByLabelText('Image prompt')).toHaveValue(
-      'neon alley in tokyo rain'
-    );
-  });
-
-  it('uses music prompt as imagePrompt in text + parameters mode when enabled', async () => {
-    const fetchMock = mockVideoFetch();
-    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
-
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Text + Parameters' }));
-    fireEvent.change(screen.getByLabelText('Music prompt'), {
-      target: { value: 'nostalgic vinyl crackle piano' }
-    });
-
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Use same prompt for image' })
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(requestInit.method).toBe('POST');
-    expect(requestInit.headers).toEqual({ 'content-type': 'application/json' });
-    const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
-    expect(payload).toMatchObject({
-      mode: 'text-and-parameters',
-      prompt: 'nostalgic vinyl crackle piano',
-      mood: 'chill',
-      tempo: 80,
-      style: 'jazz',
-      duration: 40,
-      imagePrompt: 'nostalgic vinyl crackle piano',
       targetWidth: 1920,
       targetHeight: 1080
     });
@@ -1010,7 +948,7 @@ describe('App queue playback binding (US-006)', () => {
   it('binds numbered track queue entries, preserves prior entries, and switches active playback', async () => {
     render(<App />);
 
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
       target: { value: 'first scene' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
@@ -1027,7 +965,7 @@ describe('App queue playback binding (US-006)', () => {
     expect(screen.getByTestId('visual-scene')).toHaveAttribute('data-image-url', '');
 
     fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
-    fireEvent.change(screen.getByLabelText('Image prompt'), {
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
       target: { value: 'second scene' }
     });
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));

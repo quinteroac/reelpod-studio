@@ -52,31 +52,17 @@ def startup() -> None:
         logger.error("Wan video pipeline failed to load: %s", exc)
 
 
-def build_image_prompt(body: GenerateRequestBody) -> str:
-    if body.prompt is not None:
-        return body.prompt
-    return f"{body.mood} {body.style} lofi artwork"
-
-
 def _resolve_pipeline_prompts(
     body: GenerateRequestBody,
 ) -> tuple[GenerateRequestBody, str, str]:
-    image_prompt = build_image_prompt(body)
-    video_prompt = image_prompt
-    audio_request_body = body
-
-    if body.mode == "llm":
-        orchestration = orchestration_service.orchestrate(body.prompt or "")
-        audio_request_body = body.model_copy(
-            update={
-                "mode": "text",
-                "prompt": orchestration.audio_prompt,
-            }
-        )
-        image_prompt = orchestration.image_prompt
-        video_prompt = orchestration.video_prompt
-
-    return audio_request_body, image_prompt, video_prompt
+    orchestration = orchestration_service.orchestrate(body.prompt or "")
+    audio_request_body = body.model_copy(
+        update={
+            "mode": "text",
+            "prompt": orchestration.audio_prompt,
+        }
+    )
+    return audio_request_body, orchestration.image_prompt, orchestration.video_prompt
 
 
 def _run_with_timeout(func: Callable[[], T], timeout_seconds: float, timeout_message: str) -> T:

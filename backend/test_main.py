@@ -76,23 +76,21 @@ def reset_queue_state() -> None:
 
 class TestGenerateRequestBody:
     def test_valid_request_body(self) -> None:
-        body = GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+        body = GenerateRequestBody(prompt="synthwave rooftop", duration=60)
+        assert body.mode == "llm"
+        assert body.prompt == "synthwave rooftop"
+        assert body.duration == 60
         assert body.mood == "chill"
         assert body.tempo == 80
-        assert body.duration == 40
         assert body.style == "jazz"
 
     def test_tempo_below_minimum_rejected(self) -> None:
         with pytest.raises(Exception):
-            GenerateRequestBody(mood="chill", tempo=59, style="jazz")
+            GenerateRequestBody(prompt="x", mood="chill", tempo=59, style="jazz")
 
-    def test_text_mode_without_prompt_rejected(self) -> None:
+    def test_without_prompt_rejected(self) -> None:
         with pytest.raises(Exception):
-            GenerateRequestBody(mode="text")
-
-    def test_llm_mode_without_prompt_rejected(self) -> None:
-        with pytest.raises(Exception):
-            GenerateRequestBody(mode="llm")
+            GenerateRequestBody()
 
     def test_llm_mode_with_prompt_is_valid(self) -> None:
         body = GenerateRequestBody(mode="llm", prompt="  synthwave rooftop night set  ")
@@ -112,8 +110,8 @@ class TestGenerateImageRequestBodyContract:
 
 class TestBuildPrompt:
     def test_prompt_follows_template(self) -> None:
-        body = GenerateRequestBody(mood="chill", tempo=80, style="jazz")
-        assert audio_service.build_prompt(body) == "chill lofi jazz, 80 BPM"
+        body = GenerateRequestBody(mode="text", prompt="chill lofi jazz", mood="chill", tempo=80, style="jazz")
+        assert audio_service.build_prompt(body) == "chill lofi jazz"
 
     def test_text_mode_prompt_uses_user_text_verbatim(self) -> None:
         body = GenerateRequestBody(mode="text", prompt="  crunchy drums with vinyl hiss  ")
@@ -152,10 +150,8 @@ class TestGenerateEndpoint:
 
         def fake_generate_video_mp4_for_request(body):  # noqa: ANN001
             seen["mode"] = body.mode
-            seen["mood"] = body.mood
-            seen["tempo"] = body.tempo
+            seen["prompt"] = body.prompt
             seen["duration"] = body.duration
-            seen["style"] = body.style
             return MP4_HEADER
 
         monkeypatch.setattr(
@@ -166,19 +162,15 @@ class TestGenerateEndpoint:
 
         response = client.post(
             "/api/generate",
-            json={"mood": "warm", "tempo": 95, "duration": 95, "style": "hip-hop"},
+            json={"mode": "llm", "prompt": "night city drive", "duration": 95},
         )
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "video/mp4"
         assert response.content == MP4_HEADER
-        assert seen == {
-            "mode": "params",
-            "mood": "warm",
-            "tempo": 95,
-            "duration": 95,
-            "style": "hip-hop",
-        }
+        assert seen["mode"] == "llm"
+        assert seen["prompt"] == "night city drive"
+        assert seen["duration"] == 95
 
     def test_connection_error_returns_500(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -187,7 +179,7 @@ class TestGenerateEndpoint:
             raise VideoGenerationFailedError("Video generation failed")
 
         monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_video_generation_error)
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        response = client.post("/api/generate", json={"prompt": "chill beat", "duration": 40})
         assert response.status_code == 500
         assert response.json() == {"error": "Video generation failed"}
 
@@ -196,7 +188,7 @@ class TestGenerateEndpoint:
             raise VideoGenerationTimeoutError("Video generation timed out")
 
         monkeypatch.setattr(video_service, "generate_video_mp4_for_request", raise_timeout)
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        response = client.post("/api/generate", json={"prompt": "chill beat", "duration": 40})
         assert response.status_code == 504
         assert response.json() == {"error": "Video generation timed out"}
 
@@ -216,7 +208,7 @@ class TestGenerateEndpoint:
         monkeypatch.setattr(audio_repository, "generate_audio_bytes_for_prompt", fake_generate_audio_bytes_for_prompt)
 
         with TestClient(app=main.app, raise_server_exceptions=False) as client:
-            response = client.post("/api/generate", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+            response = client.post("/api/generate", json={"prompt": "chill beat", "duration": 40})
 
         assert response.status_code == 500
         assert attempted_inference["value"] is False
@@ -235,7 +227,7 @@ class TestGenerateEndpoint:
             audio_service.startup()
 
     def test_validation_error_returns_422(self, client: TestClient) -> None:
-        response = client.post("/api/generate", json={"mood": "chill", "tempo": 30, "style": "jazz"})
+        response = client.post("/api/generate", json={})
         assert response.status_code == 422
 
 
@@ -243,7 +235,7 @@ class TestGenerationQueue:
     def test_generation_request_is_queued_in_memory(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(audio_service, "ensure_queue_worker_running", lambda: None)
         item = audio_service.enqueue_generation_request(
-            GenerateRequestBody(mood="chill", tempo=80, style="jazz")
+            GenerateRequestBody(prompt="chill lofi", mood="chill", tempo=80, style="jazz")
         )
 
         snapshot = audio_service.get_queue_item_snapshot(item.id)
@@ -278,10 +270,10 @@ class TestGenerationQueue:
         )
 
         first = audio_service.enqueue_generation_request(
-            GenerateRequestBody(mood="mellow", tempo=70, style="jazz")
+            GenerateRequestBody(prompt="mellow jazz", mood="mellow", tempo=70, style="jazz")
         )
         second = audio_service.enqueue_generation_request(
-            GenerateRequestBody(mood="warm", tempo=90, style="ambient")
+            GenerateRequestBody(prompt="warm ambient", mood="warm", tempo=90, style="ambient")
         )
 
         audio_service.ensure_queue_worker_running()
@@ -292,12 +284,12 @@ class TestGenerationQueue:
         assert second_result is not None and second_result.status == "completed"
         assert max_active_count == 1
         assert order == [
-            "generate:mellow lofi jazz, 70 BPM:70",
-            "generate:warm lofi ambient, 90 BPM:90",
+            "generate:mellow jazz:80",
+            "generate:warm ambient:80",
         ]
 
     def test_queue_status_endpoint_returns_item_status(self, client: TestClient) -> None:
-        created = client.post("/api/generate-requests", json={"mood": "chill", "tempo": 80, "style": "jazz"})
+        created = client.post("/api/generate-requests", json={"prompt": "chill lofi", "duration": 40})
         assert created.status_code == 200
         item_id = created.json()["id"]
 
