@@ -16,9 +16,12 @@ INVALID_PAYLOAD_ERROR = (
 
 # ACE Step 1.5 text-to-audio via comfy-diffusion
 # https://github.com/quinteroac/comfy-diffusion/blob/master/examples/ace_step_15_example.py
-# Set ACE_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR; ACE_COMFY_CHECKPOINT to checkpoint filename (e.g. ace_step_1.5_turbo_aio.safetensors).
+# Set ACE_COMFY_MODELS_DIR or PYCOMFY_MODELS_DIR; ACE_COMFY_UNET, ACE_COMFY_TEXT_ENCODER,
+# and ACE_COMFY_VAE to component filenames under diffusion_models/, text_encoders/, and vae/.
 ACE_COMFY_MODELS_DIR = os.environ.get("ACE_COMFY_MODELS_DIR", "") or os.environ.get("PYCOMFY_MODELS_DIR", "")
-ACE_COMFY_CHECKPOINT = os.environ.get("ACE_COMFY_CHECKPOINT", "") or os.environ.get("PYCOMFY_ACE_CHECKPOINT", "")
+ACE_COMFY_UNET = os.environ.get("ACE_COMFY_UNET", "") or os.environ.get("PYCOMFY_ACE_UNET", "")
+ACE_COMFY_TEXT_ENCODER = os.environ.get("ACE_COMFY_TEXT_ENCODER", "") or os.environ.get("PYCOMFY_ACE_TEXT_ENCODER", "")
+ACE_COMFY_VAE = os.environ.get("ACE_COMFY_VAE", "") or os.environ.get("PYCOMFY_ACE_VAE", "")
 ACE_COMFY_STEPS = int(os.environ.get("ACE_COMFY_STEPS", "30"))
 ACE_COMFY_CFG = float(os.environ.get("ACE_COMFY_CFG", "2.0"))
 ACE_COMFY_SAMPLER = os.environ.get("ACE_COMFY_SAMPLER", "euler")

@@ -2,10 +2,106 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 from models.constants import DEFAULT_DURATION_SECONDS
 from repositories import audio_repository
+
+
+def test_audio_repository_uses_separate_component_loading_only() -> None:
+    source = Path(audio_repository.__file__).read_text(encoding="utf-8")
+    constants_source = Path(audio_repository.__file__).resolve().parents[1].joinpath("models", "constants.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "load_unet(" in source
+    assert "load_clip(" in source
+    assert "load_vae(" in source
+    assert "load_checkpoint(" not in source
+    assert "ACE_COMFY_CHECKPOINT" not in source
+    assert "ACE_COMFY_CHECKPOINT" not in constants_source
+
+
+def test_load_audio_pipeline_loads_separate_components(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_MODELS_DIR", str(tmp_path))
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_UNET", "ace-unet.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_TEXT_ENCODER", "ace-text-encoder.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_VAE", "ace-vae.safetensors")
+    monkeypatch.setattr(audio_repository, "_cached_pipeline", None)
+    monkeypatch.setattr(audio_repository, "_cached_load_error", None)
+    monkeypatch.setattr(audio_repository, "_ensure_comfyui_vendor_on_path", lambda: None)
+    monkeypatch.setattr("comfy_diffusion.check_runtime", lambda: {})
+
+    calls: list[tuple[str, str]] = []
+    model = object()
+    clip = object()
+    vae = object()
+
+    class FakeManager:
+        def __init__(self, models_dir: str) -> None:
+            assert models_dir == str(tmp_path)
+
+        def load_unet(self, name: str) -> Any:
+            calls.append(("load_unet", name))
+            return model
+
+        def load_clip(self, name: str) -> Any:
+            calls.append(("load_clip", name))
+            return clip
+
+        def load_vae(self, name: str) -> Any:
+            calls.append(("load_vae", name))
+            return vae
+
+    monkeypatch.setattr("comfy_diffusion.models.ModelManager", FakeManager)
+
+    pipeline = audio_repository.load_audio_pipeline()
+
+    assert calls == [
+        ("load_unet", "ace-unet.safetensors"),
+        ("load_clip", "ace-text-encoder.safetensors"),
+        ("load_vae", "ace-vae.safetensors"),
+    ]
+    assert pipeline == audio_repository.AceComfyPipeline(model=model, clip=clip, vae=vae)
+
+
+@pytest.mark.parametrize(
+    ("attribute_name", "attribute_value", "expected_message"),
+    [
+        ("ACE_COMFY_UNET", "", "ACE_COMFY_UNET or PYCOMFY_ACE_UNET must be set"),
+        (
+            "ACE_COMFY_TEXT_ENCODER",
+            "",
+            "ACE_COMFY_TEXT_ENCODER or PYCOMFY_ACE_TEXT_ENCODER must be set",
+        ),
+        ("ACE_COMFY_VAE", "", "ACE_COMFY_VAE or PYCOMFY_ACE_VAE must be set"),
+    ],
+)
+def test_load_audio_pipeline_requires_each_separate_component_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pytest.TempPathFactory,
+    attribute_name: str,
+    attribute_value: str,
+    expected_message: str,
+) -> None:
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_MODELS_DIR", str(tmp_path))
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_UNET", "ace-unet.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_TEXT_ENCODER", "ace-text-encoder.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_VAE", "ace-vae.safetensors")
+    monkeypatch.setattr(audio_repository, attribute_name, attribute_value)
+    monkeypatch.setattr(audio_repository, "_cached_pipeline", None)
+    monkeypatch.setattr(audio_repository, "_cached_load_error", None)
+    monkeypatch.setattr(audio_repository, "_ensure_comfyui_vendor_on_path", lambda: None)
+    monkeypatch.setattr("comfy_diffusion.check_runtime", lambda: {})
+
+    with pytest.raises(RuntimeError, match=expected_message):
+        audio_repository.load_audio_pipeline()
 
 
 def test_generate_audio_bytes_for_prompt_returns_wav_bytes(
@@ -13,12 +109,11 @@ def test_generate_audio_bytes_for_prompt_returns_wav_bytes(
     tmp_path: pytest.TempPathFactory,
 ) -> None:
     monkeypatch.setattr(audio_repository, "ACE_COMFY_MODELS_DIR", str(tmp_path))
-    monkeypatch.setattr(audio_repository, "ACE_COMFY_CHECKPOINT", "ace.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_UNET", "ace-unet.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_TEXT_ENCODER", "ace-text-encoder.safetensors")
+    monkeypatch.setattr(audio_repository, "ACE_COMFY_VAE", "ace-vae.safetensors")
     monkeypatch.setattr(audio_repository, "_cached_pipeline", None)
     monkeypatch.setattr(audio_repository, "_cached_load_error", None)
-
-    def fake_load() -> audio_repository.AceComfyPipeline:
-        return audio_repository.AceComfyPipeline(model=None, clip=None, vae=None)
 
     def fake_encode(*args: object, **kwargs: object) -> object:
         return "positive"

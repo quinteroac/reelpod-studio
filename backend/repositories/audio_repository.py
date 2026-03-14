@@ -1,8 +1,4 @@
-"""Audio generation via comfy-diffusion ACE Step 1.5 (text-to-audio).
-
-Uses ModelManager + checkpoint (model + VAE + CLIP in one file).
-https://github.com/quinteroac/comfy-diffusion/blob/master/examples/ace_step_15_example.py
-"""
+"""Audio generation via comfy-diffusion ACE Step 1.5 (text-to-audio)."""
 
 from __future__ import annotations
 
@@ -16,7 +12,9 @@ from typing import Any, NamedTuple
 from models.constants import (
     DEFAULT_DURATION_SECONDS,
     ACE_COMFY_MODELS_DIR,
-    ACE_COMFY_CHECKPOINT,
+    ACE_COMFY_UNET,
+    ACE_COMFY_TEXT_ENCODER,
+    ACE_COMFY_VAE,
     ACE_COMFY_STEPS,
     ACE_COMFY_CFG,
     ACE_COMFY_SAMPLER,
@@ -38,7 +36,7 @@ ACE_SAMPLE_RATE = 44100
 
 
 class AceComfyPipeline(NamedTuple):
-    """ACE Step 1.5 pipeline: model + CLIP + VAE from checkpoint."""
+    """ACE Step 1.5 pipeline: separately loaded model, CLIP, and VAE."""
 
     model: Any
     clip: Any
@@ -87,7 +85,7 @@ def _negative_conditioning_ace(clip: Any, duration: float) -> Any:
 
 
 def load_audio_pipeline() -> AceComfyPipeline:
-    """Load ACE Step 1.5 model, CLIP, VAE from a single checkpoint via comfy-diffusion."""
+    """Load ACE Step 1.5 model, CLIP, and VAE from separate files via comfy-diffusion."""
     global _cached_pipeline, _cached_load_error
 
     _ensure_comfyui_vendor_on_path()
@@ -118,20 +116,22 @@ def load_audio_pipeline() -> AceComfyPipeline:
         raise RuntimeError(_cached_load_error)
 
     models_dir = _get_ace_models_dir()
-    if not ACE_COMFY_CHECKPOINT or not ACE_COMFY_CHECKPOINT.strip():
-        _cached_load_error = "ACE_COMFY_CHECKPOINT or PYCOMFY_ACE_CHECKPOINT must be set (e.g. ace_step_1.5_turbo_aio.safetensors)"
+    if not ACE_COMFY_UNET.strip():
+        _cached_load_error = "ACE_COMFY_UNET or PYCOMFY_ACE_UNET must be set"
+        raise RuntimeError(_cached_load_error)
+    if not ACE_COMFY_TEXT_ENCODER.strip():
+        _cached_load_error = "ACE_COMFY_TEXT_ENCODER or PYCOMFY_ACE_TEXT_ENCODER must be set"
+        raise RuntimeError(_cached_load_error)
+    if not ACE_COMFY_VAE.strip():
+        _cached_load_error = "ACE_COMFY_VAE or PYCOMFY_ACE_VAE must be set"
         raise RuntimeError(_cached_load_error)
 
     try:
         manager = ModelManager(str(models_dir))
-        result = manager.load_checkpoint(ACE_COMFY_CHECKPOINT.strip())
-        if result.clip is None or result.vae is None:
-            _cached_load_error = (
-                "ACE checkpoint must contain model, CLIP and VAE (e.g. ace_step_1.5_turbo_aio.safetensors). "
-                "Separate loading (--unet, --vae, --text-encoder) is not implemented in this repository."
-            )
-            raise RuntimeError(_cached_load_error)
-        _cached_pipeline = AceComfyPipeline(model=result.model, clip=result.clip, vae=result.vae)
+        model = manager.load_unet(ACE_COMFY_UNET.strip())
+        clip = manager.load_clip(ACE_COMFY_TEXT_ENCODER.strip())
+        vae = manager.load_vae(ACE_COMFY_VAE.strip())
+        _cached_pipeline = AceComfyPipeline(model=model, clip=clip, vae=vae)
         return _cached_pipeline
     except Exception as exc:
         _cached_load_error = str(exc)
