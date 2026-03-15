@@ -1,0 +1,160 @@
+{
+  "goals": [
+    "Allow end users to record the animated canvas + audio in a single click.",
+    "Deliver the recorded output as a downloadable MP4 file from the queue section.",
+    "Keep the implementation fully client-side using `mediabunny`."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Record button starts playback and captures canvas + audio",
+      "description": "As a content creator, I want to click a \"Record\" button so that audio playback starts and the R3F canvas together with the audio are captured simultaneously into an MP4 file.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A \"Record\" button is visible in the studio UI (near the playback controls), enabled only when an audio URL is available."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Clicking \"Record\" starts audio playback from the beginning."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "A `mediabunny` `Output` is created with `Mp4OutputFormat` and `BufferTarget`."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The R3F canvas is captured via `canvas.captureStream(30)` and fed to `MediaStreamVideoTrackSource` with codec `avc` (H.264) at 4 Mbps."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "The audio element is captured via `AudioContext.createMediaElementSource` + `createMediaStreamDestination`, fed to `MediaStreamAudioTrackSource` with codec `aac` at 128 kbps."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "`output.start()` is called after both tracks are added; capture begins automatically."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "`canEncodeVideo({ codec: 'avc' })` and `canEncodeAudio({ codec: 'aac' })` are checked before starting; an error message is shown to the user if the browser does not support it."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "A visible recording indicator (e.g. red dot + \"Recording…\" label) is shown while capture is active."
+        },
+        {
+          "id": "US-001-AC09",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC10",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Recording stops automatically when playback ends",
+      "description": "As a content creator, I want recording to stop automatically when the audio finishes so that the captured duration matches the song length without manual intervention.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "When the `<audio>` element fires the `ended` event, `output.finalize()` is called automatically."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "If the user clicks a \"Stop\" button before playback ends, playback pauses and `output.finalize()` is called immediately."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "While `output.state === 'finalizing'` a loading/spinner indicator replaces the recording indicator."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "The \"Record\" button is disabled (replaced by \"Stop\") for the entire duration recording is active."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Recorded video appears in queue as a downloadable MP4",
+      "description": "As a content creator, I want the finished recording to appear in the queue section as an MP4 download entry so that I can save the video to my machine.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "After `output.finalize()` resolves, `output.target.buffer` (an `ArrayBuffer`) is wrapped in a `Blob` with type `video/mp4`."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "A `URL.createObjectURL(blob)` URL is created and an entry is added to the queue section with filename `recording-<ISO-timestamp>.mp4`, file size in MB, and a \"Download\" button."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Clicking \"Download\" triggers a browser file download (`<a download>` click pattern)."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Multiple recordings in the same session each produce a separate queue entry."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Queue entries persist for the session (no page-reload required)."
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC07",
+          "text": "Visually verified in browser."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Install `mediabunny` via `bun add mediabunny`. Requires browser WebCodecs API (Chrome 94+, Edge 94+)."
+    },
+    {
+      "id": "FR-2",
+      "description": "The \"Record\" / \"Stop\" button is rendered in `src/App.tsx` or a dedicated `RecordButton` component, visible and enabled only when `audioUrl` is non-null."
+    },
+    {
+      "id": "FR-3",
+      "description": "Canvas reference: obtain the Three.js renderer canvas from the R3F `gl.domElement` via a forwarded ref or `useThree` inside `SceneContent`; expose it to `App.tsx` through a ref callback or context."
+    },
+    {
+      "id": "FR-4",
+      "description": "Audio capture: create one shared `AudioContext`; pipe the `<audio>` element through `createMediaElementSource` → `createMediaStreamDestination`; use the destination's `stream.getAudioTracks()[0]` as the `MediaStreamAudioTrackSource` input."
+    },
+    {
+      "id": "FR-5",
+      "description": "`mediabunny` output configuration: `new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() })`. Use default `fastStart` (moov at end) to minimise memory overhead."
+    },
+    {
+      "id": "FR-6",
+      "description": "Frame rate for canvas capture: 30 fps (`canvas.captureStream(30)`); video bitrate 4 Mbps; audio bitrate 128 kbps."
+    },
+    {
+      "id": "FR-7",
+      "description": "Codec pre-flight: call `canEncodeVideo({ codec: 'avc', bitrate: 4e6 })` and `canEncodeAudio({ codec: 'aac', bitrate: 128e3 })` before starting; surface a user-visible error if either returns `false`."
+    },
+    {
+      "id": "FR-8",
+      "description": "Only one recording session may be active at a time."
+    },
+    {
+      "id": "FR-9",
+      "description": "The queue section (new `RecordingQueue` component or extension of any existing queue UI) renders each entry with: filename, size, and a download anchor element."
+    }
+  ]
+}
