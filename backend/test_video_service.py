@@ -527,6 +527,7 @@ def test_generate_video_completes_for_platform_presets(
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
 
     seen_mux: dict[str, int] = {}
+    probe_targets: list[str] = []
 
     def fake_mux_video_and_audio_to_mp4(
         _video_path: Path,
@@ -547,6 +548,7 @@ def test_generate_video_completes_for_platform_presets(
     )
 
     def fake_probe_media(path: Path) -> dict[str, object]:
+        probe_targets.append(path.name)
         if path.name == "audio_trimmed.wav":
             return {"format": {"duration": "40.0"}}
         return {
@@ -590,6 +592,7 @@ def test_generate_video_completes_for_platform_presets(
 
     assert mp4_bytes == MP4_HEADER
     assert seen_mux == {"target_width": None, "target_height": None}
+    assert probe_targets.count("output.mp4") == 1
 
 
 def test_generate_video_upscale_fallback_logs_warning_and_uses_pre_upscale_clip(
@@ -864,7 +867,7 @@ def test_us003_ac02_frame_dimensions_match_target(
     monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
     monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
 
-    mux_calls: list[dict[str, int]] = []
+    output_probe_dimensions: dict[str, int] = {}
 
     def fake_loop(video_path: Path, target_duration: float, output_path: Path) -> None:
         output_path.write_bytes(video_path.read_bytes())
@@ -877,7 +880,8 @@ def test_us003_ac02_frame_dimensions_match_target(
         target_width: int | None = None,
         target_height: int | None = None,
     ) -> None:
-        mux_calls.append({"target_width": target_width, "target_height": target_height})
+        assert target_width is None
+        assert target_height is None
         output_path.write_bytes(MP4_HEADER)
 
     monkeypatch.setattr(video_service.media_repository, "loop_video_to_duration", fake_loop)
@@ -886,6 +890,8 @@ def test_us003_ac02_frame_dimensions_match_target(
     def fake_probe_media(path: Path) -> dict[str, object]:
         if path.name == "audio_trimmed.wav":
             return {"format": {"duration": "40.0"}}
+        output_probe_dimensions["width"] = 1080
+        output_probe_dimensions["height"] = 1920
         return {
             "streams": [
                 {"codec_type": "video", "codec_name": "h264", "width": 1080, "height": 1920},
@@ -910,8 +916,7 @@ def test_us003_ac02_frame_dimensions_match_target(
     mp4_bytes = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
-    assert len(mux_calls) == 1
-    assert mux_calls[0] == {"target_width": 1080, "target_height": 1920}
+    assert output_probe_dimensions == {"width": 1080, "height": 1920}
 
 
 def test_us003_ac03_duration_within_tolerance_passes(
@@ -1093,6 +1098,6 @@ def test_us003_pipeline_loops_wan_clip_to_audio_duration(
     )
 
     assert len(loop_calls) == 1
-    assert loop_calls[0]["video_name"] == "wan_clip.mp4"
+    assert loop_calls[0]["video_name"] == "upscaled_resized_clip.mp4"
     assert loop_calls[0]["target_duration"] == 42.5
     assert loop_calls[0]["output_name"] == "looped_clip.mp4"

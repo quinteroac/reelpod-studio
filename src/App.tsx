@@ -260,6 +260,13 @@ export function App() {
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
     socialFormatOptions[0];
+  const activePreviewEntry = useMemo(
+    () => queueEntries.find((entry) => entry.id === playingEntryId) ?? null,
+    [queueEntries, playingEntryId]
+  );
+  const previewOutputWidth = activePreviewEntry?.targetWidth ?? selectedSocialFormat.width;
+  const previewOutputHeight = activePreviewEntry?.targetHeight ?? selectedSocialFormat.height;
+  const previewAspectRatio = previewOutputWidth / previewOutputHeight;
 
   const handleAgentParametersUpdate = useCallback((agentParams: SongParameters) => {
     setParams({
@@ -370,9 +377,9 @@ export function App() {
       audioCurrentTime,
       audioDuration,
       isPlaying,
-      aspectRatio: selectedSocialFormat.aspectRatio,
-      outputWidth: selectedSocialFormat.width,
-      outputHeight: selectedSocialFormat.height,
+      aspectRatio: previewAspectRatio,
+      outputWidth: previewOutputWidth,
+      outputHeight: previewOutputHeight,
       visualizerType: activeVisualizerType,
       effects: activeEffects.length > 0 ? activeEffects : ['none'],
       backgroundColor: '#0c1120',
@@ -393,9 +400,9 @@ export function App() {
     audioCurrentTime,
     audioDuration,
     isPlaying,
-    selectedSocialFormat.aspectRatio,
-    selectedSocialFormat.width,
-    selectedSocialFormat.height,
+    previewAspectRatio,
+    previewOutputWidth,
+    previewOutputHeight,
     activeVisualizerType,
     activeEffects
   ]);
@@ -647,8 +654,6 @@ export function App() {
           entryId: nextCompleted.id,
           onEnded: createQueueOnEnded(nextCompleted)
         });
-      } else {
-        setPlayingEntryId(null);
       }
     };
   }, [queueEntries, createVideoPlaybackUrl, playVideoFromUrl, createQueueOnEnded]);
@@ -774,7 +779,6 @@ export function App() {
     try {
       videoPlaybackRef.current?.pause();
       setIsPlaying(false);
-      setPlayingEntryId(null);
       setErrorMessage(null);
       stopSeekPolling();
     } catch (error) {
@@ -1416,7 +1420,7 @@ export function App() {
                     audioCurrentTime={audioCurrentTime}
                     audioDuration={audioDuration}
                     isPlaying={isPlaying}
-                    aspectRatio={selectedSocialFormat.aspectRatio}
+                    aspectRatio={previewAspectRatio}
                     visualizerType={activeVisualizerType}
                     effects={activeEffects}
                     onCanvasCreated={handleCanvasCreated}
