@@ -138,6 +138,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
     wan_clip_path = temp_dir.joinpath("wan_clip.mp4")
+    upscaled_resized_clip_path = temp_dir.joinpath("upscaled_resized_clip.mp4")
     looped_clip_path = temp_dir.joinpath("looped_clip.mp4")
     output_path = temp_dir.joinpath("output.mp4")
 
@@ -223,6 +224,37 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             wan_clip_path.stat().st_size,
         )
 
+        pre_loop_clip_path = wan_clip_path
+        try:
+            logger.info(
+                "Video pipeline: upscaling Wan clip 4x and resizing to target %dx%d",
+                body.image_target_width,
+                body.image_target_height,
+            )
+            _run_with_timeout(
+                lambda: video_repository.upscale_video_with_realesrgan_and_resize(
+                    wan_clip_path,
+                    upscaled_resized_clip_path,
+                    target_width=body.image_target_width,
+                    target_height=body.image_target_height,
+                    tile=256,
+                    tile_pad=10,
+                ),
+                timeout_seconds=remaining_seconds(),
+                timeout_message="Video generation timed out while upscaling clip",
+            )
+            pre_loop_clip_path = upscaled_resized_clip_path
+            logger.info(
+                "Video pipeline: upscaled+resized clip saved to %s (%d bytes)",
+                pre_loop_clip_path,
+                pre_loop_clip_path.stat().st_size,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Video pipeline: Real-ESRGAN upscale failed; falling back to original Wan clip (%s)",
+                exc,
+            )
+
         logger.info("Video pipeline: probing trimmed audio for duration")
         source_audio_probe_data = media_repository.probe_media(audio_path)
         source_audio_duration = _parse_duration_seconds(source_audio_probe_data)
@@ -234,7 +266,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         )
         _run_with_timeout(
             lambda: media_repository.loop_video_to_duration(
-                wan_clip_path,
+                pre_loop_clip_path,
                 target_duration=source_audio_duration,
                 output_path=looped_clip_path,
             ),
@@ -258,8 +290,6 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
                 looped_clip_path,
                 audio_path,
                 output_path,
-                target_width=body.image_target_width,
-                target_height=body.image_target_height,
             ),
             timeout_seconds=remaining_seconds(),
             timeout_message="Video generation timed out while muxing",
@@ -292,7 +322,15 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     except Exception as exc:
         raise VideoGenerationFailedError(f"Video generation failed: {exc}") from exc
     finally:
-        for file_path in (audio_path, trimmed_audio_path, image_path, wan_clip_path, looped_clip_path, output_path):
+        for file_path in (
+            audio_path,
+            trimmed_audio_path,
+            image_path,
+            wan_clip_path,
+            upscaled_resized_clip_path,
+            looped_clip_path,
+            output_path,
+        ):
             try:
                 file_path.unlink(missing_ok=True)
             except OSError:

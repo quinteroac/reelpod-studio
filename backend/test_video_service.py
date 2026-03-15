@@ -36,7 +36,7 @@ def _patch_trim_trailing_silence_to_copy(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub out the Wan I2V step so existing tests are not affected."""
+    """Stub out the Wan I2V + upscale steps so tests are isolated from heavy models."""
 
     fake_pipeline = object()
 
@@ -53,8 +53,24 @@ def _patch_wan_i2v_noop(monkeypatch: pytest.MonkeyPatch) -> None:
         clip_path.write_bytes(MP4_HEADER)
         return clip_path
 
+    def fake_upscale_video_with_realesrgan_and_resize(
+        input_path: Path,
+        output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+        tile: int = 256,
+        tile_pad: int = 10,
+    ) -> None:
+        output_path.write_bytes(input_path.read_bytes())
+
     monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
     monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    monkeypatch.setattr(
+        video_service.video_repository,
+        "upscale_video_with_realesrgan_and_resize",
+        fake_upscale_video_with_realesrgan_and_resize,
+    )
 
 
 def _patch_loop_and_mux_noop(
@@ -142,6 +158,18 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
         calls.append("loop")
         output_path.write_bytes(video_path.read_bytes())
 
+    def fake_upscale_video_with_realesrgan_and_resize(
+        input_path: Path,
+        output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+        tile: int = 256,
+        tile_pad: int = 10,
+    ) -> None:
+        calls.append("upscale")
+        output_path.write_bytes(input_path.read_bytes())
+
     def fake_mux_video_and_audio_to_mp4(
         video_path: Path,
         audio_path: Path,
@@ -179,6 +207,11 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
         fake_generate_image_png,
     )
     monkeypatch.setattr(
+        video_service.video_repository,
+        "upscale_video_with_realesrgan_and_resize",
+        fake_upscale_video_with_realesrgan_and_resize,
+    )
+    monkeypatch.setattr(
         video_service.media_repository,
         "loop_video_to_duration",
         fake_loop_video_to_duration,
@@ -198,6 +231,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
     assert calls == [
         "audio",
         "image",
+        "upscale",
         "probe:audio_trimmed.wav",
         "loop",
         "mux",
@@ -555,7 +589,174 @@ def test_generate_video_completes_for_platform_presets(
     )
 
     assert mp4_bytes == MP4_HEADER
-    assert seen_mux == {"target_width": target_width, "target_height": target_height}
+    assert seen_mux == {"target_width": None, "target_height": None}
+
+
+def test_generate_video_upscale_fallback_logs_warning_and_uses_pre_upscale_clip(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+
+    seen: dict[str, object] = {}
+
+    def fail_upscale(
+        _input_path: Path,
+        _output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+        tile: int = 256,
+        tile_pad: int = 10,
+    ) -> None:
+        raise RuntimeError("weights missing")
+
+    def fake_loop_video_to_duration(
+        video_path: Path,
+        target_duration: float,
+        output_path: Path,
+    ) -> None:
+        seen["loop_input_name"] = video_path.name
+        output_path.write_bytes(video_path.read_bytes())
+
+    monkeypatch.setattr(
+        video_service.video_repository,
+        "upscale_video_with_realesrgan_and_resize",
+        fail_upscale,
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "loop_video_to_duration",
+        fake_loop_video_to_duration,
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "mux_video_and_audio_to_mp4",
+        lambda _v, _a, output_path, **_kwargs: output_path.write_bytes(MP4_HEADER),
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "probe_media",
+        lambda path: {"format": {"duration": "40.0"}}
+        if path.name == "audio_trimmed.wav"
+        else {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        },
+    )
+
+    from services.orchestration_service import OrchestrationResult
+
+    monkeypatch.setattr(
+        video_service.orchestration_service,
+        "orchestrate",
+        lambda _prompt: OrchestrationResult(
+            audio_prompt="lofi ambient groove",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft fog and warm city lights.",
+        ),
+    )
+
+    caplog.set_level("WARNING")
+    mp4_bytes = video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+
+    assert mp4_bytes == MP4_HEADER
+    assert seen["loop_input_name"] == "wan_clip.mp4"
+    assert "Real-ESRGAN upscale failed; falling back to original Wan clip" in caplog.text
+
+
+def test_generate_video_upscale_called_with_tile_and_target_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+
+    seen: dict[str, object] = {}
+
+    def fake_upscale(
+        input_path: Path,
+        output_path: Path,
+        *,
+        target_width: int,
+        target_height: int,
+        tile: int = 256,
+        tile_pad: int = 10,
+    ) -> None:
+        seen["input_name"] = input_path.name
+        seen["output_name"] = output_path.name
+        seen["target_width"] = target_width
+        seen["target_height"] = target_height
+        seen["tile"] = tile
+        seen["tile_pad"] = tile_pad
+        output_path.write_bytes(input_path.read_bytes())
+
+    monkeypatch.setattr(
+        video_service.video_repository,
+        "upscale_video_with_realesrgan_and_resize",
+        fake_upscale,
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "loop_video_to_duration",
+        lambda video_path, target_duration, output_path: output_path.write_bytes(video_path.read_bytes()),
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "mux_video_and_audio_to_mp4",
+        lambda _v, _a, output_path, **_kwargs: output_path.write_bytes(MP4_HEADER),
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "probe_media",
+        lambda path: {"format": {"duration": "40.0"}}
+        if path.name == "audio_trimmed.wav"
+        else {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1080, "height": 1920},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        },
+    )
+
+    from services.orchestration_service import OrchestrationResult
+
+    monkeypatch.setattr(
+        video_service.orchestration_service,
+        "orchestrate",
+        lambda _prompt: OrchestrationResult(
+            audio_prompt="lofi ambient groove",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft fog and warm city lights.",
+        ),
+    )
+
+    mp4_bytes = video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(
+            prompt="lofi",
+            duration=40,
+            targetWidth=1080,
+            targetHeight=1920,
+        )
+    )
+
+    assert mp4_bytes == MP4_HEADER
+    assert seen == {
+        "input_name": "wan_clip.mp4",
+        "output_name": "upscaled_resized_clip.mp4",
+        "target_width": 1080,
+        "target_height": 1920,
+        "tile": 256,
+        "tile_pad": 10,
+    }
 
 
 def test_generate_video_rejects_mismatched_final_frame_dimensions(
