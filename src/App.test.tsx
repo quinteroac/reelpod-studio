@@ -7,6 +7,19 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mockStartRecording = vi.fn().mockResolvedValue(undefined);
+const mockIsRecording = { value: false };
+const mockRecorderError = { value: null as string | null };
+
+vi.mock('./hooks/use-recorder', () => ({
+  useRecorder: () => ({
+    isRecording: mockIsRecording.value,
+    startRecording: mockStartRecording,
+    recordingError: mockRecorderError.value,
+    handlesRef: { current: { output: null, audioContext: null } }
+  })
+}));
+
 type VisualSceneProps = {
   imageUrl: string | null;
   videoUrl?: string | null;
@@ -36,6 +49,7 @@ type VisualSceneProps = {
   | 'smoke'
   | 'contour'
   | 'none';
+  onCanvasCreated?: (canvas: HTMLCanvasElement) => void;
 };
 
 const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
@@ -1083,6 +1097,106 @@ describe('App queue playback binding (US-006)', () => {
       expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
         'data-playing',
         'true'
+      );
+    });
+  });
+});
+
+describe('Record button (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('AC01: Record button is not visible before a track is generated', () => {
+    render(<App />);
+    expect(screen.queryByTestId('record-button')).not.toBeInTheDocument();
+  });
+
+  it('AC01: Record button is visible and disabled when track exists but no audio URL is available', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).toBeInTheDocument();
+    });
+  });
+
+  it('AC01: Record button is enabled when an audio URL is available', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const recordBtn = screen.getByTestId('record-button');
+      expect(recordBtn).toBeInTheDocument();
+      expect(recordBtn).not.toBeDisabled();
+    });
+  });
+
+  it('AC02 + AC06: clicking Record calls startRecording', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByTestId('record-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalled();
+    });
+  });
+
+  it('AC08: recording indicator is shown when isRecording is true', async () => {
+    mockIsRecording.value = true;
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-indicator')).toBeInTheDocument();
+    });
+  });
+
+  it('AC07: shows recorder error message when codec check fails', async () => {
+    mockRecorderError.value = 'Your browser does not support recording: H.264 video encoding is not available.';
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recorder-error')).toHaveTextContent(
+        'H.264 video encoding is not available'
       );
     });
   });

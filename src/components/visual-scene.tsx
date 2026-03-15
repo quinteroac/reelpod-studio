@@ -25,6 +25,7 @@ type VisualSceneProps = {
   backgroundColor?: string;
   showPlaceholderCopy?: boolean;
   fullBleed?: boolean;
+  onCanvasCreated?: (canvas: HTMLCanvasElement) => void;
 };
 
 type SceneRenderProps = {
@@ -216,7 +217,8 @@ export function VisualScene({
   effects,
   backgroundColor = '#1a2340',
   showPlaceholderCopy = true,
-  fullBleed = false
+  fullBleed = false,
+  onCanvasCreated
 }: VisualSceneProps) {
   // DOM overlay elements carry test-query attributes but are invisible on screen.
   const imagePlaneOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -262,7 +264,12 @@ export function VisualScene({
         className="pointer-events-none absolute hidden"
       />
 
-      <Canvas orthographic camera={{ position: [0, 0, 4], zoom: 120 }} gl={{ preserveDrawingBuffer: true }}>
+      <Canvas
+        orthographic
+        camera={{ position: [0, 0, 4], zoom: 120 }}
+        gl={{ preserveDrawingBuffer: true }}
+        onCreated={onCanvasCreated ? ({ gl }) => onCanvasCreated(gl.domElement) : undefined}
+      >
         <color attach="background" args={[backgroundColor]} />
         <SceneContent
           imageUrl={imageUrl}
