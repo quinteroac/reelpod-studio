@@ -69,7 +69,7 @@ describe('LivePage', () => {
     });
   });
 
-  it('renders only the canvas shell on a black background', () => {
+  it('renders only the canvas shell on the themed live background', () => {
     render(<LivePage />);
 
     expect(screen.getByTestId('live-page')).toHaveClass(
@@ -77,7 +77,7 @@ describe('LivePage', () => {
       'inset-0',
       'm-0',
       'overflow-hidden',
-      'bg-black'
+      'bg-lofi-bg'
     );
     expect(screen.getByTestId('visual-scene')).toBeInTheDocument();
     expect(
@@ -86,7 +86,7 @@ describe('LivePage', () => {
     expect(screen.queryByText('ReelPod Studio')).not.toBeInTheDocument();
   });
 
-  it('configures VisualScene for live full-bleed black rendering', () => {
+  it('configures VisualScene for live full-bleed themed rendering', () => {
     render(<LivePage />);
 
     expect(visualSceneSpy).toHaveBeenCalledWith(
@@ -98,7 +98,7 @@ describe('LivePage', () => {
         aspectRatio: 16 / 9,
         visualizerType: 'none',
         effects: ['none'],
-        backgroundColor: '#000000',
+        backgroundColor: '#0c1120',
         showPlaceholderCopy: false,
         fullBleed: true
       })
@@ -123,7 +123,7 @@ describe('LivePage', () => {
       outputHeight: 1920,
       visualizerType: 'glitch',
       effects: ['zoom', 'colorDrift'],
-      backgroundColor: '#000000',
+      backgroundColor: '#0c1120',
       showPlaceholderCopy: false,
       fullBleed: false,
       sentAt: Date.now()
@@ -139,7 +139,7 @@ describe('LivePage', () => {
           aspectRatio: 9 / 16,
           visualizerType: 'glitch',
           effects: ['zoom', 'colorDrift'],
-          backgroundColor: '#000000',
+          backgroundColor: '#0c1120',
           showPlaceholderCopy: false,
           fullBleed: true
         })

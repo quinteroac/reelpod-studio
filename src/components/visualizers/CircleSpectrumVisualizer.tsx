@@ -49,10 +49,10 @@ void main() {
         rings += ring * fade;
     }
 
-    // Color gradient based on distance: cyan → purple → pink
-    vec3 innerColor = vec3(0.3, 0.85, 1.0);   // Cyan
-    vec3 midColor = vec3(0.55, 0.3, 0.9);      // Purple
-    vec3 outerColor = vec3(0.95, 0.4, 0.65);   // Pink
+    // Color gradient: sky blue → soft purple → sunset pink (crepuscular)
+    vec3 innerColor = vec3(0.42, 0.65, 0.8);   // Sky blue
+    vec3 midColor = vec3(0.7, 0.56, 0.76);     // Soft purple
+    vec3 outerColor = vec3(0.91, 0.66, 0.78);  // Sunset pink
 
     float colorMix = dist * 2.5;
     vec3 ringColor = mix(innerColor, midColor, clamp(colorMix, 0.0, 1.0));
@@ -67,7 +67,7 @@ void main() {
 
     // Soft glow at center
     float centerGlow = exp(-dist * 6.0) * 0.15 * uAmplitude;
-    col += vec3(0.4, 0.6, 1.0) * centerGlow;
+    col += vec3(0.5, 0.65, 0.85) * centerGlow;
 
     float alpha = clamp(rings * 0.6 * uAmplitude + centerGlow, 0.0, 0.7);
 

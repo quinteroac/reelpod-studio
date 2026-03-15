@@ -884,6 +884,83 @@ describe('App responsive single-column fallback (US-003)', () => {
   );
 });
 
+describe('App visual scene framing polish (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      (obj: Blob | MediaSource) => {
+        if ('type' in obj && obj.type === 'image/png') {
+          return 'blob:http://localhost/generated-image-url';
+        }
+
+        return 'blob:http://localhost/generated-video-url';
+      }
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
+  });
+
+  it('uses lofi panel/background framing with shadow-ring token and clipped canvas boundaries', () => {
+    render(<App />);
+
+    const visualSceneSection = screen.getByRole('region', { name: 'Visual scene' });
+    const visualCanvas = screen.getByTestId('visual-canvas');
+
+    expect(visualSceneSection.className).toContain('bg-lofi-panel');
+    expect(visualSceneSection.className).toContain('border');
+    expect(visualSceneSection.className).toContain('overflow-hidden');
+    expect(visualSceneSection.getAttribute('style')).toContain('var(--color-lofi-shadow-ring)');
+
+    expect(visualCanvas.className).toContain('bg-lofi-bg/60');
+    expect(visualCanvas.className).toContain('border');
+    expect(visualCanvas.className).toContain('overflow-hidden');
+    expect(visualCanvas.getAttribute('style')).toContain('var(--color-lofi-shadow-ring)');
+  });
+
+  it.each([375, 768, 1280])(
+    'keeps the aspect-ratio container centered at %ipx viewport width',
+    (width) => {
+      setViewportWidth(width);
+      render(<App />);
+
+      const visualCanvas = screen.getByTestId('visual-canvas');
+      const visualAspectContainer = screen.getByTestId('visual-aspect-container');
+
+      expect(visualCanvas.className).toContain('grid');
+      expect(visualCanvas.className).toContain('place-items-center');
+      expect(visualAspectContainer.className).toContain('w-full');
+      expect(visualAspectContainer.className).toContain('justify-center');
+    }
+  );
+
+  it('uses warm lofi accent colors for play/pause and seek slider without gray track overrides', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'cozy frame validation' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playback-controls-section')).toBeInTheDocument();
+    });
+
+    const playButton = screen.getByRole('button', { name: 'Play' });
+    const pauseButton = screen.getByRole('button', { name: 'Pause' });
+    const seekSlider = screen.getByLabelText('Seek');
+
+    expect(playButton.className).toContain('border-lofi-accent');
+    expect(playButton.className).toContain('bg-lofi-accent/25');
+    expect(pauseButton.className).toContain('border-lofi-accent');
+    expect(pauseButton.className).toContain('bg-lofi-accent/20');
+    expect(seekSlider.className).toContain('seek-slider');
+    expect(seekSlider.className).toContain('bg-transparent');
+    expect(seekSlider.className).not.toMatch(/\bbg-(stone|gray)-/);
+  });
+});
+
 describe('App shared prompt toggle (US-005)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

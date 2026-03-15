@@ -57,7 +57,11 @@ describe('VisualScene', () => {
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-width', '8.000');
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-plane-height', '4.500');
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-texture-source', 'image');
-    expect(useLoaderMock).toHaveBeenCalledWith(expect.any(Function), 'blob:http://localhost/my-upload');
+    // useLoader loads the fallback SVG; the blob image is loaded in useEffect via TextureLoader
+    expect(useLoaderMock).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.stringMatching(/^data:image\/svg\+xml,/)
+    );
   });
 
   it('renders MP4 video texture on the image plane when playback video element is provided', () => {

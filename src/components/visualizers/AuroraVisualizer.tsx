@@ -53,10 +53,10 @@ void main() {
     float glow2 = exp(-pow((uv.y - band2) * 10.0, 2.0));
     float glow3 = exp(-pow((uv.y - band3) * 7.0, 2.0));
 
-    // Aurora colors — green, teal, purple, pink
-    vec3 col1 = vec3(0.2, 0.9, 0.4) * glow1;   // Green
-    vec3 col2 = vec3(0.1, 0.6, 0.8) * glow2;    // Teal
-    vec3 col3 = vec3(0.6, 0.2, 0.7) * glow3;    // Purple
+    // Aurora colors — sky blue, soft purple, sunset pink (crepuscular palette)
+    vec3 col1 = vec3(0.42, 0.65, 0.8) * glow1;   // Sky blue #6ca7cc
+    vec3 col2 = vec3(0.7, 0.56, 0.76) * glow2;   // Soft purple #b28fc3
+    vec3 col3 = vec3(0.91, 0.66, 0.78) * glow3;  // Sunset pink #e8a8c7
 
     // Shift hues slowly with time
     float hueShift = sin(t * 0.3) * 0.2;

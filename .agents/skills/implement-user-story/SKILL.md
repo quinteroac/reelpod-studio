@@ -37,6 +37,19 @@ Implement the provided user story by writing production code and tests that sati
 
 ---
 
+## UI / Frontend Stories
+
+Before implementation, detect whether this is a UI task.
+
+- Consider it a UI task when the user story description or acceptance criteria contain keywords such as: `UI`, `interface`, `page`, `component`, `visual`, `button`, `form`, `layout`, `style`, or `frontend`.
+- If it is a UI task, apply these Impeccable skills in this exact order before finishing implementation:
+  1. `frontend-design` — set design direction and aesthetics.
+  2. `harden` — handle UI edge cases and resilience.
+  3. `polish` — run a final quality and refinement pass.
+- Use these skills as guidance for the implementation you are already making in this story. Do not edit the Impeccable skill files themselves.
+
+---
+
 ## Rules
 
 - **One story at a time.** Implement only the user story provided — do not implement other stories or make unrelated changes.

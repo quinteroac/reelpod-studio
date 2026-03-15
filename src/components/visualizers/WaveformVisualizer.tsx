@@ -20,10 +20,10 @@ type WaveformConfig = {
 };
 
 const WAVEFORM_CONFIGS: WaveformConfig[] = [
-    { color: '#ffd580', yFactor: 0, amplitudeScale: 1.00, speed: 0.80, opacity: 0.95, freqA: 10.0, freqB: 24.0, phaseOffset: 0 },
-    { color: '#7dd3fc', yFactor: 0, amplitudeScale: 0.65, speed: 1.37, opacity: 0.75, freqA: 7.3, freqB: 18.7, phaseOffset: Math.PI * 0.7 },
-    { color: '#c4b5fd', yFactor: 0, amplitudeScale: 0.55, speed: 1.03, opacity: 0.70, freqA: 12.9, freqB: 31.1, phaseOffset: Math.PI * 1.5 },
-    { color: '#86efac', yFactor: 0, amplitudeScale: 0.42, speed: 1.91, opacity: 0.55, freqA: 5.7, freqB: 22.3, phaseOffset: Math.PI * 0.35 },
+    { color: '#fffacd', yFactor: 0, amplitudeScale: 1.00, speed: 0.80, opacity: 0.95, freqA: 10.0, freqB: 24.0, phaseOffset: 0 },
+    { color: '#6ca7cc', yFactor: 0, amplitudeScale: 0.65, speed: 1.37, opacity: 0.75, freqA: 7.3, freqB: 18.7, phaseOffset: Math.PI * 0.7 },
+    { color: '#b28fc3', yFactor: 0, amplitudeScale: 0.55, speed: 1.03, opacity: 0.70, freqA: 12.9, freqB: 31.1, phaseOffset: Math.PI * 1.5 },
+    { color: '#e8a8c7', yFactor: 0, amplitudeScale: 0.42, speed: 1.91, opacity: 0.55, freqA: 5.7, freqB: 22.3, phaseOffset: Math.PI * 0.35 },
 ];
 
 export function WaveformVisualizer({ audioCurrentTime, audioDuration, isPlaying, planeWidth, planeHeight }: VisualizerProps) {

@@ -4,16 +4,16 @@ import * as THREE from 'three';
 import type { EffectProps } from './types';
 
 /**
- * Warm lofi palette for the color drift.
- * Each color is a soft, muted tone typical of lofi aesthetics.
+ * Crepuscular palette for the color drift.
+ * Deep blues, sunset pinks and soft purples matching the site theme.
  */
 const PALETTE = [
-    new THREE.Color('#8B6F47'), // warm brown
-    new THREE.Color('#6B4C6E'), // muted purple
-    new THREE.Color('#4A6B5A'), // sage green
-    new THREE.Color('#7B5E57'), // dusty rose
-    new THREE.Color('#5A6B7B'), // slate blue
-    new THREE.Color('#8B7355'), // amber
+    new THREE.Color('#b28fc3'), // soft purple (accent)
+    new THREE.Color('#6ca7cc'), // sky blue
+    new THREE.Color('#e8a8c7'), // sunset pink (accent-muted)
+    new THREE.Color('#4a3e72'), // indigo shadow
+    new THREE.Color('#a07fa8'), // muted purple
+    new THREE.Color('#344e8c'), // saturated blue
 ];
 
 /**
@@ -64,7 +64,7 @@ export function ColorDriftEffect({ isPlaying }: EffectProps) {
     return (
         <mesh ref={meshRef} position={[0, 0, 0.025]} scale={[20, 20, 1]}>
             <planeGeometry args={[1, 1]} />
-            <meshBasicMaterial color="#8B6F47" transparent opacity={0.10} />
+            <meshBasicMaterial color="#b28fc3" transparent opacity={0.10} />
         </mesh>
     );
 }

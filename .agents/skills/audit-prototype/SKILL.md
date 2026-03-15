@@ -15,7 +15,19 @@ Validate the product requirement document (PRD) for the current iteration agains
   - `.agents/flow/it_{iteration}_PRD.json` — PRD (user stories, acceptance criteria, functional requirements)
   - `.agents/flow/it_{iteration}_progress.json` — implementation progress
 
-## Task
+## UI / Frontend Audit
+
+If any audited user story or functional requirement involves UI or frontend work, apply these Impeccable skills during the audit:
+
+1. `audit` — evaluate accessibility, interface performance, theming consistency, and responsive behavior.
+2. `critique` — perform UX design evaluation (flows, clarity, hierarchy, and usability).
+3. `optimize` — identify interface performance optimizations for rendering, interactions, and runtime behavior.
+
+Integrate resulting UI findings into the compliance report by either:
+- adding them under **Minor observations**, or
+- capturing them as explicit FR/US assessment notes within **Verification by FR** and/or **Verification by US**.
+
+## Diagnostic Scan
 
 For each use case / user story and its acceptance criteria (and any referenced functional requirements), validate that the codebase satisfies the PRD. Report any gaps or non-compliance.
 

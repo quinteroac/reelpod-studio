@@ -1,0 +1,161 @@
+{
+  "goals": [
+    "Establish a consistent design system (spacing scale, type scale, color usage) applied uniformly across the UI.",
+    "Strengthen the lofi warm-brown aesthetic so every element feels intentional and on-brand.",
+    "Improve readability and visual hierarchy in the parameter controls panel.",
+    "Make the overall layout feel more polished and professional when viewed in a browser."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Consistent lofi color palette and typography applied throughout",
+      "description": "As a creator using ReelPod Studio, I want every UI element to use the lofi color tokens (`lofi-bg`, `lofi-panel`, `lofi-accent`, `lofi-accentMuted`, `lofi-text`) and a consistent type scale instead of raw Tailwind stone/gray overrides so that the interface feels cohesive and on-brand.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "All background colors use `bg-lofi-bg` or `bg-lofi-panel`; raw `bg-stone-*` / `bg-gray-*` overrides replaced with lofi tokens or warm equivalents."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "All border colors use `border-lofi-accent`, `border-lofi-accentMuted`, or a warm stone tone consistent with the palette — no cool-gray borders."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Interactive elements (inputs, textareas, selects, buttons) use accent color on hover/focus consistently."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Tab bar active indicator uses `border-lofi-accent` (warm amber) instead of `border-white`."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "App title (\"ReelPod Studio\") uses `font-serif` (Merriweather) at `text-4xl font-bold`."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Subtitle and secondary labels use `text-sm` with `lofi-accentMuted` color."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Body/input text uses `text-sm` (Nunito via `font-sans`)."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "No `text-xs` used for primary readable content (only for badges/tags)."
+        },
+        {
+          "id": "US-001-AC09",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC10",
+          "text": "A review of component files confirms no `stone-*` / `gray-*` class remains on backgrounds or borders; app title renders in Merriweather at `text-4xl`."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Improved parameter controls panel layout and typography",
+      "description": "As a creator, I want the Music Generation and Visual Settings panels to have clear visual hierarchy and comfortable spacing so that I can scan and use controls quickly without cognitive friction.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Section headings (\"Creative brief\", \"Duration\", \"Format\", \"Visualizer\", \"Effects\") use a consistent type style (size, weight, color) across all tabs."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Heading hierarchy within panels (`h2`, section labels) is consistent in size and weight."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Labels are visually distinct from input fields (e.g., slightly muted label color vs. full `lofi-text` for values)."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Control groups (e.g., duration input, format radio group, effect toggles) have consistent internal padding and gap of ≥ 8px."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "The Generate button is visually prominent — full-width on the controls column with clear disabled/loading states."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Error and status messages use consistent styling: red-tinted for errors, accent-tinted for loading."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "The queue tab entries are easy to scan: status badge, truncated brief, and action button are well-spaced."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Empty queue state displays a muted placeholder message (e.g., \"No items in queue\") using `lofi-accentMuted` color."
+        },
+        {
+          "id": "US-002-AC09",
+          "text": "Queue list is scrollable and does not overflow the panel when more than 3 entries are present."
+        },
+        {
+          "id": "US-002-AC10",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC11",
+          "text": "All control groups have ≥ 8px internal gap; section headings are visually distinct from body text; no element uses more than 3 distinct font sizes outside badge/tag contexts."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Visual scene panel framing improved",
+      "description": "As a creator, I want the visual scene canvas on the right side to sit in a visually intentional frame so that the canvas area feels like a proper preview, not a raw floating element.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The scene panel has a consistent background (`bg-lofi-panel` or `bg-lofi-bg`) with subtle border or inset shadow using the lofi shadow ring token."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The aspect-ratio container centers the canvas correctly at all viewport sizes (no layout shift)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The playback controls below the scene use lofi accent colors for the play/pause button and seek slider thumb."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "The seek slider track uses the existing gradient style from `index.css`; no raw gray overrides on the track."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "Canvas container has a visible border or shadow; no element bleeds outside the panel frame; playback controls use warm accent colors with no gray remnants."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "The lofi CSS custom properties (`--color-lofi-bg`, `--color-lofi-panel`, `--color-lofi-accent`, `--color-lofi-accent-muted`, `--color-lofi-text`, `--color-lofi-shadow-ring`) defined in `src/index.css` are the single source of truth for color; no duplicate color literals for these values in component files."
+    },
+    {
+      "id": "FR-2",
+      "description": "The Tailwind config must expose all lofi tokens as utility classes (`bg-lofi-*`, `text-lofi-*`, `border-lofi-*`) so that CSS custom properties are consumed via utilities, not inline styles."
+    },
+    {
+      "id": "FR-3",
+      "description": "All changes must be purely visual (CSS/Tailwind classes, `index.css` token values); no logic, state, or API changes. Disabled and loading states are assumed to already exist as component props/state — this iteration only styles them."
+    },
+    {
+      "id": "FR-4",
+      "description": "Existing functional behavior — audio generation, image upload, playback, queue, live mirror — must remain unaffected."
+    },
+    {
+      "id": "FR-5",
+      "description": "`tailwind.config.*` lofi color extension and `index.css` variable definitions must remain in sync."
+    }
+  ]
+}

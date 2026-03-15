@@ -7,7 +7,7 @@ import { EffectComposer, type EffectType } from './effects';
 import { VisualizerFactory, type VisualizerType } from './visualizers';
 
 const FALLBACK_VISUAL_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3a2b24"/><stop offset="100%" stop-color="#12100f"/></linearGradient></defs><rect width="1200" height="800" fill="url(#g)"/><circle cx="950" cy="190" r="130" fill="#c08457" fill-opacity="0.2"/><circle cx="250" cy="650" r="190" fill="#8b5e3c" fill-opacity="0.25"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#252d4a"/><stop offset="100%" stop-color="#1a2340"/></linearGradient></defs><rect width="1200" height="800" fill="url(#g)"/><circle cx="950" cy="190" r="130" fill="#b28fc3" fill-opacity="0.2"/><circle cx="250" cy="650" r="190" fill="#e8a8c7" fill-opacity="0.25"/></svg>'
 )}`;
 
 
@@ -214,7 +214,7 @@ export function VisualScene({
   aspectRatio,
   visualizerType,
   effects,
-  backgroundColor = '#18120f',
+  backgroundColor = '#1a2340',
   showPlaceholderCopy = true,
   fullBleed = false
 }: VisualSceneProps) {
@@ -243,7 +243,7 @@ export function VisualScene({
       className={fullBleed ? 'relative h-full w-full overflow-hidden' : 'relative w-full'}
       style={{
         aspectRatio: fullBleed ? undefined : `${aspectRatio}`,
-        width: fullBleed ? '100%' : `min(100%, 70vh * ${aspectRatio})`,
+        width: fullBleed ? '100%' : `min(100%, calc(72vh * ${aspectRatio}))`,
         height: fullBleed ? '100%' : undefined
       }}
     >

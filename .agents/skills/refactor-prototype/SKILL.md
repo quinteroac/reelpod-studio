@@ -28,6 +28,18 @@ Apply the refactor plan produced by the audit phase to the codebase in a **singl
    - `## Quality checks` — which checks you ran (including `bun run typecheck` and `bun test` when appropriate), their outcomes, and any important notes.
    - `## Deviations from refactor plan` — describe any deviations from the original refactor plan in the audit JSON. If there were no deviations, explicitly write `None`.
 
+## UI / Frontend Refactor
+
+Before applying refactor items, detect whether any item is a UI task.
+
+- Consider it a UI task when the refactor item text, related user story description, or acceptance criteria contain keywords such as: `UI`, `interface`, `page`, `component`, `visual`, `button`, `form`, `layout`, `style`, or `frontend`.
+- If any refactor item is a UI task, apply these Impeccable skills in this exact order while executing the refactor:
+  1. `polish` — alignment, spacing, and consistency refinement.
+  2. `harden` — edge cases, error states, and i18n resilience.
+  3. `optimize` — performance improvements.
+  4. `normalize` — design system consistency.
+- Use these skills as guidance for the refactor you are already applying. Do not edit the Impeccable skill files themselves.
+
 ## Context
 
 You will receive:

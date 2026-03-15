@@ -60,14 +60,14 @@ export function StarfieldVisualizer({
     const dummy = useMemo(() => new THREE.Object3D(), []);
     const color = useMemo(() => new THREE.Color(), []);
 
-    // Pre-create palette colors
+    // Pre-create palette colors — crepuscular (sky blue, soft purple, sunset pink, cream)
     const palette = useMemo(
         () => [
-            new THREE.Color('#ffd580'), // warm gold
-            new THREE.Color('#7dd3fc'), // sky blue
-            new THREE.Color('#c4b5fd'), // lavender
-            new THREE.Color('#fca5a5'), // soft red
-            new THREE.Color('#86efac'), // mint green
+            new THREE.Color('#fffacd'), // pale yellow / cream (moon, lights)
+            new THREE.Color('#6ca7cc'), // sky blue
+            new THREE.Color('#b28fc3'), // soft purple (accent)
+            new THREE.Color('#e8a8c7'), // sunset pink
+            new THREE.Color('#80b3d9'), // light blue
         ],
         []
     );
