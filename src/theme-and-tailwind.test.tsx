@@ -59,6 +59,16 @@ describe('Tailwind setup', () => {
 });
 
 describe('Lofi theme', () => {
+  it('uses a cool dusk text token with strong contrast on both lofi background surfaces', () => {
+    const text = getRootColorToken('color-lofi-text');
+    const background = getRootColorToken('color-lofi-bg');
+    const panel = getRootColorToken('color-lofi-panel');
+
+    expect(text).toBe('#e8e4f0');
+    expect(contrastRatio(text, background)).toBeGreaterThan(7);
+    expect(contrastRatio(text, panel)).toBeGreaterThan(7);
+  });
+
   it('uses warm ochre/amber accent tokens tuned for dusk styling', () => {
     const accent = getRootColorToken('color-lofi-accent');
     const accentMuted = getRootColorToken('color-lofi-accent-muted');
@@ -77,7 +87,7 @@ describe('Lofi theme', () => {
     expect(contrastRatio(accentMuted, background)).toBeGreaterThan(3.5);
   });
 
-  it('uses a dark warm background with high-contrast text and lofi typography classes', () => {
+  it('uses lofi background surfaces with high-contrast typography classes', () => {
     render(<App />);
 
     const main = screen.getByRole('main');
@@ -92,6 +102,20 @@ describe('Lofi theme', () => {
     expect(heading.className).toContain('font-serif');
   });
 
+  it('keeps the ReelPod Studio header and panel labels legible with lofi text token styling', () => {
+    render(<App />);
+
+    const heading = screen.getByRole('heading', { name: 'ReelPod Studio' });
+    const creativeBriefLabel = screen.getByText('Creative brief');
+    const durationLabel = screen.getByText('Duration (s)');
+    const socialFormatLegend = screen.getByText('Format');
+
+    expect(heading.className).toContain('text-lofi-text');
+    expect(creativeBriefLabel.className).toContain('text-lofi-text');
+    expect(durationLabel.className).toContain('text-lofi-text');
+    expect(socialFormatLegend.className).toContain('text-lofi-text');
+  });
+
   it('uses only lofi/warm background and border classes without stone/gray overrides', () => {
     expect(appSource).not.toMatch(/\bbg-(stone|gray)-/);
     expect(appSource).not.toMatch(/\bborder-(stone|gray)-/);
@@ -100,6 +124,8 @@ describe('Lofi theme', () => {
 
   it('uses text-sm and muted accent for subtitle and secondary labels', () => {
     render(<App />);
+    const background = getRootColorToken('color-lofi-bg');
+    const accentMuted = getRootColorToken('color-lofi-accent-muted');
 
     const subtitle = screen.getByText(
       'Create music and visuals for YouTube, TikTok & Reels.'
@@ -108,6 +134,7 @@ describe('Lofi theme', () => {
 
     expect(subtitle.className).toContain('text-sm');
     expect(subtitle.className).toContain('text-lofi-accentMuted');
+    expect(contrastRatio(accentMuted, background)).toBeGreaterThan(4.5);
     expect(musicTab.className).toContain('text-sm');
   });
 
