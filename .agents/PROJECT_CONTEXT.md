@@ -19,6 +19,7 @@
   - `@react-three/fiber`: R3F — `Canvas`, `useFrame`, `useLoader`, `useThree`
   - `@react-three/drei`: R3F helpers — `Line` component
   - `@react-three/postprocessing`: post-processing pipeline — `EffectComposer`, `Bloom`
+  - `mediabunny`: client-side MP4 encoding via WebCodecs — `Output`, `Mp4OutputFormat`, `BufferTarget`, `MediaStreamVideoTrackSource`, `MediaStreamAudioTrackSource`, `canEncodeVideo`, `canEncodeAudio`
   - ACEStep: separate REST API process (`start-acestep.sh`), local music generation model
 - Package manager: bun
 - Build / tooling: Vite
@@ -54,6 +55,9 @@
 - `src/components/visualizers/`: factory pattern — `VisualizerFactory` dispatches by `VisualizerType`; types: `waveform`, `rain`, `scene-rain`, `starfield`, `aurora`, `circle-spectrum`, `glitch`, `smoke`, `contour`, `none`
 - `src/components/effects/`: composer pattern — `EffectComposer` renders from `EffectType[]`; types: `zoom`, `flicker`, `vignette`, `filmGrain`, `chromaticAberration`, `scanLines`, `colorDrift`, `none`
 - `src/lib/visual-scene.ts`: pure math — `computeContainScale`, `computeWaveformPhase`, `buildWaveformPositions`
+- `src/hooks/use-recorder.ts`: recording logic hook — manages `mediabunny` output lifecycle (start, stop, finalize), codec pre-flight checks, canvas + audio capture, and emits completed recordings to a queue
+- `src/components/record-button.tsx`: Record/Stop button with recording indicator (red dot) and finalizing spinner; enabled only when `audioUrl` is non-null
+- `src/components/recording-queue.tsx`: renders completed recordings — filename, size (MB), and download anchor per entry
 - `src/api/constants.ts`: API endpoint constants (`/api/generate`)
 - `backend/main.py`: backend composition root — creates FastAPI app, registers routers/handlers, and wires startup/shutdown lifecycle hooks
 - `backend/routes/`: FastAPI route modules (`APIRouter`) that parse HTTP requests/responses and delegate work to services
@@ -76,3 +80,5 @@
 - 7 post-processing effects (zoom, flicker, vignette, filmGrain, chromaticAberration, scanLines, colorDrift) — composer pattern, stackable
 - Audio-reactive animations (visualizers and effects driven by audio timing props)
 - Fallback SVG visual when no image uploaded
+- Dusk color palette (deep indigo-violet bg, warm ochre accent, cool off-white text)
+- Canvas + audio recording to MP4 via `mediabunny` (WebCodecs, H.264/AAC, 30 fps / 4 Mbps / 128 kbps); one-click Record/Stop; recording queue with per-entry download

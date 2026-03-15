@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import io
+import random
 import logging
 import sys
 import tempfile
@@ -218,7 +218,7 @@ def generate_audio_bytes_for_prompt(
         pipeline.clip,
         tags=prompt,
         lyrics="",
-        seed=0,
+        seed=random.randint(0, 999_999),
         bpm=tempo,
         duration=duration_f,
         timesignature="4",

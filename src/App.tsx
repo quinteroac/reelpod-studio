@@ -328,11 +328,10 @@ export function App() {
       setIsPlaying(true);
       startSeekPolling();
     },
-    onFinalized: (buffer: ArrayBuffer) => {
-      const blob = new Blob([buffer], { type: 'video/mp4' });
+    onFinalized: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => {
       const url = URL.createObjectURL(blob);
       const timestamp = new Date().toISOString();
-      const filename = `recording-${timestamp}.mp4`;
+      const filename = `recording-${timestamp}${meta.fileExtension}`;
       const sizeInMb = parseFloat((blob.size / (1024 * 1024)).toFixed(2));
       const entry: RecordingEntry = {
         id: recordingIdRef.current++,

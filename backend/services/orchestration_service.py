@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,16 +28,17 @@ JSON_PARSE_RETRIES = 2
 CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
     "You are the creative director for ReelPod Studio. Given a short user brief, invent a complete "
     "audiovisual concept rather than rephrasing it. Make autonomous creative decisions for genre, mood, "
-    "tempo, instrumentation, lyrical theme, visual style, character or scene composition, and camera motion "
-    "while staying coherent with the user's brief. Return ONLY valid JSON with keys audio_prompt, image_prompt, "
-    "video_prompt.\n"
+    "tempo, instrumentation, lyrical theme, visual style, character or scene composition. Prefer static or "
+    "minimal camera motion so the video feels like a seamless loop rather than an action sequence. "
+    "Return ONLY valid JSON with keys audio_prompt, image_prompt, video_prompt.\n"
     "Rules:\n"
     "1) audio_prompt: ACEStep-ready music brief including genre, mood, tempo hint (e.g. 90 BPM), "
     "instrumentation, and lyrical theme.\n"
     "2) image_prompt: Danbooru tags in strict order: [quality/meta/year/safety tags] [count tag] "
     "[character] [series] [artist] [general tags]. The quality section MUST start with "
     "'score_9, score_8, best quality, highres'.\n"
-    "3) video_prompt: short action-focused scene intent that can be expanded into LTX-Video 2 format.\n"
+    "3) video_prompt: short, static or slow-loop scene intent (e.g. ambient, idle motion, subtle loop) "
+    "that can be expanded into LTX-Video 2 format. Aim for a calm, loopable clip, not an action movie.\n"
     "4) No markdown, no code fences, no explanations, JSON only."
 )
 
@@ -146,6 +148,7 @@ def _generate_json_concept(clip: Any, user_prompt: str) -> str:
         clip,
         _build_orchestration_prompt(user_prompt),
         max_length=700,
+        seed=random.randint(0, 999_999),
     )
 
 
@@ -195,7 +198,9 @@ def orchestrate(user_prompt: str) -> OrchestrationResult:
             {
                 "audio_prompt": validated.audio_prompt,
                 "image_prompt": validated.image_prompt,
-                "video_prompt": ltx2_prompt,
+                ##Use the same image prompt for video to produce more static videos as we are looking for loopable videos.
+                "video_prompt": validated.image_prompt,
+                #"video_prompt": ltx2_prompt,
             }
         )
     except ValidationError as exc:
