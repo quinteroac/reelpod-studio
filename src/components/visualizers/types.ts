@@ -1,3 +1,5 @@
+import type * as THREE from 'three';
+
 export type VisualizerType = 'waveform' | 'rain' | 'scene-rain' | 'starfield' | 'aurora' | 'circle-spectrum' | 'glitch' | 'smoke' | 'contour' | 'none';
 
 export type VisualizerProps = {
@@ -6,5 +8,5 @@ export type VisualizerProps = {
     isPlaying: boolean;
     planeWidth: number;
     planeHeight: number;
-    texture?: any; // THREE.Texture but avoiding big three imports here if simpler, or just any
+    texture?: THREE.Texture;
 };

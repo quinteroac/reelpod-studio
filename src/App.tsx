@@ -760,12 +760,10 @@ export function App() {
   async function handleDeleteQueueEntry(entry: QueueEntry): Promise<void> {
     if (isQueueRecordingActive) {
       try {
-        await stopRecording();
+        await handleStopQueueRecording();
       } catch (error) {
         setStatus('error');
         setErrorMessage(getErrorMessage(error));
-      } finally {
-        setIsQueueRecordingActive(false);
       }
     }
 
@@ -1426,7 +1424,7 @@ export function App() {
                               </button>
                             </div>
                           )}
-                          {!isCompleted && (
+                          {!isCompleted && !isGenerating && (
                             <div className="mt-2 flex justify-end">
                               <button
                                 type="button"

@@ -51,10 +51,8 @@ describe('useAgentGeneration', () => {
 
     const command: GenerationCommand = {
       parameters: {
-        mood: 'chill',
-        tempo: 80,
-        style: 'jazz',
         duration: 60,
+        mode: 'llm',
       },
       imagePrompt: 'sunset cafe',
       targetWidth: 1920,
