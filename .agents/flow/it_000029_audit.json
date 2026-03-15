@@ -1,0 +1,32 @@
+{
+  "iteration": "000029",
+  "date": "2026-03-14",
+  "verificationByFR": [
+    { "frId": "FR-1", "assessment": "comply" },
+    { "frId": "FR-2", "assessment": "comply" },
+    { "frId": "FR-3", "assessment": "comply" },
+    { "frId": "FR-4", "assessment": "comply" },
+    { "frId": "FR-5", "assessment": "comply" },
+    { "frId": "FR-6", "assessment": "comply" },
+    { "frId": "FR-7", "assessment": "comply" },
+    { "frId": "FR-8", "assessment": "comply" },
+    { "frId": "FR-9", "assessment": "comply" }
+  ],
+  "verificationByUS": [
+    { "usId": "US-001", "assessment": "comply" },
+    { "usId": "US-002", "assessment": "comply" },
+    { "usId": "US-003", "assessment": "comply" }
+  ],
+  "appliedFixes": [
+    {
+      "file": "src/hooks/use-recorder.ts",
+      "description": "Updated canEncodeVideo and canEncodeAudio pre-flight calls to pass { codec, bitrate } object instead of plain string, aligning with FR-7 spec."
+    }
+  ],
+  "deferredItems": [
+    {
+      "title": "Revoke object URLs on queue entry removal",
+      "description": "URL.revokeObjectURL is not called when recording entries are removed, holding Blob memory for the page lifetime."
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRecorder } from './hooks/use-recorder';
 import type { SongParameters } from './mcp/parameter-store';
 import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
@@ -34,6 +35,13 @@ import {
 type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
 type ToggleableEffectType = Exclude<EffectType, 'none'>;
+
+interface RecordingEntry {
+  id: number;
+  filename: string;
+  url: string;
+  sizeInMb: number;
+}
 
 interface QueueEntry {
   id: number;
@@ -202,6 +210,8 @@ export function App() {
     useState<HTMLVideoElement | null>(null);
   const activeVideoObjectUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
+  const recordingIdRef = useRef(1);
+  const [recordingEntries, setRecordingEntries] = useState<RecordingEntry[]>([]);
   const [_params, setParams] = useState<GenerationParams>(defaultParams);
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
@@ -236,6 +246,7 @@ export function App() {
     useState<ToggleableEffectType[]>(defaultEffectOrder);
   const [fontSizePercent, setFontSizePercent] = useState(103);
   const seekPollRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -304,6 +315,33 @@ export function App() {
       }
     }, SEEK_POLL_INTERVAL_MS);
   }, [stopSeekPolling]);
+
+  const handleCanvasCreated = useCallback((canvas: HTMLCanvasElement) => {
+    canvasRef.current = canvas;
+  }, []);
+
+  const { isRecording, isFinalizing, startRecording, stopRecording, recordingError: recorderError } = useRecorder({
+    getCanvas: () => canvasRef.current,
+    getVideoElement: () => videoPlaybackRef.current,
+    onStarted: () => {
+      void videoPlaybackRef.current?.play();
+      setIsPlaying(true);
+      startSeekPolling();
+    },
+    onFinalized: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => {
+      const url = URL.createObjectURL(blob);
+      const timestamp = new Date().toISOString();
+      const filename = `recording-${timestamp}${meta.fileExtension}`;
+      const sizeInMb = parseFloat((blob.size / (1024 * 1024)).toFixed(2));
+      const entry: RecordingEntry = {
+        id: recordingIdRef.current++,
+        filename,
+        url,
+        sizeInMb
+      };
+      setRecordingEntries((prev) => [...prev, entry]);
+    }
+  });
 
   useEffect(() => {
     const channel = createLiveMirrorChannel();
@@ -703,6 +741,35 @@ export function App() {
     }
   }
 
+  async function handleRecord(): Promise<void> {
+    setErrorMessage(null);
+    const video = videoPlaybackRef.current;
+    if (video) {
+      video.currentTime = 0;
+      setAudioCurrentTime(0);
+      setSeekPosition(SEEK_MIN);
+      // AC01: auto-finalize when playback ends during recording
+      video.onended = () => {
+        const endedDuration = video.duration && isFinite(video.duration) ? video.duration : 0;
+        setAudioDuration(endedDuration);
+        setAudioCurrentTime(endedDuration);
+        setSeekPosition(SEEK_MAX);
+        setIsPlaying(false);
+        stopSeekPolling();
+        void stopRecording();
+      };
+    }
+    await startRecording();
+  }
+
+  async function handleStop(): Promise<void> {
+    // AC02: user-initiated stop
+    videoPlaybackRef.current?.pause();
+    setIsPlaying(false);
+    stopSeekPolling();
+    await stopRecording();
+  }
+
   function handlePause(): void {
     try {
       videoPlaybackRef.current?.pause();
@@ -1092,6 +1159,48 @@ export function App() {
                       );
                     })()}
                 </div>
+                {recordingEntries.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                      Recordings
+                    </h3>
+                    <ul className="space-y-2">
+                      {recordingEntries.map((rec) => (
+                        <li
+                          key={rec.id}
+                          data-testid={`recording-entry-${rec.id}`}
+                          className="rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3 text-sm"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 space-y-0.5">
+                              <p
+                                data-testid={`recording-filename-${rec.id}`}
+                                className="truncate font-semibold text-lofi-text"
+                              >
+                                {rec.filename}
+                              </p>
+                              <p
+                                data-testid={`recording-size-${rec.id}`}
+                                className="text-lofi-accentMuted"
+                              >
+                                {rec.sizeInMb} MB
+                              </p>
+                            </div>
+                            <a
+                              data-testid={`recording-download-${rec.id}`}
+                              href={rec.url}
+                              download={rec.filename}
+                              className="interactive-lift min-h-11 shrink-0 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                            >
+                              Download
+                            </a>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {queueEntries.length === 0 ? (
                   <p className="text-sm text-lofi-accentMuted">No generations yet.</p>
                 ) : (
@@ -1310,6 +1419,7 @@ export function App() {
                     aspectRatio={selectedSocialFormat.aspectRatio}
                     visualizerType={activeVisualizerType}
                     effects={activeEffects}
+                    onCanvasCreated={handleCanvasCreated}
                   />
                 </div>
               </div>
@@ -1321,22 +1431,101 @@ export function App() {
                 aria-label="Playback controls"
                 className="grid gap-3 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-4 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
               >
-                <button
-                  type="button"
-                  className="interactive-lift min-h-11 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => void handlePlay()}
-                  disabled={isPlaying}
-                >
-                  Play
-                </button>
-                <button
-                  type="button"
-                  className="interactive-lift min-h-11 rounded-sm border border-lofi-accent bg-lofi-accent/20 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => void handlePause()}
-                  disabled={!isPlaying}
-                >
-                  Pause
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="interactive-lift min-h-11 flex-1 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handlePlay()}
+                    disabled={isPlaying}
+                  >
+                    Play
+                  </button>
+                  <button
+                    type="button"
+                    className="interactive-lift min-h-11 flex-1 rounded-sm border border-lofi-accent bg-lofi-accent/20 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handlePause()}
+                    disabled={!isPlaying}
+                  >
+                    Pause
+                  </button>
+                </div>
+
+                {/* AC04: Stop button replaces Record while recording is active */}
+                {isRecording ? (
+                  <button
+                    type="button"
+                    data-testid="stop-button"
+                    className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400"
+                    onClick={() => void handleStop()}
+                    aria-label="Stop recording"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-sm bg-red-500"
+                      />
+                      Stop
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="record-button"
+                    className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handleRecord()}
+                    disabled={!activeVideoUrl || isFinalizing}
+                    aria-label="Record canvas and audio to MP4"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-full bg-red-500"
+                      />
+                      Record
+                    </span>
+                  </button>
+                )}
+
+                {/* AC03: spinner replaces recording dot while finalizing */}
+                {isFinalizing ? (
+                  <div
+                    data-testid="finalizing-indicator"
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-2 rounded-sm border border-lofi-accent/50 bg-lofi-surface/40 px-3 py-2 text-sm font-semibold text-lofi-accentMuted"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-lofi-accentMuted border-t-transparent"
+                    />
+                    Finalizing&hellip;
+                  </div>
+                ) : isRecording && (
+                  <div
+                    data-testid="recording-indicator"
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-2 rounded-sm border border-red-400/50 bg-red-950/20 px-3 py-2 text-sm font-semibold text-red-100"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500"
+                    />
+                    Recording&hellip;
+                  </div>
+                )}
+
+                {/* Recorder codec/setup error message */}
+                {recorderError && (
+                  <p
+                    data-testid="recorder-error"
+                    role="alert"
+                    className="rounded-sm border border-red-400/50 bg-red-950/20 px-3 py-2 text-sm text-red-100"
+                  >
+                    {recorderError}
+                  </p>
+                )}
+
                 <label
                   htmlFor="seek"
                   className="text-sm font-semibold text-lofi-accentMuted"

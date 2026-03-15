@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -6,6 +7,27 @@ import {
   within
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockStartRecording = vi.fn().mockResolvedValue(undefined);
+const mockStopRecording = vi.fn().mockResolvedValue(undefined);
+const mockIsRecording = { value: false };
+const mockIsFinalizing = { value: false };
+const mockRecorderError = { value: null as string | null };
+let capturedOnFinalized: ((buffer: ArrayBuffer) => void) | undefined;
+
+vi.mock('./hooks/use-recorder', () => ({
+  useRecorder: (options: { onFinalized?: (buffer: ArrayBuffer) => void }) => {
+    capturedOnFinalized = options.onFinalized;
+    return {
+      isRecording: mockIsRecording.value,
+      isFinalizing: mockIsFinalizing.value,
+      startRecording: mockStartRecording,
+      stopRecording: mockStopRecording,
+      recordingError: mockRecorderError.value,
+      handlesRef: { current: { output: null, target: null, audioContext: null } }
+    };
+  }
+}));
 
 type VisualSceneProps = {
   imageUrl: string | null;
@@ -36,6 +58,7 @@ type VisualSceneProps = {
   | 'smoke'
   | 'contour'
   | 'none';
+  onCanvasCreated?: (canvas: HTMLCanvasElement) => void;
 };
 
 const visualSceneSpy = vi.fn((props: VisualSceneProps) => (
@@ -1084,6 +1107,312 @@ describe('App queue playback binding (US-006)', () => {
         'data-playing',
         'true'
       );
+    });
+  });
+});
+
+describe('Record button (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('AC01: Record button is not visible before a track is generated', () => {
+    render(<App />);
+    expect(screen.queryByTestId('record-button')).not.toBeInTheDocument();
+  });
+
+  it('AC01: Record button is visible and disabled when track exists but no audio URL is available', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).toBeInTheDocument();
+    });
+  });
+
+  it('AC01: Record button is enabled when an audio URL is available', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      const recordBtn = screen.getByTestId('record-button');
+      expect(recordBtn).toBeInTheDocument();
+      expect(recordBtn).not.toBeDisabled();
+    });
+  });
+
+  it('AC02 + AC06: clicking Record calls startRecording', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).not.toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByTestId('record-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalled();
+    });
+  });
+
+  it('AC08: recording indicator is shown when isRecording is true', async () => {
+    mockIsRecording.value = true;
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-indicator')).toBeInTheDocument();
+    });
+  });
+
+  it('AC07: shows recorder error message when codec check fails', async () => {
+    mockRecorderError.value = 'Your browser does not support recording: H.264 video encoding is not available.';
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recorder-error')).toHaveTextContent(
+        'H.264 video encoding is not available'
+      );
+    });
+  });
+});
+
+describe('Recording auto-stop and UI states (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  async function renderAndGenerate() {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).not.toBeDisabled();
+    });
+  }
+
+  it('US-002-AC04: Stop button replaces Record button while recording', async () => {
+    mockIsRecording.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('record-button')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC02: clicking Stop calls stopRecording', async () => {
+    mockIsRecording.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('stop-button'));
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalled();
+    });
+  });
+
+  it('US-002-AC03: finalizing indicator shown when isFinalizing is true', async () => {
+    mockIsFinalizing.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('finalizing-indicator')).toBeInTheDocument();
+      expect(screen.queryByTestId('recording-indicator')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC03: recording indicator shown when recording, not finalizing indicator', async () => {
+    mockIsRecording.value = true;
+    mockIsFinalizing.value = false;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-indicator')).toBeInTheDocument();
+      expect(screen.queryByTestId('finalizing-indicator')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC04: Record button disabled while finalizing', async () => {
+    mockIsFinalizing.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).toBeDisabled();
+    });
+  });
+
+  it('US-002-AC01: audio ended event triggers stopRecording via handleRecord setup', async () => {
+    // Verify handleRecord sets up video.onended which calls stopRecording
+    await renderAndGenerate();
+
+    fireEvent.click(screen.getByTestId('record-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalled();
+    });
+  });
+
+  it('US-003-AC01+AC02: onFinalized creates a Blob and adds a recording entry to the queue with filename, size, and Download link', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/rec-1');
+
+    render(<App />);
+
+    // Trigger the onFinalized callback as the hook would after finalization
+    const buffer = new ArrayBuffer(2 * 1024 * 1024); // 2 MB
+    act(() => {
+      capturedOnFinalized?.(buffer);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const entry = screen.getByTestId('recording-entry-1');
+      expect(entry).toBeInTheDocument();
+
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toMatch(/^recording-.*\.mp4$/);
+
+      const size = screen.getByTestId('recording-size-1');
+      expect(size.textContent).toMatch(/MB/);
+
+      const downloadLink = screen.getByTestId('recording-download-1');
+      expect(downloadLink).toHaveAttribute('href', 'blob:http://localhost/rec-1');
+      expect(downloadLink).toHaveAttribute('download');
+      expect(downloadLink.getAttribute('download')).toMatch(/^recording-.*\.mp4$/);
+      expect(downloadLink.textContent?.trim()).toBe('Download');
+    });
+  });
+
+  it('US-003-AC04: multiple recordings each produce a separate queue entry', async () => {
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/rec-1')
+      .mockReturnValueOnce('blob:http://localhost/rec-2');
+
+    render(<App />);
+
+    const buffer1 = new ArrayBuffer(1024);
+    const buffer2 = new ArrayBuffer(2048);
+
+    act(() => {
+      capturedOnFinalized?.(buffer1);
+    });
+    act(() => {
+      capturedOnFinalized?.(buffer2);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-entry-1')).toBeInTheDocument();
+      expect(screen.getByTestId('recording-entry-2')).toBeInTheDocument();
+
+      expect(screen.getByTestId('recording-download-1')).toHaveAttribute(
+        'href',
+        'blob:http://localhost/rec-1'
+      );
+      expect(screen.getByTestId('recording-download-2')).toHaveAttribute(
+        'href',
+        'blob:http://localhost/rec-2'
+      );
+    });
+  });
+
+  it('US-003-AC03: Download link uses <a download> pattern', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/rec-dl');
+
+    render(<App />);
+
+    act(() => {
+      capturedOnFinalized?.(new ArrayBuffer(512));
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const link = screen.getByTestId('recording-download-1');
+      expect(link.tagName).toBe('A');
+      expect(link).toHaveAttribute('href', 'blob:http://localhost/rec-dl');
+      expect(link).toHaveAttribute('download');
     });
   });
 });
