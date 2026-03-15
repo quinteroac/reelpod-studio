@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Nunito:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Sora:wght@400;500;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,16 +6,50 @@
 
 @layer base {
   :root {
-    --color-lofi-bg: #1c1714;
-    --color-lofi-panel: #2a211d;
-    --color-lofi-accent: #d4a054;
-    --color-lofi-accent-muted: #9f7b57;
-    --color-lofi-text: #e8e4f0;
-    --color-lofi-shadow-ring: rgba(28, 23, 20, 0.35);
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html {
+    font-size: var(--app-font-size, 103%);
+  }
+
+  :root {
+    --color-lofi-bg: #0c1120;
+    --color-lofi-panel: #141c31;
+    --color-lofi-accent: #63d8e0;
+    --color-lofi-accent-muted: #8793da;
+    --color-lofi-text: #e7ebfa;
+    --color-lofi-shadow-ring: rgba(8, 12, 24, 0.72);
+    --color-rgb-red: #da5f7d;
+    --color-rgb-green: #58d5a3;
+    --color-rgb-blue: #6299dc;
+    --gradient-lofi-bg: linear-gradient(
+      152deg,
+      #060911 0%,
+      #0b1020 22%,
+      #111b32 54%,
+      #0f1b2b 76%,
+      #0d111d 100%
+    );
   }
 
   body {
-    @apply m-0 min-h-screen bg-lofi-bg text-lofi-text font-sans antialiased;
+    @apply m-0 min-h-screen text-lofi-text font-sans antialiased;
+    background-color: var(--color-lofi-bg);
+    background-image:
+      radial-gradient(circle at 8% 9%, color-mix(in srgb, var(--color-rgb-red) 18%, transparent) 0, transparent 34%),
+      radial-gradient(circle at 91% 16%, color-mix(in srgb, var(--color-rgb-blue) 20%, transparent) 0, transparent 38%),
+      radial-gradient(circle at 74% 82%, color-mix(in srgb, var(--color-rgb-green) 16%, transparent) 0, transparent 36%),
+      repeating-linear-gradient(
+        -32deg,
+        rgba(255, 255, 255, 0.009) 0,
+        rgba(255, 255, 255, 0.009) 2px,
+        transparent 2px,
+        transparent 11px
+      ),
+      var(--gradient-lofi-bg);
+    background-attachment: fixed;
   }
 
   #root {
@@ -24,6 +58,83 @@
 }
 
 @layer components {
+  .reveal-rise {
+    animation: reveal-rise 380ms var(--ease-out-quint) both;
+  }
+
+  .reveal-soft {
+    animation: reveal-soft 240ms var(--ease-out-quart) both;
+  }
+
+  .interactive-lift {
+    transition:
+      transform 180ms var(--ease-out-quart),
+      filter 180ms var(--ease-out-quart),
+      box-shadow 220ms var(--ease-out-quart),
+      background-color 180ms var(--ease-out-quart),
+      border-color 180ms var(--ease-out-quart),
+      color 180ms var(--ease-out-quart);
+  }
+
+  .interactive-lift:hover {
+    transform: translateY(-1px);
+  }
+
+  .interactive-lift:active {
+    transform: translateY(0) scale(0.99);
+  }
+
+  .status-pulse {
+    animation: status-pulse 1.8s var(--ease-out-quart) infinite;
+  }
+
+  .queue-playing-glow {
+    animation: queue-playing-glow 2.4s var(--ease-out-quart) infinite;
+  }
+
+  .animate-drift-slow {
+    animation: drift-slow 16s ease-in-out infinite;
+  }
+
+  .rgb-active {
+    color: #08161f;
+    background-image: linear-gradient(
+      105deg,
+      var(--color-rgb-red) 0%,
+      var(--color-rgb-blue) 52%,
+      var(--color-rgb-green) 100%
+    );
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-rgb-blue) 34%, transparent);
+  }
+
+  .rgb-cta {
+    color: #08161f;
+    background-image: linear-gradient(
+      112deg,
+      var(--color-rgb-red) 0%,
+      var(--color-rgb-blue) 48%,
+      var(--color-rgb-green) 100%
+    );
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-rise,
+    .reveal-soft,
+    .animate-drift-slow {
+      animation: none;
+    }
+
+    .interactive-lift {
+      transition: none;
+      transform: none;
+    }
+
+    .status-pulse,
+    .queue-playing-glow {
+      animation: none;
+    }
+  }
+
   .seek-slider::-webkit-slider-runnable-track {
     height: 0.5rem;
     border-radius: 9999px;
@@ -64,5 +175,57 @@
     border-radius: 9999px;
     background-color: var(--color-lofi-accent);
     box-shadow: 0 0 0 1px var(--color-lofi-shadow-ring);
+  }
+}
+
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes reveal-soft {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px transparent;
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-lofi-accent) 35%, transparent);
+  }
+}
+
+@keyframes queue-playing-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-lofi-accent) 36%, transparent);
+  }
+}
+
+@keyframes drift-slow {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
   }
 }

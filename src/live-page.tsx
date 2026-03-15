@@ -80,11 +80,11 @@ export function LivePage() {
 
   return (
     <main
-      className="fixed inset-0 m-0 flex flex-col items-center justify-center overflow-hidden bg-black"
+      className="fixed inset-0 m-0 flex flex-col items-center justify-center overflow-hidden bg-lofi-bg"
       data-testid="live-page"
     >
       {/* Format badge */}
-      <div className="absolute left-4 top-4 z-10 rounded bg-white/10 px-3 py-1 text-xs font-medium text-white/70 backdrop-blur-sm">
+      <div className="reveal-soft absolute left-4 top-4 z-10 rounded-sm border border-lofi-accent/35 bg-lofi-panel/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-lofi-accentMuted">
         {formatLabel} · {outputWidth}×{outputHeight}
       </div>
 

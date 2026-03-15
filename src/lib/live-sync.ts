@@ -33,7 +33,7 @@ export const DEFAULT_LIVE_MIRROR_STATE: LiveMirrorState = {
   outputHeight: 1080,
   visualizerType: 'none',
   effects: ['none'],
-  backgroundColor: '#000000',
+  backgroundColor: '#0c1120',
   showPlaceholderCopy: false,
   fullBleed: false
 };

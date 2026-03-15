@@ -14,8 +14,8 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Nunito', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        serif: ['Merriweather', 'ui-serif', 'Georgia', 'serif']
+        sans: ['Sora', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['Fraunces', 'ui-serif', 'Georgia', 'serif']
       }
     }
   },

@@ -69,12 +69,12 @@ describe('Lofi theme', () => {
     expect(contrastRatio(text, panel)).toBeGreaterThan(7);
   });
 
-  it('uses warm ochre/amber accent tokens tuned for dusk styling', () => {
+  it('uses crepuscular accent tokens (soft purple and sunset pink) for dusk styling', () => {
     const accent = getRootColorToken('color-lofi-accent');
     const accentMuted = getRootColorToken('color-lofi-accent-muted');
 
-    expect(accent).toBe('#d4a054');
-    expect(accentMuted).toBe('#9f7b57');
+    expect(accent).toBe('#b28fc3');
+    expect(accentMuted).toBe('#e8a8c7');
   });
 
   it('keeps muted accent softer while preserving warm dusk contrast on background', () => {
@@ -93,7 +93,7 @@ describe('Lofi theme', () => {
     const main = screen.getByRole('main');
     const heading = screen.getByRole('heading', { name: 'ReelPod Studio' });
 
-    expect(main.className).toContain('bg-lofi-bg');
+    expect(main.className).toContain('bg-transparent');
     expect(main.className).toContain('text-lofi-text');
     expect(main.className).toContain('font-sans');
     expect(main.className).toContain('text-sm');

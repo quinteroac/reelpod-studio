@@ -234,7 +234,12 @@ export function App() {
   const [activeTab, setActiveTab] = useState<'music' | 'visuals' | 'queue'>('music');
   const [effectOrder, setEffectOrder] =
     useState<ToggleableEffectType[]>(defaultEffectOrder);
+  const [fontSizePercent, setFontSizePercent] = useState(103);
   const seekPollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
+  }, [fontSizePercent]);
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
   const activeEffects = useMemo(
@@ -332,7 +337,7 @@ export function App() {
       outputHeight: selectedSocialFormat.height,
       visualizerType: activeVisualizerType,
       effects: activeEffects.length > 0 ? activeEffects : ['none'],
-      backgroundColor: '#000000',
+      backgroundColor: '#0c1120',
       showPlaceholderCopy: false,
       fullBleed: false
     };
@@ -750,7 +755,91 @@ export function App() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 font-sans text-sm text-lofi-text">
+    <main className="relative isolate min-h-screen overflow-x-hidden bg-transparent px-[clamp(0.6rem,1.3vw,1.2rem)] py-[clamp(0.75rem,1.6vw,1.35rem)] font-sans text-sm text-lofi-text">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-lofi-bg/90 to-transparent" />
+      </div>
+      <div
+        className="fixed right-4 top-4 z-20 flex items-center gap-1 rounded-sm border border-lofi-accent/70 bg-lofi-bg/90 p-1.5 shadow-[0_16px_36px_-22px_var(--color-lofi-shadow-ring)]"
+        role="toolbar"
+        aria-label="Appearance controls"
+      >
+        {/* Tabler Icons: text-decrease, text-increase, palette — https://tabler.io/icons (MIT) */}
+        <button
+          type="button"
+          onClick={() => setFontSizePercent((p) => Math.max(p - 3, 80))}
+          className="interactive-lift min-h-11 min-w-11 rounded-sm p-2 text-lofi-text outline-none transition hover:bg-lofi-accent/25 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+          aria-label="Decrease text size"
+          title="Decrease text size"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M4 19v-10.5a3.5 3.5 0 1 1 7 0v10.5" />
+            <path d="M4 13h7" />
+            <path d="M21 12h-6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => setFontSizePercent((p) => Math.min(p + 3, 120))}
+          className="interactive-lift min-h-11 min-w-11 rounded-sm p-2 text-lofi-text outline-none transition hover:bg-lofi-accent/25 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+          aria-label="Increase text size"
+          title="Increase text size"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M4 19v-10.5a3.5 3.5 0 1 1 7 0v10.5" />
+            <path d="M4 13h7" />
+            <path d="M18 9v6" />
+            <path d="M21 12h-6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          disabled
+          className="min-h-11 min-w-11 cursor-not-allowed rounded-sm p-2 text-lofi-accentMuted/75 opacity-70 outline-none"
+          aria-label="Change background unavailable"
+          title="Change background unavailable"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25" />
+            <path d="M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+            <path d="M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+            <path d="M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+          </svg>
+        </button>
+      </div>
       <video
         ref={handlePlaybackVideoRef}
         data-testid="playback-video"
@@ -765,43 +854,54 @@ export function App() {
           }
         }}
       />
-      <div className="mx-auto w-full min-w-0 space-y-6">
-        <header className="space-y-2">
-          <h1 className="font-serif text-4xl font-bold text-lofi-text">
-            ReelPod Studio
-          </h1>
-          <p className="text-sm text-lofi-accentMuted">
-            Create music and visuals for YouTube, TikTok & Reels.
+      <div className="w-full min-w-0 space-y-[clamp(0.9rem,1.5vw,1.2rem)]">
+        <header className="reveal-rise grid gap-3 border-b border-lofi-accent/35 pb-3 xl:grid-cols-[1fr_auto] xl:items-end" style={{ animationDelay: '40ms' }}>
+          <div className="space-y-3">
+            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-lofi-accent">
+              Creator Broadcast Suite
+            </p>
+            <h1 className="font-serif text-[clamp(1.55rem,4vw,3rem)] font-bold uppercase leading-[0.97] tracking-tight text-lofi-text">
+              ReelPod <span className="text-lofi-accent">Studio</span>
+            </h1>
+            <p className="max-w-2xl text-xs leading-relaxed text-lofi-accentMuted sm:text-sm">
+              Generate cinematic music and live-ready visuals for YouTube, TikTok, and Reels from one creative brief.
+            </p>
+          </div>
+          <p className="hidden border-l border-lofi-accent/40 pl-5 text-xs font-semibold uppercase tracking-[0.24em] text-lofi-accentMuted xl:block">
+            Real-Time Queue<br />Visual Engine
           </p>
         </header>
         <div
           data-testid="studio-layout-grid"
-          className="grid min-w-0 gap-6 xl:grid-cols-[3fr_7fr] xl:items-start"
+          className="grid min-w-0 gap-[clamp(0.9rem,1.3vw,1.1rem)] xl:grid-cols-[3fr_7fr] xl:items-start 2xl:grid-cols-[2fr_8fr]"
         >
-          <div data-testid="controls-column" className="min-w-0 space-y-6">
-            <div className="flex gap-6 border-b border-lofi-accentMuted/60">
+          <div data-testid="controls-column" className="reveal-rise min-w-0 space-y-6" style={{ animationDelay: '90ms' }}>
+            <div className="inline-flex w-full flex-wrap gap-2 rounded-sm border border-lofi-accent/35 bg-lofi-bg/50 p-1">
               <button
-                className={`pb-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'music'
-                  ? 'border-b-2 border-lofi-accent text-lofi-text'
-                  : 'text-lofi-accentMuted hover:text-lofi-accent'
+                type="button"
+                className={`interactive-lift min-h-11 rounded-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'music'
+                  ? 'rgb-active'
+                  : 'text-lofi-accentMuted hover:bg-lofi-panel hover:text-lofi-text'
                   }`}
                 onClick={() => setActiveTab('music')}
               >
                 Music Generation
               </button>
               <button
-                className={`pb-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'visuals'
-                  ? 'border-b-2 border-lofi-accent text-lofi-text'
-                  : 'text-lofi-accentMuted hover:text-lofi-accent'
+                type="button"
+                className={`interactive-lift min-h-11 rounded-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'visuals'
+                  ? 'rgb-active'
+                  : 'text-lofi-accentMuted hover:bg-lofi-panel hover:text-lofi-text'
                   }`}
                 onClick={() => setActiveTab('visuals')}
               >
                 Visual Settings
               </button>
               <button
-                className={`pb-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'queue'
-                  ? 'border-b-2 border-lofi-accent text-lofi-text'
-                  : 'text-lofi-accentMuted hover:text-lofi-accent'
+                type="button"
+                className={`interactive-lift min-h-11 rounded-sm px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'queue'
+                  ? 'rgb-active'
+                  : 'text-lofi-accentMuted hover:bg-lofi-panel hover:text-lofi-text'
                   }`}
                 onClick={() => setActiveTab('queue')}
               >
@@ -812,8 +912,10 @@ export function App() {
             {activeTab === 'music' && (
               <>
                 <section
+                  id="music-panel"
                   aria-label="Generation parameters"
-                  className="space-y-4 rounded-lg bg-lofi-panel p-5"
+                  className="reveal-rise space-y-4 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-5 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
+                  style={{ animationDelay: '130ms' }}
                 >
                   <div className="space-y-2">
                     <label
@@ -837,7 +939,7 @@ export function App() {
                     />
                   </div>
 
-                  <div className="space-y-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3">
+                  <div className="space-y-2 rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/45 p-3">
                     <label
                       htmlFor="duration"
                       className="block text-sm font-semibold text-lofi-text"
@@ -864,7 +966,7 @@ export function App() {
                   <fieldset
                     role="radiogroup"
                     aria-label="Social format"
-                    className="space-y-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3"
+                    className="space-y-2 rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/45 p-3"
                   >
                     <legend className="text-sm font-semibold text-lofi-text">
                       Format
@@ -875,7 +977,7 @@ export function App() {
                         return (
                           <label
                             key={option.id}
-                            className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
+                            className={`flex min-h-11 cursor-pointer items-center justify-center rounded-sm border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
                               ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
                               : 'border-lofi-accentMuted/70 bg-lofi-bg/60 text-lofi-accentMuted hover:border-lofi-accent hover:text-lofi-text'
                               }`}
@@ -900,11 +1002,12 @@ export function App() {
 
             <section
               aria-label="Generation actions"
-              className="space-y-3 rounded-lg bg-lofi-panel p-4"
+              className="reveal-rise space-y-3 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-4 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
+              style={{ animationDelay: '160ms' }}
             >
               <button
                 type="button"
-                className="w-full rounded-md bg-lofi-accent px-6 py-3 text-lg font-semibold text-lofi-bg outline-none transition hover:bg-lofi-accent/90 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                className="interactive-lift rgb-cta w-full min-h-11 rounded-sm px-6 py-3 text-base font-semibold uppercase tracking-[0.1em] outline-none transition hover:brightness-105 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => void handleGenerate()}
               >
                 Generate
@@ -924,7 +1027,7 @@ export function App() {
                 <div
                   role="status"
                   aria-live="polite"
-                  className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-lofi-bg/70 px-3 py-2 text-sm font-semibold text-lofi-text"
+                  className="status-pulse reveal-soft flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-lofi-bg/70 px-3 py-2 text-sm font-semibold text-lofi-text"
                 >
                   <span
                     aria-hidden="true"
@@ -955,8 +1058,9 @@ export function App() {
 
             {activeTab === 'queue' && (
               <section
+                id="queue-panel"
                 aria-label="Generation queue"
-                className="space-y-3 rounded-lg bg-lofi-panel p-4"
+                className="reveal-rise space-y-3 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-4 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
@@ -966,7 +1070,7 @@ export function App() {
                     <button
                       type="button"
                       onClick={() => window.open('/live', '_blank', 'noopener,noreferrer')}
-                      className="rounded bg-lofi-accent px-2 py-1 text-sm font-semibold text-lofi-bg outline-none transition hover:bg-lofi-accent/90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                      className="interactive-lift rgb-cta min-h-11 rounded-sm px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] outline-none transition hover:brightness-105 focus-visible:ring-2 focus-visible:ring-lofi-accent"
                     >
                       Go Live
                     </button>
@@ -1007,7 +1111,10 @@ export function App() {
                           data-testid={`queue-entry-${entry.id}`}
                           data-status={entry.status}
                           data-playing={isCurrentlyPlaying ? 'true' : undefined}
-                          className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
+                          className={`rounded-sm border p-3 text-sm ${isCurrentlyPlaying
+                            ? 'queue-playing-glow'
+                            : ''
+                            } ${isCurrentlyPlaying
                             ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-lofi-bg'
                             : ''
                             } ${isGenerating
@@ -1062,7 +1169,7 @@ export function App() {
                               <button
                                 type="button"
                                 aria-label={`Play generation ${entry.id}`}
-                                className="rounded-md border border-lofi-accent bg-lofi-accent/25 px-3 py-1 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                                className="interactive-lift min-h-11 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent"
                                 onClick={() => void handlePlayQueueEntry(entry)}
                               >
                                 Play
@@ -1084,8 +1191,9 @@ export function App() {
 
             {activeTab === 'visuals' && (
               <section
+                id="visuals-panel"
                 aria-label="Visualizer settings"
-                className="space-y-3 rounded-lg bg-lofi-panel p-4"
+                className="reveal-rise space-y-3 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-4 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
               >
 
                 <div className="space-y-2">
@@ -1113,7 +1221,7 @@ export function App() {
 
                 <fieldset
                   aria-label="Post-processing effects"
-                  className="space-y-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3"
+                    className="space-y-2 rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/45 p-3"
                 >
                   <legend className="text-sm font-semibold text-lofi-text">
                     Effects
@@ -1123,7 +1231,7 @@ export function App() {
                       <div
                         key={effectType}
                         data-testid={`effect-row-${effectType}`}
-                        className="flex items-center justify-between gap-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/60 px-3 py-2 text-sm text-lofi-text"
+                        className="flex items-center justify-between gap-2 rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/60 px-3 py-2 text-sm text-lofi-text"
                       >
                         <span className="inline-flex items-center gap-2">
                           <input
@@ -1147,7 +1255,7 @@ export function App() {
                             type="button"
                             onClick={() => handleMoveEffect(effectType, 'up')}
                             disabled={index === 0}
-                            className="rounded-md border border-lofi-accentMuted px-2 py-1 text-sm font-semibold text-lofi-text outline-none transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent enabled:focus-visible:ring-2 enabled:focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                            className="interactive-lift min-h-11 rounded-sm border border-lofi-accentMuted px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent enabled:focus-visible:ring-2 enabled:focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Up
                           </button>
@@ -1155,7 +1263,7 @@ export function App() {
                             type="button"
                             onClick={() => handleMoveEffect(effectType, 'down')}
                             disabled={index === effectOrder.length - 1}
-                            className="rounded-md border border-lofi-accentMuted px-2 py-1 text-sm font-semibold text-lofi-text outline-none transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent enabled:focus-visible:ring-2 enabled:focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                            className="interactive-lift min-h-11 rounded-sm border border-lofi-accentMuted px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent enabled:focus-visible:ring-2 enabled:focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Down
                           </button>
@@ -1170,26 +1278,27 @@ export function App() {
 
           <div
             data-testid="preview-column"
-            className="min-w-0 space-y-6 xl:sticky xl:top-10 xl:self-start"
+            className="reveal-rise min-w-0 space-y-6 xl:sticky xl:top-10 xl:self-start"
+            style={{ animationDelay: '120ms' }}
           >
             <section
               aria-label="Visual scene"
-              className="overflow-hidden rounded-xl border border-lofi-accentMuted/60 bg-lofi-panel p-4"
+              className="overflow-hidden rounded-sm border border-lofi-accent/40 bg-lofi-panel/94 p-2 shadow-[0_24px_42px_-30px_var(--color-lofi-shadow-ring)] xl:h-[calc(100vh-11.8rem)] xl:min-h-[28rem]"
               style={{
                 boxShadow:
-                  'inset 0 0 0 1px var(--color-lofi-shadow-ring), 0 18px 36px -24px var(--color-lofi-shadow-ring)'
+                  'inset 0 0 0 1px var(--color-lofi-shadow-ring), 0 24px 42px -30px var(--color-lofi-shadow-ring)'
               }}
             >
               <div
                 data-testid="visual-canvas"
-                className="mx-auto grid w-full place-items-center overflow-hidden rounded-lg border border-lofi-accentMuted/70 bg-lofi-bg/60 p-2"
+                className="mx-auto grid h-full w-full place-items-center overflow-hidden rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/60 p-1"
                 style={{
                   boxShadow: 'inset 0 0 0 1px var(--color-lofi-shadow-ring)'
                 }}
               >
                 <div
                   data-testid="visual-aspect-container"
-                  className="flex w-full justify-center"
+                  className="flex h-full w-full items-center justify-center"
                 >
                   <VisualScene
                     imageUrl={visualImageUrl}
@@ -1210,11 +1319,11 @@ export function App() {
               <section
                 data-testid="playback-controls-section"
                 aria-label="Playback controls"
-                className="grid gap-3 rounded-lg bg-lofi-panel p-4"
+                className="grid gap-3 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-4 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
               >
                 <button
                   type="button"
-                  className="rounded-md border border-lofi-accent bg-lofi-accent/25 px-3 py-2 font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="interactive-lift min-h-11 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={() => void handlePlay()}
                   disabled={isPlaying}
                 >
@@ -1222,7 +1331,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-lofi-accent bg-lofi-accent/20 px-3 py-2 font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="interactive-lift min-h-11 rounded-sm border border-lofi-accent bg-lofi-accent/20 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={() => void handlePause()}
                   disabled={!isPlaying}
                 >
