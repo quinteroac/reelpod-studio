@@ -13,10 +13,17 @@ const mockStopRecording = vi.fn().mockResolvedValue(undefined);
 const mockIsRecording = { value: false };
 const mockIsFinalizing = { value: false };
 const mockRecorderError = { value: null as string | null };
-let capturedOnFinalized: ((buffer: ArrayBuffer) => void) | undefined;
+let capturedOnFinalized:
+  | ((buffer: ArrayBuffer, meta: { mimeType: string; fileExtension: string }) => void)
+  | undefined;
 
 vi.mock('./hooks/use-recorder', () => ({
-  useRecorder: (options: { onFinalized?: (buffer: ArrayBuffer) => void }) => {
+  useRecorder: (options: {
+    onFinalized?: (
+      buffer: ArrayBuffer,
+      meta: { mimeType: string; fileExtension: string }
+    ) => void;
+  }) => {
     capturedOnFinalized = options.onFinalized;
     return {
       isRecording: mockIsRecording.value,
@@ -176,6 +183,47 @@ describe('App unified generate flow (US-003)', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
+
+  it.each([
+    {
+      label: 'YouTube (16:9 · 1920×1080)',
+      targetWidth: 1920,
+      targetHeight: 1080
+    },
+    {
+      label: 'TikTok/Reels (9:16 · 1080×1920)',
+      targetWidth: 1080,
+      targetHeight: 1920
+    },
+    {
+      label: 'Instagram Square (1:1 · 1080×1080)',
+      targetWidth: 1080,
+      targetHeight: 1080
+    }
+  ])(
+    'sends selected social format resolution in /api/generate payload for $label',
+    async ({ label, targetWidth, targetHeight }) => {
+      const fetchMock = mockVideoFetch();
+      vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+      render(<App />);
+
+      fireEvent.click(screen.getByRole('radio', { name: label }));
+      fireEvent.change(screen.getByLabelText('Creative brief'), {
+        target: { value: 'platform resolution payload test' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      const call = fetchMock.mock.calls[0];
+      const body = JSON.parse(call[1].body as string);
+      expect(body.targetWidth).toBe(targetWidth);
+      expect(body.targetHeight).toBe(targetHeight);
+    }
+  );
 
   it('renders the visualizer selector in the Visual prompt section with all visualizer options', () => {
     render(<App />);
@@ -346,6 +394,38 @@ describe('App unified generate flow (US-003)', () => {
     expect(screen.getByTestId('visual-scene')).toHaveAttribute(
       'data-has-video-element',
       'true'
+    );
+  });
+
+  it('keeps canvas aspect ratio locked to the active generated video after changing format selection', async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'aspect lock test' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      (16 / 9).toFixed(4)
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'TikTok/Reels (9:16 · 1080×1920)' })
+    );
+
+    expect(screen.getByTestId('visual-scene')).toHaveAttribute(
+      'data-aspect-ratio',
+      (16 / 9).toFixed(4)
     );
   });
 
@@ -1340,7 +1420,10 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     // Trigger the onFinalized callback as the hook would after finalization
     const buffer = new ArrayBuffer(2 * 1024 * 1024); // 2 MB
     act(() => {
-      capturedOnFinalized?.(buffer);
+      capturedOnFinalized?.(buffer, {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -1374,10 +1457,16 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     const buffer2 = new ArrayBuffer(2048);
 
     act(() => {
-      capturedOnFinalized?.(buffer1);
+      capturedOnFinalized?.(buffer1, {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
     act(() => {
-      capturedOnFinalized?.(buffer2);
+      capturedOnFinalized?.(buffer2, {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -1403,7 +1492,10 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     render(<App />);
 
     act(() => {
-      capturedOnFinalized?.(new ArrayBuffer(512));
+      capturedOnFinalized?.(new ArrayBuffer(512), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));

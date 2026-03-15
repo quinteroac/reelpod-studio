@@ -60,7 +60,12 @@ class FakeImageResult:
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    monkeypatch.setattr(
+        image_repository,
+        "ensure_realesrgan_anime_weights",
+        lambda: Path("/tmp/realesr-animevideov3.pth"),
+    )
     with TestClient(app=main.app, raise_server_exceptions=False) as c:
         yield c
 

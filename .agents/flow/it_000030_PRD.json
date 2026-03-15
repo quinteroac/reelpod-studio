@@ -1,0 +1,136 @@
+{
+  "goals": [
+    "Insert a frame-level 4x upscaling step using `realesr-animevideov3.pth` into the backend video pipeline, between the loop stage and the mux stage.",
+    "Ensure the final MP4 matches the platform resolution selected by the user (YouTube 1920×1080, TikTok/Reels 1080×1920, Instagram 1080×1080).",
+    "Auto-download the video upscale model weights on backend startup if not already present."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Model weights downloaded on startup",
+      "description": "As a backend process, I want to download `realesr-animevideov3.pth` at startup if the file is absent so that the video upscaling step has the model available without manual intervention.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "On startup, the backend checks for `realesr-animevideov3.pth` under `backend/.realesrgan/` (or `REAL_ESRGAN_WEIGHTS_DIR` env var)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "If missing, it downloads from `https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth`."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Download is logged with progress indication (file size / completion)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "If the file already exists, no download occurs."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "If download fails, the backend logs an error but does NOT crash — video generation proceeds without upscaling (graceful degradation)."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Video frames upscaled 4x after loop, before mux",
+      "description": "As a backend pipeline, I want to upscale the looped video 4x with `realesr-animevideov3.pth` and resize the result to the target platform resolution so that the final MP4 has full-resolution frames matching the selected platform.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Pipeline order is: `WAN I2V → upscale 4x → resize to target → loop to audio duration → mux`."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Upscaling uses `SRVGGNetCompact` architecture (not `RRDBNet`) with the `realesr-animevideov3.pth` weights."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Input frames are upscaled 4x (e.g., 480×832 → 1920×3328)."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "After upscaling, frames are resized (lanczos or area) to the exact target resolution (e.g., 1080×1920 for TikTok/Reels)."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Tile-based processing is used (tile=256, tile_pad=10) to manage VRAM."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "GPU (half precision) is used when available; fallback to CPU."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "If upscaling fails (model absent, OOM, etc.), the pipeline falls back to the pre-upscale video and logs a warning — no crash."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Final video plays at platform resolution in R3F canvas",
+      "description": "As an end user, I want the generated video to play in the R3F canvas at the resolution matching my selected platform so that what I see reflects the true output quality.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The MP4 returned by `POST /api/generate` has width × height equal to the selected platform resolution (1920×1080, 1080×1920, or 1080×1080)."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "`ffprobe` on the downloaded MP4 confirms the expected resolution."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The video plays correctly in the R3F canvas `<VideoTexture>` without distortion or black bars."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Visually verified in browser for each of the three platform presets."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Introduce `upscale_video_with_realesrgan_animevideo(input_path, output_path, target_width, target_height)` in `backend/repositories/media_repository.py` (or a new `upscale_repository.py`). It loads `SRVGGNetCompact` with `realesr-animevideov3.pth`, upscales all frames 4x, resizes to `(target_width, target_height)`, and writes the result as a video file."
+    },
+    {
+      "id": "FR-2",
+      "description": "Add `REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME = \"realesr-animevideov3.pth\"` and `REAL_ESRGAN_VIDEO_WEIGHTS_URL` to `backend/models/constants.py`."
+    },
+    {
+      "id": "FR-3",
+      "description": "Add `_ensure_realesrgan_video_weights()` in the appropriate repository, following the same pattern as `_ensure_realesrgan_anime_weights()` in `image_repository.py`."
+    },
+    {
+      "id": "FR-4",
+      "description": "Call `_ensure_realesrgan_video_weights()` during backend startup (in `backend/main.py` lifespan or equivalent)."
+    },
+    {
+      "id": "FR-5",
+      "description": "In `backend/services/video_service.py`, insert the upscale + resize step after WAN I2V generation and before `loop_video_to_duration()`. Final order: WAN I2V → upscale 4x → resize to target → loop → mux."
+    },
+    {
+      "id": "FR-6",
+      "description": "The mux step must NOT apply additional letterboxing if the video is already at target resolution."
+    },
+    {
+      "id": "FR-7",
+      "description": "Graceful fallback: if `upscale_video_with_realesrgan_animevideo` raises any exception, log a warning and continue with the pre-upscale looped video."
+    }
+  ]
+}

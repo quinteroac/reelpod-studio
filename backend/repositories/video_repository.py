@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from models.constants import (
+    REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME,
+    REAL_ESRGAN_VIDEO_WEIGHTS_URL,
     WAN_VIDEO_CLIP_DURATION_SECONDS,
     WAN_VIDEO_FPS,
     WAN_VIDEO_RESOLUTIONS,
@@ -56,6 +58,12 @@ class WanComfyPipeline(NamedTuple):
     model_low: Any
     clip: Any
     vae: Any
+
+
+class RealEsrganVideoUpsamplerConfig(NamedTuple):
+    upsampler: Any
+    gpu_id: int | None
+    half: bool
 
 
 def _get_models_dir() -> Path:
@@ -311,3 +319,148 @@ def run_video_inference(
     output_path = temp_dir / "wan_clip.mp4"
     save_frames_as_video(frames, output_path, fps=WAN_VIDEO_FPS)
     return output_path
+
+
+def _apply_torchvision_compat_shim() -> None:
+    """Shim for torchvision 0.17+: basicsr expects torchvision.transforms.functional_tensor."""
+    if "torchvision.transforms.functional_tensor" in sys.modules:
+        return
+    try:
+        from torchvision.transforms import functional as _functional
+    except ImportError:
+        return
+
+    import types
+
+    shim = types.ModuleType("torchvision.transforms.functional_tensor")
+    shim.rgb_to_grayscale = getattr(_functional, "rgb_to_grayscale", None)
+    if shim.rgb_to_grayscale is not None:
+        sys.modules["torchvision.transforms.functional_tensor"] = shim
+
+
+def _ensure_realesrgan_video_weights() -> Path:
+    """Ensure Real-ESRGAN anime-video weights exist under backend/.realesrgan/, downloading if needed."""
+    from repositories.image_repository import _download_realesrgan_weights, _get_realesrgan_weights_dir
+
+    weights_dir = _get_realesrgan_weights_dir()
+    weights_path = weights_dir / REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME
+    if weights_path.is_file():
+        logger.info("Real-ESRGAN video weights already available at %s", weights_path)
+        return weights_path
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    _download_realesrgan_weights(
+        download_url=REAL_ESRGAN_VIDEO_WEIGHTS_URL,
+        destination=weights_path,
+    )
+    return weights_path
+
+
+def ensure_realesrgan_video_weights() -> Path:
+    return _ensure_realesrgan_video_weights()
+
+
+def build_realesrgan_video_upsampler(
+    *,
+    tile: int = 256,
+    tile_pad: int = 10,
+) -> RealEsrganVideoUpsamplerConfig:
+    """Build Real-ESRGAN upsampler for anime video using SRVGGNetCompact."""
+    _apply_torchvision_compat_shim()
+    import torch
+    from realesrgan import RealESRGANer
+    from realesrgan.archs.srvgg_arch import SRVGGNetCompact
+
+    weights_path = _ensure_realesrgan_video_weights()
+    gpu_available = torch.cuda.is_available()
+    gpu_id = 0 if gpu_available else None
+    half = gpu_available
+    model = SRVGGNetCompact(
+        num_in_ch=3,
+        num_out_ch=3,
+        num_feat=64,
+        num_conv=16,
+        upscale=4,
+        act_type="prelu",
+    )
+    upsampler = RealESRGANer(
+        scale=4,
+        model_path=str(weights_path),
+        model=model,
+        tile=tile,
+        tile_pad=tile_pad,
+        pre_pad=0,
+        half=half,
+        gpu_id=gpu_id,
+    )
+    return RealEsrganVideoUpsamplerConfig(
+        upsampler=upsampler,
+        gpu_id=gpu_id,
+        half=half,
+    )
+
+
+def upscale_video_with_realesrgan_and_resize(
+    input_path: Path,
+    output_path: Path,
+    *,
+    target_width: int,
+    target_height: int,
+    tile: int = 256,
+    tile_pad: int = 10,
+) -> None:
+    """Upscale each frame 4x with Real-ESRGAN, then resize to exact target dimensions."""
+    import av
+    from fractions import Fraction
+
+    import numpy as np
+    from PIL import Image
+
+    config = build_realesrgan_video_upsampler(tile=tile, tile_pad=tile_pad)
+    input_container = av.open(str(input_path))
+    output_container = av.open(str(output_path), mode="w")
+    output_stream = None
+    frame_count = 0
+    fps_value = float(WAN_VIDEO_FPS)
+
+    try:
+        input_video_stream = input_container.streams.video[0]
+        if input_video_stream.average_rate is not None:
+            fps_value = float(input_video_stream.average_rate)
+
+        # PyAV add_stream(rate=...) expects a rational (Fraction), not float
+        rate_rational = Fraction(str(fps_value))
+        output_stream = output_container.add_stream("libx264", rate=rate_rational)
+        output_stream.width = target_width
+        output_stream.height = target_height
+        output_stream.pix_fmt = "yuv420p"
+
+        for frame in input_container.decode(input_video_stream):
+            frame_count += 1
+            rgb = frame.to_ndarray(format="rgb24")
+            bgr = rgb[..., ::-1].copy()
+            upscaled_bgr, _ = config.upsampler.enhance(bgr, outscale=4)
+            upscaled_rgb = upscaled_bgr[..., ::-1].copy()
+            resized_rgb = np.array(
+                Image.fromarray(upscaled_rgb).resize(
+                    (target_width, target_height),
+                    Image.Resampling.LANCZOS,
+                )
+            )
+            encoded_frame = av.VideoFrame.from_ndarray(resized_rgb, format="rgb24")
+            for packet in output_stream.encode(encoded_frame):
+                output_container.mux(packet)
+
+        if frame_count == 0:
+            raise RuntimeError("Video upscale failed: no frames decoded")
+
+        for packet in output_stream.encode():
+            output_container.mux(packet)
+    finally:
+        try:
+            input_container.close()
+        except Exception:
+            pass
+        try:
+            output_container.close()
+        except Exception:
+            pass
