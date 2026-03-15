@@ -828,6 +828,10 @@ export function App() {
   }
 
   async function handleStopQueueRecording(): Promise<void> {
+    if (!isQueueRecordingActive || isFinalizing) {
+      return;
+    }
+
     try {
       await handleStop();
     } finally {
@@ -1211,9 +1215,10 @@ export function App() {
                       <button
                         type="button"
                         data-testid="queue-stop-recording-button"
-                        className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-xs font-bold uppercase tracking-[0.1em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400"
+                        className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-xs font-bold uppercase tracking-[0.1em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
                         onClick={() => void handleStopQueueRecording()}
                         aria-label="Stop queue recording"
+                        disabled={isFinalizing}
                       >
                         <span className="inline-flex items-center gap-2">
                           <span

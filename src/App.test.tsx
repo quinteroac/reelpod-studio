@@ -1221,7 +1221,7 @@ describe('Queue recording controls (US-001)', () => {
     });
   });
 
-  it('AC05+AC06: queue recording toggles to Stop Recording state and disables single-item Record button', async () => {
+  it('US-003-AC01: clicking Stop Recording during queue-recording pauses playback and calls stopRecording', async () => {
     await renderWithTwoCompletedEntries();
 
     fireEvent.click(screen.getByTestId('record-queue-button'));
@@ -1236,11 +1236,45 @@ describe('Queue recording controls (US-001)', () => {
     expect(stopQueueButton.className).toContain('border-red-500/70');
     expect(within(stopQueueButton).getByText('Stop Recording')).toBeInTheDocument();
 
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    Object.defineProperty(playbackVideo, 'paused', {
+      configurable: true,
+      value: false
+    });
+
     fireEvent.click(stopQueueButton);
 
     await waitFor(() => {
       expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(playbackVideo.paused).toBe(true);
+    });
+  });
+
+  it('US-003-AC02+US-003-AC03: stopping queue-recording early finalizes a partial file and restores Record Queue', async () => {
+    mockStopRecording.mockImplementation(async () => {
+      capturedOnFinalized?.(
+        new Blob([new Uint8Array(1024)], { type: 'video/mp4' }),
+        {
+          mimeType: 'video/mp4',
+          fileExtension: '.mp4'
+        }
+      );
+    });
+
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-stop-recording-button')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('queue-stop-recording-button'));
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
       expect(screen.getByTestId('record-queue-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('queue-stop-recording-button')).not.toBeInTheDocument();
+      expect(screen.getByTestId('recording-entry-1')).toBeInTheDocument();
     });
   });
 
