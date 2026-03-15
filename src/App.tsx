@@ -989,7 +989,7 @@ export function App() {
                     })()}
                 </div>
                 {queueEntries.length === 0 ? (
-                  <p className="text-sm text-stone-300">No generations yet.</p>
+                  <p className="text-sm text-lofi-accentMuted">No generations yet.</p>
                 ) : (
                   <ul className="space-y-2">
                     {queueEntries.map((entry, index) => {

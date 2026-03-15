@@ -1,0 +1,88 @@
+{
+  "goals": [
+    "Replace the current warm-brown night palette with a dusk palette that evokes fading golden light giving way to deep violet-indigo shadows.",
+    "Maintain the lofi aesthetic and readability — sufficient contrast between background, panel, and text.",
+    "Keep the palette change contained to the CSS custom property definitions (`src/index.css`) so no component files need to change."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Background and panel adopt dusk tones",
+      "description": "As a creator using ReelPod Studio, I want the app background and panel surfaces to use deep dusk colors (muted indigo-violet) so that the interface feels like sitting at a desk as the sky turns dark outside.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`--color-lofi-bg` is updated to a deep indigo-violet (dark, desaturated — e.g. around `#1a1625` or similar; exact value chosen for best dusk feel)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "`--color-lofi-panel` is updated to a slightly lighter muted violet-gray that reads clearly as a raised surface against `--color-lofi-bg`."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "`--color-lofi-shadow-ring` is updated to complement the new background (cooler, slightly purple-tinted shadow)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Visually verified in browser: panels are clearly distinguishable from the page background."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Accent adopts warm ochre/amber of the last sunlight",
+      "description": "As a creator, I want the accent color to evoke the warm remnant glow of dusk (golden ochre/amber) so that interactive elements feel alive against the cooler background.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "`--color-lofi-accent` is updated to a warm golden ochre/amber (e.g. around `#d4a054` or similar — warm but slightly dustier than the current tone to harmonize with the purple background)."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "`--color-lofi-accent-muted` is updated to a softer, more desaturated version of the accent that still reads as \"warm\" against the indigo background."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Active tab indicators, focused borders, and radio button selections use the new accent and are visually clear."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Visually verified in browser: accent contrast against the new background is comfortable and evokes dusk light."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Typography reflects soft dusk light",
+      "description": "As a creator, I want the text color to feel like reading under soft fading daylight — slightly cooler and more neutral than the current warm cream so that it harmonizes with the indigo-violet background without losing legibility.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "`--color-lofi-text` is updated to a soft cool-leaning off-white or pale lavender-gray (e.g. around `#e8e4f0` or similar) that provides clear contrast against `--color-lofi-bg` and `--color-lofi-panel`."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "All labels, headings, and body copy remain fully legible (no low-contrast text)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Visually verified in browser: the header \"ReelPod Studio\" and all panel labels read cleanly."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "The five lofi color tokens (`--color-lofi-bg`, `--color-lofi-panel`, `--color-lofi-accent`, `--color-lofi-accent-muted`, `--color-lofi-text`) and the shadow helper (`--color-lofi-shadow-ring`) in `src/index.css` are the **only** values that change. No component TSX files are modified."
+    },
+    {
+      "id": "FR-2",
+      "description": "The new hex values must be chosen so that WCAG AA contrast (≥ 4.5:1) is met between `--color-lofi-text` and both `--color-lofi-bg` and `--color-lofi-panel`."
+    },
+    {
+      "id": "FR-3",
+      "description": "Typecheck (`bun tsc --noEmit`) and lint pass without new errors after the change."
+    }
+  ]
+}
