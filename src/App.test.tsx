@@ -141,6 +141,20 @@ function setViewportWidth(width: number): void {
   window.dispatchEvent(new Event('resize'));
 }
 
+async function enqueueAndCompleteGeneration(prompt: string): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Creative brief'), {
+    target: { value: prompt }
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+  await waitFor(() => {
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+      'data-status',
+      'completed'
+    );
+  });
+}
+
 describe('App unified generate flow (US-003)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -487,6 +501,70 @@ describe('App unified generate flow (US-003)', () => {
       expect(revokeObjectURLSpy).toHaveBeenCalledWith(
         'blob:http://localhost/generated-video-url-1'
       );
+    });
+  });
+
+  it('US-004-AC01 + US-004-AC05: renders a delete button on each queue entry with an accessible label', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('delete button coverage');
+
+    const deleteButton = screen.getByRole('button', { name: 'Delete entry 1' });
+    expect(deleteButton).toBeInTheDocument();
+    expect(deleteButton).toHaveTextContent('×');
+  });
+
+  it('US-004-AC02: removes a queue entry immediately after clicking delete', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('remove queue entry');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete entry 1' }));
+    expect(screen.queryByTestId('queue-entry-1')).not.toBeInTheDocument();
+  });
+
+  it('US-004-AC03: deleting the currently playing entry pauses playback and clears current playing state', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('delete currently playing');
+
+    await waitFor(() => {
+      expect(screen.getByText('Track 1 of 1')).toBeInTheDocument();
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    expect(playbackVideo.paused).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete entry 1' }));
+
+    expect(playbackVideo.paused).toBe(true);
+    expect(screen.queryByText('Track 1 of 1')).not.toBeInTheDocument();
+  });
+
+  it('US-004-AC04: stops queue recording before removing the deleted entry', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('delete while queue recording');
+
+    let resolveStopRecording: (() => void) | undefined;
+    const pendingStopRecording = new Promise<void>((resolve) => {
+      resolveStopRecording = resolve;
+    });
+    mockStopRecording.mockImplementationOnce(() => pendingStopRecording);
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-stop-recording-button')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete entry 1' }));
+
+    expect(mockStopRecording).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('queue-entry-1')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveStopRecording?.();
+      await pendingStopRecording;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('queue-entry-1')).not.toBeInTheDocument();
     });
   });
 });

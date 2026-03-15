@@ -757,6 +757,32 @@ export function App() {
     }
   }
 
+  async function handleDeleteQueueEntry(entry: QueueEntry): Promise<void> {
+    if (isQueueRecordingActive) {
+      try {
+        await stopRecording();
+      } catch (error) {
+        setStatus('error');
+        setErrorMessage(getErrorMessage(error));
+      } finally {
+        setIsQueueRecordingActive(false);
+      }
+    }
+
+    if (entry.id === playingEntryId) {
+      const video = videoPlaybackRef.current;
+      if (video) {
+        video.pause();
+        video.onended = null;
+      }
+      setIsPlaying(false);
+      setPlayingEntryId(null);
+      stopSeekPolling();
+    }
+
+    setQueueEntries((prev) => prev.filter((queuedEntry) => queuedEntry.id !== entry.id));
+  }
+
   async function handlePlay(): Promise<void> {
     try {
       await videoPlaybackRef.current?.play();
@@ -1381,7 +1407,15 @@ export function App() {
                             </span>
                           </div>
                           {isCompleted && entry.videoBlob && (
-                            <div className="mt-2 flex justify-end">
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                aria-label={`Delete entry ${trackNumber}`}
+                                className="interactive-lift min-h-11 min-w-11 rounded-sm border border-red-400/75 bg-red-950/35 px-3 py-2 text-base font-semibold leading-none text-red-100 outline-none transition hover:bg-red-900/45 focus-visible:ring-2 focus-visible:ring-red-300"
+                                onClick={() => void handleDeleteQueueEntry(entry)}
+                              >
+                                ×
+                              </button>
                               <button
                                 type="button"
                                 aria-label={`Play generation ${entry.id}`}
@@ -1389,6 +1423,18 @@ export function App() {
                                 onClick={() => void handlePlayQueueEntry(entry)}
                               >
                                 Play
+                              </button>
+                            </div>
+                          )}
+                          {!isCompleted && (
+                            <div className="mt-2 flex justify-end">
+                              <button
+                                type="button"
+                                aria-label={`Delete entry ${trackNumber}`}
+                                className="interactive-lift min-h-11 min-w-11 rounded-sm border border-red-400/75 bg-red-950/35 px-3 py-2 text-base font-semibold leading-none text-red-100 outline-none transition hover:bg-red-900/45 focus-visible:ring-2 focus-visible:ring-red-300"
+                                onClick={() => void handleDeleteQueueEntry(entry)}
+                              >
+                                ×
                               </button>
                             </div>
                           )}
