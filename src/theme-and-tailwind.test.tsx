@@ -13,6 +13,42 @@ const indexCssSource = readFileSync(
   'utf8'
 );
 
+function getRootColorToken(tokenName: string): string {
+  const tokenMatch = indexCssSource.match(
+    new RegExp(`--${tokenName}:\\s*(#[0-9a-fA-F]{6});`)
+  );
+  return tokenMatch?.[1].toLowerCase() ?? '';
+}
+
+function parseHexColor(hexColor: string): [number, number, number] {
+  const normalizedHex = hexColor.replace('#', '');
+  const red = Number.parseInt(normalizedHex.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(normalizedHex.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16) / 255;
+
+  return [red, green, blue];
+}
+
+function relativeLuminance([red, green, blue]: [number, number, number]): number {
+  const linearChannel = (channel: number) =>
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+  const linearRed = linearChannel(red);
+  const linearGreen = linearChannel(green);
+  const linearBlue = linearChannel(blue);
+
+  return 0.2126 * linearRed + 0.7152 * linearGreen + 0.0722 * linearBlue;
+}
+
+function contrastRatio(foregroundHex: string, backgroundHex: string): number {
+  const foregroundLuminance = relativeLuminance(parseHexColor(foregroundHex));
+  const backgroundLuminance = relativeLuminance(parseHexColor(backgroundHex));
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 describe('Tailwind setup', () => {
   it('includes Tailwind in dependencies and configures required files', () => {
     expect(packageJson.devDependencies?.tailwindcss).toBeTruthy();
@@ -23,6 +59,24 @@ describe('Tailwind setup', () => {
 });
 
 describe('Lofi theme', () => {
+  it('uses warm ochre/amber accent tokens tuned for dusk styling', () => {
+    const accent = getRootColorToken('color-lofi-accent');
+    const accentMuted = getRootColorToken('color-lofi-accent-muted');
+
+    expect(accent).toBe('#d4a054');
+    expect(accentMuted).toBe('#9f7b57');
+  });
+
+  it('keeps muted accent softer while preserving warm dusk contrast on background', () => {
+    const background = getRootColorToken('color-lofi-bg');
+    const accent = getRootColorToken('color-lofi-accent');
+    const accentMuted = getRootColorToken('color-lofi-accent-muted');
+
+    expect(accentMuted).not.toBe(accent);
+    expect(contrastRatio(accent, background)).toBeGreaterThan(5);
+    expect(contrastRatio(accentMuted, background)).toBeGreaterThan(3.5);
+  });
+
   it('uses a dark warm background with high-contrast text and lofi typography classes', () => {
     render(<App />);
 
@@ -64,6 +118,9 @@ describe('Lofi theme', () => {
     const briefInput = screen.getByLabelText('Creative brief');
     const durationInput = screen.getByLabelText('Duration (s)');
     const generateButton = screen.getByRole('button', { name: 'Generate' });
+    const selectedSocialFormat = screen.getByRole('radio', {
+      name: 'YouTube (16:9 · 1920×1080)'
+    });
 
     expect(musicTab.className).toContain('border-lofi-accent');
     expect(briefInput.className).toContain('hover:border-lofi-accent');
@@ -72,6 +129,12 @@ describe('Lofi theme', () => {
     expect(durationInput.className).toContain('focus-visible:ring-lofi-accent');
     expect(generateButton.className).toContain('hover:bg-lofi-accent/90');
     expect(generateButton.className).toContain('focus-visible:ring-lofi-accent');
+    expect(selectedSocialFormat.closest('label')?.className).toContain(
+      'border-lofi-accent'
+    );
+    expect(selectedSocialFormat.closest('label')?.className).toContain(
+      'bg-lofi-accent/20'
+    );
   });
 
   it('does not use text-xs for primary app content', () => {
