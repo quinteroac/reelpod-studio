@@ -22,7 +22,9 @@ interface UseRecorderOptions {
 
 interface UseRecorderReturn {
   isRecording: boolean;
+  isFinalizing: boolean;
   startRecording: () => Promise<void>;
+  stopRecording: () => Promise<void>;
   recordingError: string | null;
   handlesRef: React.RefObject<RecorderHandles>;
 }
@@ -33,6 +35,7 @@ export function useRecorder({
   onStarted
 }: UseRecorderOptions): UseRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
 
   const handlesRef = useRef<RecorderHandles>({ output: null, audioContext: null });
@@ -144,5 +147,19 @@ export function useRecorder({
     onStarted?.();
   }, [getCanvas, getVideoElement, onStarted]);
 
-  return { isRecording, startRecording, recordingError, handlesRef };
+  const stopRecording = useCallback(async () => {
+    const output = handlesRef.current.output;
+    if (!output) return;
+
+    setIsRecording(false);
+    setIsFinalizing(true);
+    try {
+      await output.finalize();
+    } finally {
+      setIsFinalizing(false);
+      handlesRef.current.output = null;
+    }
+  }, []);
+
+  return { isRecording, isFinalizing, startRecording, stopRecording, recordingError, handlesRef };
 }

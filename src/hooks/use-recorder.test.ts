@@ -7,6 +7,7 @@ const {
   mockOutputAddVideoTrack,
   mockOutputAddAudioTrack,
   mockOutputCancel,
+  mockOutputFinalize,
   MockOutput,
   MockMp4OutputFormat,
   MockBufferTarget,
@@ -19,12 +20,14 @@ const {
   const mockOutputAddVideoTrack = vi.fn();
   const mockOutputAddAudioTrack = vi.fn();
   const mockOutputCancel = vi.fn().mockResolvedValue(undefined);
+  const mockOutputFinalize = vi.fn().mockResolvedValue(undefined);
 
   const MockOutput = vi.fn().mockImplementation(() => ({
     start: mockOutputStart,
     addVideoTrack: mockOutputAddVideoTrack,
     addAudioTrack: mockOutputAddAudioTrack,
     cancel: mockOutputCancel,
+    finalize: mockOutputFinalize,
     state: 'pending'
   }));
 
@@ -40,6 +43,7 @@ const {
     mockOutputAddVideoTrack,
     mockOutputAddAudioTrack,
     mockOutputCancel,
+    mockOutputFinalize,
     MockOutput,
     MockMp4OutputFormat,
     MockBufferTarget,
@@ -123,6 +127,7 @@ describe('useRecorder', () => {
     vi.clearAllMocks();
     mockCanEncodeVideo.mockResolvedValue(true);
     mockCanEncodeAudio.mockResolvedValue(true);
+    mockOutputFinalize.mockResolvedValue(undefined);
     setupAudioContextMock();
   });
 
@@ -229,6 +234,83 @@ describe('useRecorder', () => {
 
     expect(result.current.recordingError).toBeTruthy();
     expect(result.current.isRecording).toBe(false);
+  });
+
+  it('US-002-AC01: stopRecording calls output.finalize()', async () => {
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+    const { result } = renderHook(() =>
+      useRecorder({ getCanvas: () => canvas, getVideoElement: () => video })
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(mockOutputFinalize).toHaveBeenCalledTimes(1);
+    expect(result.current.isRecording).toBe(false);
+  });
+
+  it('US-002-AC03: isFinalizing is true during finalization and false after', async () => {
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+
+    let resolveFinalizing!: () => void;
+    mockOutputFinalize.mockImplementation(
+      () => new Promise<void>((resolve) => { resolveFinalizing = resolve; })
+    );
+
+    const { result } = renderHook(() =>
+      useRecorder({ getCanvas: () => canvas, getVideoElement: () => video })
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Start stopRecording but don't await — check intermediate state
+    act(() => {
+      void result.current.stopRecording();
+    });
+
+    expect(result.current.isFinalizing).toBe(true);
+    expect(result.current.isRecording).toBe(false);
+
+    await act(async () => {
+      resolveFinalizing();
+    });
+
+    expect(result.current.isFinalizing).toBe(false);
+  });
+
+  it('US-002: isFinalizing starts as false', () => {
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+    const { result } = renderHook(() =>
+      useRecorder({ getCanvas: () => canvas, getVideoElement: () => video })
+    );
+    expect(result.current.isFinalizing).toBe(false);
+  });
+
+  it('US-002: stopRecording is a no-op when not recording', async () => {
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+    const { result } = renderHook(() =>
+      useRecorder({ getCanvas: () => canvas, getVideoElement: () => video })
+    );
+
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(mockOutputFinalize).not.toHaveBeenCalled();
+    expect(result.current.isFinalizing).toBe(false);
   });
 
   it('calls onStarted callback after recording begins', async () => {

@@ -311,10 +311,11 @@ export function App() {
     canvasRef.current = canvas;
   }, []);
 
-  const { isRecording, startRecording, recordingError: recorderError } = useRecorder({
+  const { isRecording, isFinalizing, startRecording, stopRecording, recordingError: recorderError } = useRecorder({
     getCanvas: () => canvasRef.current,
     getVideoElement: () => videoPlaybackRef.current,
     onStarted: () => {
+      void videoPlaybackRef.current?.play();
       setIsPlaying(true);
       startSeekPolling();
     }
@@ -725,8 +726,26 @@ export function App() {
       video.currentTime = 0;
       setAudioCurrentTime(0);
       setSeekPosition(SEEK_MIN);
+      // AC01: auto-finalize when playback ends during recording
+      video.onended = () => {
+        const endedDuration = video.duration && isFinite(video.duration) ? video.duration : 0;
+        setAudioDuration(endedDuration);
+        setAudioCurrentTime(endedDuration);
+        setSeekPosition(SEEK_MAX);
+        setIsPlaying(false);
+        stopSeekPolling();
+        void stopRecording();
+      };
     }
     await startRecording();
+  }
+
+  async function handleStop(): Promise<void> {
+    // AC02: user-initiated stop
+    videoPlaybackRef.current?.pause();
+    setIsPlaying(false);
+    stopSeekPolling();
+    await stopRecording();
   }
 
   function handlePause(): void {
@@ -1367,26 +1386,57 @@ export function App() {
                   </button>
                 </div>
 
-                {/* AC01: Record button — enabled only when an audio URL is available */}
-                <button
-                  type="button"
-                  data-testid="record-button"
-                  className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => void handleRecord()}
-                  disabled={!activeVideoUrl || isRecording}
-                  aria-label="Record canvas and audio to MP4"
-                >
-                  <span className="inline-flex items-center gap-2">
+                {/* AC04: Stop button replaces Record while recording is active */}
+                {isRecording ? (
+                  <button
+                    type="button"
+                    data-testid="stop-button"
+                    className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400"
+                    onClick={() => void handleStop()}
+                    aria-label="Stop recording"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-sm bg-red-500"
+                      />
+                      Stop
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="record-button"
+                    className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void handleRecord()}
+                    disabled={!activeVideoUrl || isFinalizing}
+                    aria-label="Record canvas and audio to MP4"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-full bg-red-500"
+                      />
+                      Record
+                    </span>
+                  </button>
+                )}
+
+                {/* AC03: spinner replaces recording dot while finalizing */}
+                {isFinalizing ? (
+                  <div
+                    data-testid="finalizing-indicator"
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-2 rounded-sm border border-lofi-accent/50 bg-lofi-surface/40 px-3 py-2 text-sm font-semibold text-lofi-accentMuted"
+                  >
                     <span
                       aria-hidden="true"
-                      className="h-2.5 w-2.5 rounded-full bg-red-500"
+                      className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-lofi-accentMuted border-t-transparent"
                     />
-                    Record
-                  </span>
-                </button>
-
-                {/* AC08: recording indicator */}
-                {isRecording && (
+                    Finalizing&hellip;
+                  </div>
+                ) : isRecording && (
                   <div
                     data-testid="recording-indicator"
                     role="status"

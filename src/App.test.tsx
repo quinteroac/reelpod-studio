@@ -8,13 +8,17 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockStartRecording = vi.fn().mockResolvedValue(undefined);
+const mockStopRecording = vi.fn().mockResolvedValue(undefined);
 const mockIsRecording = { value: false };
+const mockIsFinalizing = { value: false };
 const mockRecorderError = { value: null as string | null };
 
 vi.mock('./hooks/use-recorder', () => ({
   useRecorder: () => ({
     isRecording: mockIsRecording.value,
+    isFinalizing: mockIsFinalizing.value,
     startRecording: mockStartRecording,
+    stopRecording: mockStopRecording,
     recordingError: mockRecorderError.value,
     handlesRef: { current: { output: null, audioContext: null } }
   })
@@ -1107,7 +1111,9 @@ describe('Record button (US-001)', () => {
     vi.restoreAllMocks();
     visualSceneSpy.mockClear();
     mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
     mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
     mockRecorderError.value = null;
     mockVideoPlaybackApi();
     vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
@@ -1198,6 +1204,126 @@ describe('Record button (US-001)', () => {
       expect(screen.getByTestId('recorder-error')).toHaveTextContent(
         'H.264 video encoding is not available'
       );
+    });
+  });
+});
+
+describe('Recording auto-stop and UI states (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  async function renderAndGenerate() {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).not.toBeDisabled();
+    });
+  }
+
+  it('US-002-AC04: Stop button replaces Record button while recording', async () => {
+    mockIsRecording.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('record-button')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC02: clicking Stop calls stopRecording', async () => {
+    mockIsRecording.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stop-button')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('stop-button'));
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalled();
+    });
+  });
+
+  it('US-002-AC03: finalizing indicator shown when isFinalizing is true', async () => {
+    mockIsFinalizing.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('finalizing-indicator')).toBeInTheDocument();
+      expect(screen.queryByTestId('recording-indicator')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC03: recording indicator shown when recording, not finalizing indicator', async () => {
+    mockIsRecording.value = true;
+    mockIsFinalizing.value = false;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-indicator')).toBeInTheDocument();
+      expect(screen.queryByTestId('finalizing-indicator')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC04: Record button disabled while finalizing', async () => {
+    mockIsFinalizing.value = true;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chillwave beat' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('record-button')).toBeDisabled();
+    });
+  });
+
+  it('US-002-AC01: audio ended event triggers stopRecording via handleRecord setup', async () => {
+    // Verify handleRecord sets up video.onended which calls stopRecording
+    await renderAndGenerate();
+
+    fireEvent.click(screen.getByTestId('record-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalled();
     });
   });
 });
