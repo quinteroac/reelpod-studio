@@ -1243,6 +1243,67 @@ describe('Queue recording controls (US-001)', () => {
       expect(screen.getByTestId('record-queue-button')).toBeInTheDocument();
     });
   });
+
+  it('US-002-AC01+AC02+AC03: when last completed entry ends during queue recording, it auto-stops, finalizes, and restores Record Queue button', async () => {
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/generated-video-url-1')
+      .mockReturnValueOnce('blob:http://localhost/generated-video-url-2')
+      .mockReturnValueOnce('blob:http://localhost/queue-recording-finalized');
+
+    mockStopRecording.mockImplementation(async () => {
+      capturedOnFinalized?.(
+        new Blob([new Uint8Array(3 * 1024 * 1024)], { type: 'video/mp4' }),
+        {
+          mimeType: 'video/mp4',
+          fileExtension: '.mp4'
+        }
+      );
+    });
+
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+
+    // End first completed entry -> second starts, recording continues.
+    act(() => {
+      playbackVideo.onended?.(new Event('ended'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+      expect(mockStopRecording).toHaveBeenCalledTimes(0);
+    });
+
+    // End last completed entry -> queue recording auto-stops and finalizes.
+    act(() => {
+      playbackVideo.onended?.(new Event('ended'));
+    });
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('record-queue-button')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('queue-stop-recording-button')
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('recording-entry-1')).toBeInTheDocument();
+      expect(screen.getByTestId('recording-download-1')).toHaveAttribute(
+        'download'
+      );
+    });
+  });
 });
 
 describe('Record button (US-001)', () => {
