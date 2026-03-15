@@ -591,7 +591,7 @@ def test_generate_video_completes_for_platform_presets(
     )
 
     assert mp4_bytes == MP4_HEADER
-    assert seen_mux == {"target_width": None, "target_height": None}
+    assert seen_mux == {"target_width": target_width, "target_height": target_height}
     assert probe_targets.count("output.mp4") == 1
 
 
@@ -880,8 +880,8 @@ def test_us003_ac02_frame_dimensions_match_target(
         target_width: int | None = None,
         target_height: int | None = None,
     ) -> None:
-        assert target_width is None
-        assert target_height is None
+        assert target_width == 1080
+        assert target_height == 1920
         output_path.write_bytes(MP4_HEADER)
 
     monkeypatch.setattr(video_service.media_repository, "loop_video_to_duration", fake_loop)

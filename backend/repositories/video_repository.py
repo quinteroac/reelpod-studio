@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from models.constants import (
+    REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME,
+    REAL_ESRGAN_VIDEO_WEIGHTS_URL,
     WAN_VIDEO_CLIP_DURATION_SECONDS,
     WAN_VIDEO_FPS,
     WAN_VIDEO_RESOLUTIONS,
@@ -336,6 +338,27 @@ def _apply_torchvision_compat_shim() -> None:
         sys.modules["torchvision.transforms.functional_tensor"] = shim
 
 
+def _ensure_realesrgan_video_weights() -> Path:
+    """Ensure Real-ESRGAN anime-video weights exist under backend/.realesrgan/, downloading if needed."""
+    from repositories.image_repository import _download_realesrgan_weights, _get_realesrgan_weights_dir
+
+    weights_dir = _get_realesrgan_weights_dir()
+    weights_path = weights_dir / REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME
+    if weights_path.is_file():
+        logger.info("Real-ESRGAN video weights already available at %s", weights_path)
+        return weights_path
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    _download_realesrgan_weights(
+        download_url=REAL_ESRGAN_VIDEO_WEIGHTS_URL,
+        destination=weights_path,
+    )
+    return weights_path
+
+
+def ensure_realesrgan_video_weights() -> Path:
+    return _ensure_realesrgan_video_weights()
+
+
 def build_realesrgan_video_upsampler(
     *,
     tile: int = 256,
@@ -347,9 +370,7 @@ def build_realesrgan_video_upsampler(
     from realesrgan import RealESRGANer
     from realesrgan.archs.srvgg_arch import SRVGGNetCompact
 
-    from repositories import image_repository
-
-    weights_path = image_repository.ensure_realesrgan_anime_weights()
+    weights_path = _ensure_realesrgan_video_weights()
     gpu_available = torch.cuda.is_available()
     gpu_id = 0 if gpu_available else None
     half = gpu_available
@@ -389,6 +410,8 @@ def upscale_video_with_realesrgan_and_resize(
 ) -> None:
     """Upscale each frame 4x with Real-ESRGAN, then resize to exact target dimensions."""
     import av
+    from fractions import Fraction
+
     import numpy as np
     from PIL import Image
 
@@ -404,7 +427,9 @@ def upscale_video_with_realesrgan_and_resize(
         if input_video_stream.average_rate is not None:
             fps_value = float(input_video_stream.average_rate)
 
-        output_stream = output_container.add_stream("libx264", rate=fps_value)
+        # PyAV add_stream(rate=...) expects a rational (Fraction), not float
+        rate_rational = Fraction(str(fps_value))
+        output_stream = output_container.add_stream("libx264", rate=rate_rational)
         output_stream.width = target_width
         output_stream.height = target_height
         output_stream.pix_fmt = "yuv420p"

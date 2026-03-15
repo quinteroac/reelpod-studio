@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
-import time
 import urllib.request
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -272,20 +270,12 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
         num_grow_ch=32,
         scale=REAL_ESRGAN_SCALE,
     )
-    mem_before: dict[str, int] | None = None
-    mem_after: dict[str, int] | None = None
-    mem_after_empty: dict[str, int] | None = None
     torch_mod: Any | None = None
     try:
         import torch as _torch
 
         torch_mod = _torch
-        if _torch.cuda.is_available():
-            free, total = _torch.cuda.mem_get_info()
-            mem_before = {"free": int(free), "total": int(total)}
-            gpu_id = 0
-        else:
-            gpu_id = None
+        gpu_id = 0 if _torch.cuda.is_available() else None
     except ImportError:
         gpu_id = None
     upsampler = RealESRGANer(
@@ -307,46 +297,12 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
     out_pil = Image.fromarray(output_rgb).convert("RGB").copy()
     if torch_mod is not None and getattr(torch_mod, "cuda", None) is not None and torch_mod.cuda.is_available():
         try:
-            free2, total2 = torch_mod.cuda.mem_get_info()
-            mem_after = {"free": int(free2), "total": int(total2)}
-        except Exception:
-            mem_after = None
-        try:
             # Explicitly release references and empty CUDA cache to offload VRAM between requests.
             del upsampler, model, bgr, rgb, output_bgr, output_rgb
         except Exception:
             pass
         try:
             torch_mod.cuda.empty_cache()
-            free3, total3 = torch_mod.cuda.mem_get_info()
-            mem_after_empty = {"free": int(free3), "total": int(total3)}
         except Exception:
-            mem_after_empty = None
-    # #region agent log
-    _out_w, _out_h = out_pil.size
-    _log_path = Path(__file__).resolve().parent.parent.parent / ".cursor" / "debug.log"  # backend/repositories -> workspace
-    try:
-        _log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(_log_path, "a") as _f:
-            _f.write(
-                json.dumps(
-                    {
-                        "timestamp": int(time.time() * 1000),
-                        "location": "image_repository.py:upscale_exit",
-                        "message": "realesrgan exit",
-                        "data": {
-                            "input_size": [in_w, in_h],
-                            "output_size": [_out_w, _out_h],
-                            "mem_before": mem_before,
-                            "mem_after": mem_after,
-                            "mem_after_empty": mem_after_empty,
-                        },
-                        "hypothesisId": "H4",
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # #endregion
+            pass
     return out_pil

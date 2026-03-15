@@ -56,11 +56,16 @@ IMAGE_NUM_INFERENCE_STEPS = ANIMA_COMFY_STEPS  # alias for backward compatibilit
 IMAGE_ASPECT_TOLERANCE = 1e-6
 # Real-ESRGAN Anime 4× upscaler (PyTorch; weights auto-downloaded to backend/.realesrgan/)
 REAL_ESRGAN_MODEL_NAME = "realesrgan-x4plus-anime"
-REAL_ESRGAN_ANIME_WEIGHTS_FILENAME = "realesr-animevideov3.pth"
+REAL_ESRGAN_ANIME_WEIGHTS_FILENAME = "realesrgan-x4plus-anime.pth"
 REAL_ESRGAN_ANIME_WEIGHTS_URL = (
-    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
 )
 REAL_ESRGAN_SCALE = 4
+# Real-ESRGAN anime-video 4× upscaler weights (used by the video pipeline)
+REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME = "realesr-animevideov3.pth"
+REAL_ESRGAN_VIDEO_WEIGHTS_URL = (
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
+)
 
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
 VIDEO_GENERATION_TIMEOUT_SECONDS = 1800.0  # 30 min — Wan I2V with 8 steps can take 10+ minutes

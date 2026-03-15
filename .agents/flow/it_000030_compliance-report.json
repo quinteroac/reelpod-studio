@@ -1,0 +1,68 @@
+{
+  "executiveSummary": "Iteration 000030 successfully delivers the core upscaling pipeline (US-002, US-003) and graceful fallback (FR-5, FR-6, FR-7). The `upscale_video_with_realesrgan_and_resize` function in `video_repository.py` correctly uses `SRVGGNetCompact`, tile-based processing, GPU half-precision, and the exact pipeline order specified. However, the startup-download requirement (US-001 / FR-3 / FR-4) was implemented lazily instead of eagerly: the video weights check is deferred to the first upscale call rather than running at backend startup. Additionally, FR-1 and FR-2 exhibit naming/location drift from the PRD spec — the function lives in `video_repository.py` (not `media_repository.py`/`upscale_repository.py`) and the constants reuse `REAL_ESRGAN_ANIME_*` identifiers instead of introducing new `REAL_ESRGAN_VIDEO_*` ones. These are minor architectural deviations that do not affect runtime correctness but reduce PRD traceability.",
+
+  "verificationByFR": [
+    {
+      "frId": "FR-1",
+      "assessment": "partially_comply",
+      "notes": "The upscale function exists (`video_repository.upscale_video_with_realesrgan_and_resize`) and does exactly what the PRD describes, but it lives in `video_repository.py` instead of `media_repository.py` or a new `upscale_repository.py`. The function name also carries `_and_resize` suffix not present in the PRD signature."
+    },
+    {
+      "frId": "FR-2",
+      "assessment": "partially_comply",
+      "notes": "The filename and URL constants exist in `constants.py` with correct values, but are named `REAL_ESRGAN_ANIME_WEIGHTS_FILENAME` / `REAL_ESRGAN_ANIME_WEIGHTS_URL` (pre-existing image-upscaler names) rather than the PRD-specified `REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME` / `REAL_ESRGAN_VIDEO_WEIGHTS_URL`."
+    },
+    {
+      "frId": "FR-3",
+      "assessment": "does_not_comply",
+      "notes": "`_ensure_realesrgan_video_weights()` was never created. `video_repository.build_realesrgan_video_upsampler()` calls `image_repository.ensure_realesrgan_anime_weights()` directly, creating cross-repository coupling and bypassing the intended abstraction."
+    },
+    {
+      "frId": "FR-4",
+      "assessment": "does_not_comply",
+      "notes": "No video-weights download occurs during backend startup. `video_service.startup()` only loads the Wan pipeline; the ESRGAN weights are downloaded lazily on the first upscale call. The PRD required an eager on-startup check."
+    },
+    {
+      "frId": "FR-5",
+      "assessment": "comply",
+      "notes": "Pipeline order in `video_service.generate_video_mp4_for_request` is: WAN I2V → upscale 4x + resize → loop → mux. Verified at lines 199–296 of video_service.py."
+    },
+    {
+      "frId": "FR-6",
+      "assessment": "comply",
+      "notes": "`mux_video_and_audio_to_mp4` is called without `target_width`/`target_height` arguments; the letterbox filter is only applied when those params are provided (`media_repository.py:114`). No additional scaling occurs."
+    },
+    {
+      "frId": "FR-7",
+      "assessment": "comply",
+      "notes": "Exception from `upscale_video_with_realesrgan_and_resize` is caught in video_service.py (lines 252–256), a warning is logged, and `pre_loop_clip_path` falls back to the original `wan_clip_path`. No crash."
+    }
+  ],
+
+  "verificationByUS": [
+    {
+      "usId": "US-001",
+      "assessment": "partially_comply",
+      "notes": "AC02–AC06 are satisfied: correct URL, progress logging, skip-if-present, graceful fallback on failure. AC01 is not satisfied: weights are NOT checked on startup — they are checked lazily on the first upscale invocation. The first video generation job after a cold start without pre-downloaded weights will incur an unexpected download delay."
+    },
+    {
+      "usId": "US-002",
+      "assessment": "comply",
+      "notes": "All ACs are satisfied: SRVGGNetCompact architecture (AC02), 4x upscale with outscale=4 (AC03), LANCZOS resize to target resolution (AC04), tile=256/tile_pad=10 (AC05), GPU half-precision with CPU fallback (AC06), graceful fallback on failure (AC07)."
+    },
+    {
+      "usId": "US-003",
+      "assessment": "comply",
+      "notes": "AC01–AC02 are verified in code: `_parse_video_dimensions` reads the muxed MP4 via ffprobe and raises `VideoGenerationFailedError` if dimensions don't match target (video_service.py:300–304). AC03–AC04 (visual, browser) require runtime verification; the code is set up correctly. AC05 (typecheck/lint) passes with no obvious issues."
+    }
+  ],
+
+  "minorObservations": [
+    "Debug/telemetry block in `image_repository.py` (lines 325–351) writes JSON to `.cursor/debug.log` with `hypothesisId: 'H4'`. This is leftover investigation code and should be removed before the next release.",
+    "Cross-repository coupling: `video_repository.build_realesrgan_video_upsampler()` imports and calls `image_repository.ensure_realesrgan_anime_weights()`. This ties the video upscaler to image-domain internals and makes the dependency graph harder to follow.",
+    "The upscaled-video container written by `upscale_video_with_realesrgan_and_resize` has no audio stream; the mux step handles audio. This is correct, but the intermediate file is a raw video-only MP4, which is expected behavior — just worth noting for future maintainers.",
+    "Lazy weights download means the first request in a cold-start environment will download ~64 MB before upscaling begins, potentially causing unexpected latency or timeout in time-constrained environments."
+  ],
+
+  "conclusionsAndRecommendations": "The iteration is functionally sound for US-002 and US-003. The major gap is the startup-download requirement (US-001 / FR-3 / FR-4): the intent was to pre-warm ESRGAN weights at backend boot so that no download happens mid-request. Recommended actions: (1) Add `_ensure_realesrgan_video_weights()` in `video_repository.py` (or a dedicated `upscale_repository.py`) that delegates to or mirrors `image_repository._ensure_realesrgan_anime_weights()`, and call it from `video_service.startup()`. (2) Add `REAL_ESRGAN_VIDEO_WEIGHTS_FILENAME` / `REAL_ESRGAN_VIDEO_WEIGHTS_URL` constants to satisfy FR-2 naming. (3) Remove the debug/telemetry block from `image_repository.py`. Items (1) and (2) are low-risk refactors with no user-facing impact; item (3) is a cleanup. If urgency is low, all three can be deferred as technical debt."
+}

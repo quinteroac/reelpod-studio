@@ -43,6 +43,10 @@ wan_pipeline_load_error: str | None = None
 def startup() -> None:
     global wan_pipeline, wan_pipeline_load_error
     try:
+        video_repository.ensure_realesrgan_video_weights()
+    except Exception as exc:  # pragma: no cover - startup fallback safety
+        logger.warning("Real-ESRGAN video weights pre-download failed (upscaling will retry on first request): %s", exc)
+    try:
         wan_pipeline = video_repository.load_video_pipeline()
         wan_pipeline_load_error = None
         logger.info("Video generation model loading completed")
@@ -280,16 +284,20 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         )
 
         logger.info(
-            "Video pipeline: muxing looped clip %s and audio %s into MP4 at %s (no scaling, native Wan resolution)",
+            "Video pipeline: muxing looped clip %s and audio %s into MP4 at %s (target %dx%d)",
             looped_clip_path,
             audio_path,
             output_path,
+            body.image_target_width,
+            body.image_target_height,
         )
         _run_with_timeout(
             lambda: media_repository.mux_video_and_audio_to_mp4(
                 looped_clip_path,
                 audio_path,
                 output_path,
+                target_width=body.image_target_width,
+                target_height=body.image_target_height,
             ),
             timeout_seconds=remaining_seconds(),
             timeout_message="Video generation timed out while muxing",
