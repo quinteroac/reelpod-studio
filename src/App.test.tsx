@@ -13,10 +13,14 @@ const mockStopRecording = vi.fn().mockResolvedValue(undefined);
 const mockIsRecording = { value: false };
 const mockIsFinalizing = { value: false };
 const mockRecorderError = { value: null as string | null };
-let capturedOnFinalized: ((buffer: ArrayBuffer) => void) | undefined;
+let capturedOnFinalized:
+  | ((blob: Blob, meta: { mimeType: string; fileExtension: string }) => void)
+  | undefined;
 
 vi.mock('./hooks/use-recorder', () => ({
-  useRecorder: (options: { onFinalized?: (buffer: ArrayBuffer) => void }) => {
+  useRecorder: (options: {
+    onFinalized?: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => void;
+  }) => {
     capturedOnFinalized = options.onFinalized;
     return {
       isRecording: mockIsRecording.value,
@@ -1111,6 +1115,136 @@ describe('App queue playback binding (US-006)', () => {
   });
 });
 
+describe('Queue recording controls (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    let createdUrlIndex = 0;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => {
+      createdUrlIndex += 1;
+      return `blob:http://localhost/generated-video-url-${createdUrlIndex}`;
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  async function renderWithTwoCompletedEntries(): Promise<void> {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'first queue clip' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'second queue clip' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+  }
+
+  it('AC01+AC02: shows Record Queue in queue header and enables only when completed entries are available', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    const recordQueueButton = screen.getByTestId('record-queue-button');
+    expect(recordQueueButton).toBeInTheDocument();
+    expect(recordQueueButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'queue-ready clip' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(screen.getByTestId('record-queue-button')).toBeEnabled();
+    });
+  });
+
+  it('AC03+AC04: starts recorder and plays completed entries sequentially from the top of the queue', async () => {
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    act(() => {
+      playbackVideo.onended?.(new Event('ended'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+  });
+
+  it('AC05+AC06: queue recording toggles to Stop Recording state and disables single-item Record button', async () => {
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-stop-recording-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('record-queue-button')).not.toBeInTheDocument();
+      expect(screen.getByTestId('record-button')).toBeDisabled();
+    });
+
+    const stopQueueButton = screen.getByTestId('queue-stop-recording-button');
+    expect(stopQueueButton.className).toContain('border-red-500/70');
+    expect(within(stopQueueButton).getByText('Stop Recording')).toBeInTheDocument();
+
+    fireEvent.click(stopQueueButton);
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('record-queue-button')).toBeInTheDocument();
+    });
+  });
+});
+
 describe('Record button (US-001)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -1338,9 +1472,14 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     render(<App />);
 
     // Trigger the onFinalized callback as the hook would after finalization
-    const buffer = new ArrayBuffer(2 * 1024 * 1024); // 2 MB
+    const blob = new Blob([new Uint8Array(2 * 1024 * 1024)], {
+      type: 'video/mp4'
+    }); // 2 MB
     act(() => {
-      capturedOnFinalized?.(buffer);
+      capturedOnFinalized?.(blob, {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -1370,14 +1509,20 @@ describe('Recording auto-stop and UI states (US-002)', () => {
 
     render(<App />);
 
-    const buffer1 = new ArrayBuffer(1024);
-    const buffer2 = new ArrayBuffer(2048);
+    const blob1 = new Blob([new Uint8Array(1024)], { type: 'video/mp4' });
+    const blob2 = new Blob([new Uint8Array(2048)], { type: 'video/mp4' });
 
     act(() => {
-      capturedOnFinalized?.(buffer1);
+      capturedOnFinalized?.(blob1, {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
     act(() => {
-      capturedOnFinalized?.(buffer2);
+      capturedOnFinalized?.(blob2, {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
@@ -1403,7 +1548,10 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     render(<App />);
 
     act(() => {
-      capturedOnFinalized?.(new ArrayBuffer(512));
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
