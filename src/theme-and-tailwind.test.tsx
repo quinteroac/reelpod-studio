@@ -1,10 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { App } from './App';
 import packageJson from '../package.json';
 import mainSource from './main.tsx?raw';
 import tailwindConfigSource from '../tailwind.config.ts?raw';
 import appSource from './App.tsx?raw';
+
+const indexCssSource = readFileSync(
+  join(process.cwd(), 'src/index.css'),
+  'utf8'
+);
 
 describe('Tailwind setup', () => {
   it('includes Tailwind in dependencies and configures required files', () => {
@@ -69,5 +76,16 @@ describe('Lofi theme', () => {
 
   it('does not use text-xs for primary app content', () => {
     expect(appSource).not.toContain('text-xs');
+  });
+
+  it('keeps the seek slider track on the shared lofi gradient and thumb accent tokens', () => {
+    expect(indexCssSource).toContain('.seek-slider::-webkit-slider-runnable-track');
+    expect(indexCssSource).toContain('.seek-slider::-moz-range-track');
+    expect(indexCssSource).toContain('var(--color-lofi-accent) 0%');
+    expect(indexCssSource).toContain('var(--color-lofi-accent-muted) 100%');
+    expect(indexCssSource).toContain('.seek-slider::-webkit-slider-thumb');
+    expect(indexCssSource).toContain('.seek-slider::-moz-range-thumb');
+    expect(indexCssSource).toContain('background-color: var(--color-lofi-accent);');
+    expect(indexCssSource).not.toMatch(/seek-slider[\s\S]*gray/i);
   });
 });

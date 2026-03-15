@@ -1172,22 +1172,37 @@ export function App() {
             data-testid="preview-column"
             className="min-w-0 space-y-6 xl:sticky xl:top-10 xl:self-start"
           >
-            <section aria-label="Visual scene" className="rounded-lg bg-lofi-panel p-4">
+            <section
+              aria-label="Visual scene"
+              className="overflow-hidden rounded-xl border border-lofi-accentMuted/60 bg-lofi-panel p-4"
+              style={{
+                boxShadow:
+                  'inset 0 0 0 1px var(--color-lofi-shadow-ring), 0 18px 36px -24px var(--color-lofi-shadow-ring)'
+              }}
+            >
               <div
                 data-testid="visual-canvas"
-                className="mx-auto flex w-full items-center justify-center overflow-hidden rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40"
+                className="mx-auto grid w-full place-items-center overflow-hidden rounded-lg border border-lofi-accentMuted/70 bg-lofi-bg/60 p-2"
+                style={{
+                  boxShadow: 'inset 0 0 0 1px var(--color-lofi-shadow-ring)'
+                }}
               >
-                <VisualScene
-                  imageUrl={visualImageUrl}
-                  videoElement={videoPlaybackElement}
-                  videoUrl={activeVideoUrl}
-                  audioCurrentTime={audioCurrentTime}
-                  audioDuration={audioDuration}
-                  isPlaying={isPlaying}
-                  aspectRatio={selectedSocialFormat.aspectRatio}
-                  visualizerType={activeVisualizerType}
-                  effects={activeEffects}
-                />
+                <div
+                  data-testid="visual-aspect-container"
+                  className="flex w-full justify-center"
+                >
+                  <VisualScene
+                    imageUrl={visualImageUrl}
+                    videoElement={videoPlaybackElement}
+                    videoUrl={activeVideoUrl}
+                    audioCurrentTime={audioCurrentTime}
+                    audioDuration={audioDuration}
+                    isPlaying={isPlaying}
+                    aspectRatio={selectedSocialFormat.aspectRatio}
+                    visualizerType={activeVisualizerType}
+                    effects={activeEffects}
+                  />
+                </div>
               </div>
             </section>
 
@@ -1207,7 +1222,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-lofi-accentMuted bg-lofi-accentMuted/25 px-3 py-2 font-semibold text-lofi-text outline-none transition hover:border-lofi-accent hover:bg-lofi-accent/30 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-md border border-lofi-accent bg-lofi-accent/20 px-3 py-2 font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={() => void handlePause()}
                   disabled={!isPlaying}
                 >
