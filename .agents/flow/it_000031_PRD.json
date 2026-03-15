@@ -1,0 +1,162 @@
+{
+  "goals": [
+    "Allow users to record the full queue playback (all completed entries, sequentially) into a single downloadable MP4.",
+    "Allow users to delete individual entries from the generation queue."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Record Queue starts recording and plays completed entries sequentially",
+      "description": "As an end user, I want to click \"Record Queue\" so that all completed queue entries play back-to-back in the canvas while a single recording session captures them all.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A \"Record Queue\" button is visible in the Queue tab header area."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The button is enabled only when at least one queue entry has `status === 'completed'` and `videoBlob !== null`."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "Clicking \"Record Queue\" calls `startRecording()` (reusing `use-recorder.ts`) and immediately begins playing the first completed entry from the top of the queue."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "After each entry ends, the next completed entry (in queue order) starts playing automatically — same chaining behaviour as the existing `playNextEntryRef`."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "While queue-recording is active, the \"Record Queue\" button is replaced by (or changes to) a \"Stop Recording\" button with a red indicator, matching the visual style of the existing record button."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "While queue-recording is active, the existing single-item Record button is disabled."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Queue recording stops automatically when the last entry finishes",
+      "description": "As an end user, I want the recording to finalise automatically when the last queue entry finishes playing so that I don't have to intervene after the queue completes.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "When the `onEnded` callback fires for the last completed entry while queue-recording is active, `stopRecording()` is called automatically."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The resulting file is added to the Recordings list (same `onFinalized` callback as the existing recorder)."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The \"Stop Recording\" button reverts to \"Record Queue\" after finalization."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "User can manually stop the queue recording early",
+      "description": "As an end user, I want to click \"Stop Recording\" at any time so that the recording is finalized up to that point and saved as a downloadable file.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Clicking \"Stop Recording\" while queue-recording is active pauses playback and calls `stopRecording()`."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The resulting partial file is added to the Recordings list."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "The \"Stop Recording\" button reverts to \"Record Queue\"."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "User can delete individual queue entries",
+      "description": "As an end user, I want to click a delete button on a queue entry so that it is removed from the queue without a page reload.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "Each queue entry row displays a delete (×) button."
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "Clicking the delete button removes that entry from `queueEntries` state immediately (no confirmation dialog needed)."
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "Deleting the currently playing entry pauses playback and clears `playingEntryId`."
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "Deleting an entry while queue-recording is active stops the recording before removing the entry (to avoid a broken recording session)."
+        },
+        {
+          "id": "US-004-AC05",
+          "text": "The delete button is accessible: has `aria-label=\"Delete entry {trackNumber}\"`."
+        },
+        {
+          "id": "US-004-AC06",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-004-AC07",
+          "text": "Visually verified in browser."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Add `isRecordingQueue` boolean state to `App`. When `true`, the \"Record Queue\" CTA is replaced by a \"Stop Recording\" button styled with a red indicator (matching `record-button.tsx` conventions). When `false`, \"Record Queue\" is shown."
+    },
+    {
+      "id": "FR-2",
+      "description": "Add `handleRecordQueue(): Promise<void>` in `App` that: (a) calls `startRecording()`, (b) finds the first completed entry with a `videoBlob`, (c) calls `playVideoFromUrl` with an `onEnded` that advances to the next completed entry or, if none remains, calls `stopRecording()`."
+    },
+    {
+      "id": "FR-3",
+      "description": "Add `handleStopQueueRecording(): Promise<void>` in `App` that pauses the video, calls `stopRecording()`, and sets `isRecordingQueue` to `false`."
+    },
+    {
+      "id": "FR-4",
+      "description": "The queue-recording advance logic must reuse the same `playVideoFromUrl` + `createVideoPlaybackUrl` helpers already present in `App`. Do NOT duplicate playback wiring."
+    },
+    {
+      "id": "FR-5",
+      "description": "Add `handleDeleteQueueEntry(entryId: number): void` in `App` that: (a) if `isRecordingQueue` is true, calls `handleStopQueueRecording()` first; (b) if the deleted entry is `playingEntryId`, pauses the video and clears `playingEntryId`; (c) calls `setQueueEntries(prev => prev.filter(e => e.id !== entryId))`."
+    },
+    {
+      "id": "FR-6",
+      "description": "The delete button is rendered inside each queue entry `<li>` in the existing queue map. It must not appear for entries with `status === 'generating'` while the queue is generating (to avoid race conditions), but may appear for `queued`, `completed`, and `failed` entries. *(Open: confirm whether deleting a `queued` entry before generation starts is in scope — default yes.)*"
+    },
+    {
+      "id": "FR-7",
+      "description": "The \"Record Queue\" button must be disabled (and visually greyed) when no completed entries exist or when `isFinalizing` is true."
+    }
+  ]
+}
