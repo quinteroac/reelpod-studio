@@ -202,7 +202,7 @@ export function App() {
     useState<HTMLVideoElement | null>(null);
   const activeVideoObjectUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
-  const [params, setParams] = useState<GenerationParams>(defaultParams);
+  const [_params, setParams] = useState<GenerationParams>(defaultParams);
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
     string | null
@@ -501,7 +501,7 @@ export function App() {
         await video.play();
         setHasGeneratedTrack(true);
         setIsPlaying(true);
-      } catch (error) {
+      } catch {
         // Browser blocked autoplay - set as ready but paused
         setHasGeneratedTrack(true);
         setIsPlaying(false);
@@ -590,23 +590,25 @@ export function App() {
     [createQueueOnEnded, createVideoPlaybackUrl, playVideoFromUrl]
   );
 
-  playNextEntryRef.current = (currentEntryId: number) => {
-    const currentIndex = queueEntries.findIndex((e) => e.id === currentEntryId);
-    const nextCompleted = queueEntries
-      .slice(currentIndex + 1)
-      .find((e) => e.status === 'completed' && e.videoBlob);
+  useEffect(() => {
+    playNextEntryRef.current = (currentEntryId: number) => {
+      const currentIndex = queueEntries.findIndex((e) => e.id === currentEntryId);
+      const nextCompleted = queueEntries
+        .slice(currentIndex + 1)
+        .find((e) => e.status === 'completed' && e.videoBlob);
 
-    if (nextCompleted) {
-      const playbackUrl = createVideoPlaybackUrl(nextCompleted.videoBlob!);
-      setPlayingEntryId(nextCompleted.id);
-      void playVideoFromUrl(playbackUrl, {
-        entryId: nextCompleted.id,
-        onEnded: createQueueOnEnded(nextCompleted)
-      });
-    } else {
-      setPlayingEntryId(null);
-    }
-  };
+      if (nextCompleted) {
+        const playbackUrl = createVideoPlaybackUrl(nextCompleted.videoBlob!);
+        setPlayingEntryId(nextCompleted.id);
+        void playVideoFromUrl(playbackUrl, {
+          entryId: nextCompleted.id,
+          onEnded: createQueueOnEnded(nextCompleted)
+        });
+      } else {
+        setPlayingEntryId(null);
+      }
+    };
+  }, [queueEntries, createVideoPlaybackUrl, playVideoFromUrl, createQueueOnEnded]);
 
   useEffect(() => {
     if (status === 'loading') {
@@ -748,7 +750,7 @@ export function App() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 text-lofi-text">
+    <main className="min-h-screen overflow-x-hidden bg-lofi-bg px-6 py-10 font-sans text-sm text-lofi-text">
       <video
         ref={handlePlaybackVideoRef}
         data-testid="playback-video"
@@ -777,29 +779,29 @@ export function App() {
           className="grid min-w-0 gap-6 xl:grid-cols-[3fr_7fr] xl:items-start"
         >
           <div data-testid="controls-column" className="min-w-0 space-y-6">
-            <div className="flex gap-6 border-b border-stone-800">
+            <div className="flex gap-6 border-b border-lofi-accentMuted/60">
               <button
-                className={`pb-3 text-sm font-semibold transition-colors ${activeTab === 'music'
-                  ? 'border-b-2 border-white text-white'
-                  : 'text-stone-400 hover:text-stone-200'
+                className={`pb-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'music'
+                  ? 'border-b-2 border-lofi-accent text-lofi-text'
+                  : 'text-lofi-accentMuted hover:text-lofi-accent'
                   }`}
                 onClick={() => setActiveTab('music')}
               >
                 Music Generation
               </button>
               <button
-                className={`pb-3 text-sm font-semibold transition-colors ${activeTab === 'visuals'
-                  ? 'border-b-2 border-white text-white'
-                  : 'text-stone-400 hover:text-stone-200'
+                className={`pb-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'visuals'
+                  ? 'border-b-2 border-lofi-accent text-lofi-text'
+                  : 'text-lofi-accentMuted hover:text-lofi-accent'
                   }`}
                 onClick={() => setActiveTab('visuals')}
               >
                 Visual Settings
               </button>
               <button
-                className={`pb-3 text-sm font-semibold transition-colors ${activeTab === 'queue'
-                  ? 'border-b-2 border-white text-white'
-                  : 'text-stone-400 hover:text-stone-200'
+                className={`pb-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-lofi-accent ${activeTab === 'queue'
+                  ? 'border-b-2 border-lofi-accent text-lofi-text'
+                  : 'text-lofi-accentMuted hover:text-lofi-accent'
                   }`}
                 onClick={() => setActiveTab('queue')}
               >
@@ -830,12 +832,12 @@ export function App() {
                           setMusicPromptErrorMessage(null);
                         }
                       }}
-                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                      className="w-full rounded-md border border-lofi-accentMuted bg-lofi-bg px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
                       placeholder="Describe your concept — the AI creative director will choose the music style, mood, tempo, imagery, and scene automatically..."
                     />
                   </div>
 
-                  <div className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3">
+                  <div className="space-y-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3">
                     <label
                       htmlFor="duration"
                       className="block text-sm font-semibold text-lofi-text"
@@ -855,14 +857,14 @@ export function App() {
                           setDurationErrorMessage(null);
                         }
                       }}
-                      className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                      className="w-full rounded-md border border-lofi-accentMuted bg-lofi-bg px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
                     />
                   </div>
 
                   <fieldset
                     role="radiogroup"
                     aria-label="Social format"
-                    className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+                    className="space-y-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3"
                   >
                     <legend className="text-sm font-semibold text-lofi-text">
                       Format
@@ -875,7 +877,7 @@ export function App() {
                             key={option.id}
                             className={`flex cursor-pointer items-center justify-center rounded-md border px-3 py-2 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-lofi-accent ${isSelected
                               ? 'border-lofi-accent bg-lofi-accent/20 text-lofi-text'
-                              : 'border-stone-600 bg-stone-900/60 text-stone-200 hover:border-lofi-accent'
+                              : 'border-lofi-accentMuted/70 bg-lofi-bg/60 text-lofi-accentMuted hover:border-lofi-accent hover:text-lofi-text'
                               }`}
                           >
                             <input
@@ -902,7 +904,7 @@ export function App() {
             >
               <button
                 type="button"
-                className="w-full rounded-md bg-lofi-accent px-6 py-3 text-lg font-semibold text-stone-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                className="w-full rounded-md bg-lofi-accent px-6 py-3 text-lg font-semibold text-lofi-bg outline-none transition hover:bg-lofi-accent/90 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 onClick={() => void handleGenerate()}
               >
                 Generate
@@ -922,7 +924,7 @@ export function App() {
                 <div
                   role="status"
                   aria-live="polite"
-                  className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-stone-900/70 px-3 py-2 text-sm font-semibold text-lofi-text"
+                  className="flex items-center gap-3 rounded-md border border-lofi-accent/60 bg-lofi-bg/70 px-3 py-2 text-sm font-semibold text-lofi-text"
                 >
                   <span
                     aria-hidden="true"
@@ -964,7 +966,7 @@ export function App() {
                     <button
                       type="button"
                       onClick={() => window.open('/live', '_blank', 'noopener,noreferrer')}
-                      className="rounded bg-lofi-accent px-2 py-1 text-xs font-semibold text-stone-950 transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-lofi-text outline-none"
+                      className="rounded bg-lofi-accent px-2 py-1 text-sm font-semibold text-lofi-bg outline-none transition hover:bg-lofi-accent/90 focus-visible:ring-2 focus-visible:ring-lofi-accent"
                     >
                       Go Live
                     </button>
@@ -979,7 +981,7 @@ export function App() {
                       return (
                         <span
                           aria-live="polite"
-                          className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-xs font-semibold text-lofi-accent"
+                          className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-sm font-semibold text-lofi-accent"
                         >
                           Track {position} of {total}
                         </span>
@@ -1006,20 +1008,20 @@ export function App() {
                           data-status={entry.status}
                           data-playing={isCurrentlyPlaying ? 'true' : undefined}
                           className={`rounded-md border p-3 text-sm ${isCurrentlyPlaying
-                            ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-stone-900'
+                            ? 'ring-2 ring-lofi-accent ring-offset-2 ring-offset-lofi-bg'
                             : ''
                             } ${isGenerating
-                              ? 'border-lofi-accent/70 bg-stone-900/80'
+                              ? 'border-lofi-accent/70 bg-lofi-bg/80'
                               : isCompleted
                                 ? 'border-emerald-300/60 bg-emerald-500/10'
                                 : isFailed
                                   ? 'border-red-400/60 bg-red-950/30'
-                                  : 'border-stone-600 bg-stone-900/40'
+                                  : 'border-lofi-accentMuted/70 bg-lofi-bg/40'
                             }`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                              <p className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
                                 Track {trackNumber}
                               </p>
                               <p className="text-lofi-text">
@@ -1035,13 +1037,13 @@ export function App() {
                               </p>
                             </div>
                             <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${isGenerating
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm font-semibold ${isGenerating
                                 ? 'bg-lofi-accent/20 text-lofi-accent'
                                 : isCompleted
                                   ? 'bg-emerald-500/20 text-emerald-100'
                                   : isFailed
                                     ? 'bg-red-500/20 text-red-100'
-                                    : 'bg-stone-700 text-stone-200'
+                                    : 'bg-lofi-accentMuted/30 text-lofi-text'
                                 }`}
                             >
                               {isGenerating && (
@@ -1060,7 +1062,7 @@ export function App() {
                               <button
                                 type="button"
                                 aria-label={`Play generation ${entry.id}`}
-                                className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200"
+                                className="rounded-md border border-lofi-accent bg-lofi-accent/25 px-3 py-1 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent"
                                 onClick={() => void handlePlayQueueEntry(entry)}
                               >
                                 Play
@@ -1068,7 +1070,7 @@ export function App() {
                             </div>
                           )}
                           {entry.errorMessage && (
-                            <p className="mt-2 text-xs text-red-100">
+                            <p className="mt-2 text-sm text-red-100">
                               {entry.errorMessage}
                             </p>
                           )}
@@ -1099,7 +1101,7 @@ export function App() {
                     onChange={(event) =>
                       setActiveVisualizerType(event.target.value as VisualizerType)
                     }
-                    className="w-full rounded-md border border-stone-500 bg-stone-900 px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                    className="w-full rounded-md border border-lofi-accentMuted bg-lofi-bg px-3 py-2 text-sm text-lofi-text outline-none transition hover:border-lofi-accent focus-visible:ring-2 focus-visible:ring-lofi-accent"
                   >
                     {visualizerOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1111,7 +1113,7 @@ export function App() {
 
                 <fieldset
                   aria-label="Post-processing effects"
-                  className="space-y-2 rounded-md border border-stone-600 bg-stone-900/40 p-3"
+                  className="space-y-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3"
                 >
                   <legend className="text-sm font-semibold text-lofi-text">
                     Effects
@@ -1121,7 +1123,7 @@ export function App() {
                       <div
                         key={effectType}
                         data-testid={`effect-row-${effectType}`}
-                        className="flex items-center justify-between gap-2 rounded-md border border-stone-700/80 bg-stone-900/60 px-3 py-2 text-sm text-stone-200"
+                        className="flex items-center justify-between gap-2 rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/60 px-3 py-2 text-sm text-lofi-text"
                       >
                         <span className="inline-flex items-center gap-2">
                           <input
@@ -1134,7 +1136,7 @@ export function App() {
                                 [effectType]: event.target.checked
                               }))
                             }
-                            className="h-4 w-4 rounded border-stone-500 bg-stone-900 accent-lofi-accent"
+                            className="h-4 w-4 rounded border-lofi-accentMuted bg-lofi-bg accent-lofi-accent"
                           />
                           <label htmlFor={`effect-${effectType}`}>
                             {effectType}
@@ -1145,7 +1147,7 @@ export function App() {
                             type="button"
                             onClick={() => handleMoveEffect(effectType, 'up')}
                             disabled={index === 0}
-                            className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-md border border-lofi-accentMuted px-2 py-1 text-sm font-semibold text-lofi-text outline-none transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent enabled:focus-visible:ring-2 enabled:focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Up
                           </button>
@@ -1153,7 +1155,7 @@ export function App() {
                             type="button"
                             onClick={() => handleMoveEffect(effectType, 'down')}
                             disabled={index === effectOrder.length - 1}
-                            className="rounded-md border border-stone-600 px-2 py-1 text-xs font-semibold text-stone-100 transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-md border border-lofi-accentMuted px-2 py-1 text-sm font-semibold text-lofi-text outline-none transition enabled:hover:border-lofi-accent enabled:hover:text-lofi-accent enabled:focus-visible:ring-2 enabled:focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Down
                           </button>
@@ -1173,7 +1175,7 @@ export function App() {
             <section aria-label="Visual scene" className="rounded-lg bg-lofi-panel p-4">
               <div
                 data-testid="visual-canvas"
-                className="mx-auto flex w-full items-center justify-center overflow-hidden rounded-md border border-stone-600 bg-stone-900/40"
+                className="mx-auto flex w-full items-center justify-center overflow-hidden rounded-md border border-lofi-accentMuted/70 bg-lofi-bg/40"
               >
                 <VisualScene
                   imageUrl={visualImageUrl}
@@ -1197,7 +1199,7 @@ export function App() {
               >
                 <button
                   type="button"
-                  className="rounded-md border border-emerald-300/80 bg-emerald-500/20 px-3 py-2 font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/30 focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-md border border-lofi-accent bg-lofi-accent/25 px-3 py-2 font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={() => void handlePlay()}
                   disabled={isPlaying}
                 >
@@ -1205,7 +1207,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-amber-200/90 bg-amber-400/25 px-3 py-2 font-semibold text-amber-50 outline-none transition hover:bg-amber-400/40 focus-visible:ring-2 focus-visible:ring-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-md border border-lofi-accentMuted bg-lofi-accentMuted/25 px-3 py-2 font-semibold text-lofi-text outline-none transition hover:border-lofi-accent hover:bg-lofi-accent/30 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={() => void handlePause()}
                   disabled={!isPlaying}
                 >
