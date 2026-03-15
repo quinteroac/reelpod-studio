@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -22,6 +24,8 @@ from models.constants import (
     REAL_ESRGAN_ANIME_WEIGHTS_URL,
     REAL_ESRGAN_SCALE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AnimaComfyPipeline(NamedTuple):
@@ -167,21 +171,71 @@ def _get_realesrgan_weights_dir() -> Path:
 
 
 def _ensure_realesrgan_anime_weights() -> Path:
-    """Ensure RealESRGAN_x4plus_anime_6B.pth exists under backend/.realesrgan/, downloading if needed."""
+    """Ensure Real-ESRGAN anime weights exist under backend/.realesrgan/, downloading if needed."""
     weights_dir = _get_realesrgan_weights_dir()
     weights_path = weights_dir / REAL_ESRGAN_ANIME_WEIGHTS_FILENAME
     if weights_path.is_file():
+        logger.info("Real-ESRGAN weights already available at %s", weights_path)
         return weights_path
-    weights_dir.mkdir(parents=True, exist_ok=True)
-    from basicsr.utils.download_util import load_file_from_url
 
-    load_file_from_url(
-        url=REAL_ESRGAN_ANIME_WEIGHTS_URL,
-        model_dir=str(weights_dir),
-        progress=True,
-        file_name=REAL_ESRGAN_ANIME_WEIGHTS_FILENAME,
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    _download_realesrgan_weights(
+        download_url=REAL_ESRGAN_ANIME_WEIGHTS_URL,
+        destination=weights_path,
     )
     return weights_path
+
+
+def _download_realesrgan_weights(download_url: str, destination: Path) -> None:
+    temp_destination = destination.with_suffix(destination.suffix + ".part")
+    downloaded_bytes = 0
+    next_progress_mark = 0.1
+
+    try:
+        with urllib.request.urlopen(download_url) as response, temp_destination.open("wb") as output:
+            content_length = response.headers.get("Content-Length")
+            total_size = int(content_length) if content_length else 0
+            if total_size > 0:
+                logger.info(
+                    "Downloading Real-ESRGAN weights to %s (%d bytes total)",
+                    destination,
+                    total_size,
+                )
+            else:
+                logger.info("Downloading Real-ESRGAN weights to %s (unknown size)", destination)
+
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                downloaded_bytes += len(chunk)
+
+                if total_size > 0:
+                    completion = downloaded_bytes / total_size
+                    if completion >= next_progress_mark or downloaded_bytes == total_size:
+                        logger.info(
+                            "Real-ESRGAN weights download progress: %d/%d bytes (%.1f%%)",
+                            downloaded_bytes,
+                            total_size,
+                            min(completion * 100.0, 100.0),
+                        )
+                        next_progress_mark += 0.1
+                else:
+                    logger.info(
+                        "Real-ESRGAN weights download progress: %d bytes downloaded",
+                        downloaded_bytes,
+                    )
+    except Exception:
+        if temp_destination.exists():
+            temp_destination.unlink()
+        raise
+
+    temp_destination.replace(destination)
+
+
+def ensure_realesrgan_anime_weights() -> Path:
+    return _ensure_realesrgan_anime_weights()
 
 
 def _apply_torchvision_compat_shim() -> None:
@@ -209,7 +263,7 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
     from PIL import Image
     from realesrgan import RealESRGANer
 
-    weights_path = _ensure_realesrgan_anime_weights()
+    weights_path = ensure_realesrgan_anime_weights()
     model = RRDBNet(
         num_in_ch=3,
         num_out_ch=3,

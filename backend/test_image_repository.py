@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import urllib.error
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -92,6 +93,92 @@ def test_constants_define_anima_comfy_env_defaults() -> None:
     assert constants.ANIMA_PREVIEW_SIZES == ((1280, 720), (720, 1280), (1024, 1024))
 
 
+def test_get_realesrgan_weights_dir_uses_env_override_or_backend_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env_dir = tmp_path / "env-weights"
+    monkeypatch.setenv("REAL_ESRGAN_WEIGHTS_DIR", str(env_dir))
+    assert image_repository._get_realesrgan_weights_dir() == env_dir
+
+    monkeypatch.delenv("REAL_ESRGAN_WEIGHTS_DIR", raising=False)
+    assert image_repository._get_realesrgan_weights_dir().as_posix().endswith(
+        "backend/.realesrgan"
+    )
+
+
+def test_ensure_realesrgan_anime_weights_skips_download_when_file_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    weights_dir = tmp_path / "weights"
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    existing = weights_dir / constants.REAL_ESRGAN_ANIME_WEIGHTS_FILENAME
+    existing.write_bytes(b"already-there")
+    monkeypatch.setenv("REAL_ESRGAN_WEIGHTS_DIR", str(weights_dir))
+
+    called = {"download": False}
+
+    def fake_download(*args: Any, **kwargs: Any) -> None:
+        called["download"] = True
+
+    monkeypatch.setattr(image_repository, "_download_realesrgan_weights", fake_download)
+
+    resolved = image_repository.ensure_realesrgan_anime_weights()
+    assert resolved == existing
+    assert called["download"] is False
+
+
+def test_ensure_realesrgan_anime_weights_downloads_missing_file_with_progress(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _FakeResponse:
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+            self._offset = 0
+            self.headers = {"Content-Length": str(len(payload))}
+
+        def __enter__(self) -> "_FakeResponse":
+            return self
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            if self._offset >= len(self._payload):
+                return b""
+            if size < 0:
+                size = len(self._payload) - self._offset
+            chunk = self._payload[self._offset : self._offset + size]
+            self._offset += len(chunk)
+            return chunk
+
+    weights_dir = tmp_path / "weights"
+    monkeypatch.setenv("REAL_ESRGAN_WEIGHTS_DIR", str(weights_dir))
+    caplog.set_level(logging.INFO)
+    seen: dict[str, Any] = {}
+    payload = (b"abcdef" * 300_000)[:1_500_000]
+
+    def fake_urlopen(url: str) -> _FakeResponse:
+        seen["url"] = url
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(image_repository.urllib.request, "urlopen", fake_urlopen)
+
+    resolved = image_repository.ensure_realesrgan_anime_weights()
+    assert resolved == weights_dir / constants.REAL_ESRGAN_ANIME_WEIGHTS_FILENAME
+    assert resolved.read_bytes() == payload
+    assert seen["url"] == constants.REAL_ESRGAN_ANIME_WEIGHTS_URL
+    assert "Downloading Real-ESRGAN weights" in caplog.text
+    assert "Real-ESRGAN weights download progress:" in caplog.text
+
+
+def test_constants_define_realesrgan_animevideov3_weights_source() -> None:
+    assert constants.REAL_ESRGAN_ANIME_WEIGHTS_FILENAME == "realesr-animevideov3.pth"
+    assert (
+        constants.REAL_ESRGAN_ANIME_WEIGHTS_URL
+        == "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
+    )
+
+
 def test_image_service_startup_logs_model_loading_completion(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -99,6 +186,11 @@ def test_image_service_startup_logs_model_loading_completion(
         pass
 
     monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: _Pipeline())
+    monkeypatch.setattr(
+        image_repository,
+        "ensure_realesrgan_anime_weights",
+        lambda: Path("/tmp/realesr-animevideov3.pth"),
+    )
     caplog.set_level(logging.INFO)
 
     image_service.startup()
@@ -106,6 +198,30 @@ def test_image_service_startup_logs_model_loading_completion(
     assert image_service.image_pipeline is not None
     assert image_service.image_model_load_error is None
     assert "Image generation model loading completed" in caplog.text
+
+
+def test_image_service_startup_logs_weights_failure_but_does_not_crash(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class _Pipeline:
+        pass
+
+    monkeypatch.setattr(image_repository, "load_image_pipeline", lambda: _Pipeline())
+    monkeypatch.setattr(
+        image_repository,
+        "ensure_realesrgan_anime_weights",
+        lambda: (_ for _ in ()).throw(urllib.error.URLError("network down")),
+    )
+    caplog.set_level(logging.INFO)
+
+    image_service.startup()
+
+    assert image_service.image_pipeline is not None
+    assert image_service.image_model_load_error is None
+    assert (
+        "Real-ESRGAN startup weights check failed; continuing without guaranteed upscaling"
+        in caplog.text
+    )
 
 
 def test_run_image_inference_calls_encode_and_sample_then_returns_pil(
