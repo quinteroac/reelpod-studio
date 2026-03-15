@@ -11,6 +11,7 @@ import {
 
 export interface RecorderHandles {
   output: Output | null;
+  target: BufferTarget | null;
   audioContext: AudioContext | null;
 }
 
@@ -18,6 +19,7 @@ interface UseRecorderOptions {
   getCanvas: () => HTMLCanvasElement | null;
   getVideoElement: () => HTMLVideoElement | null;
   onStarted?: () => void;
+  onFinalized?: (buffer: ArrayBuffer) => void;
 }
 
 interface UseRecorderReturn {
@@ -32,13 +34,16 @@ interface UseRecorderReturn {
 export function useRecorder({
   getCanvas,
   getVideoElement,
-  onStarted
+  onStarted,
+  onFinalized
 }: UseRecorderOptions): UseRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
 
-  const handlesRef = useRef<RecorderHandles>({ output: null, audioContext: null });
+  const handlesRef = useRef<RecorderHandles>({ output: null, target: null, audioContext: null });
+  const onFinalizedRef = useRef(onFinalized);
+  onFinalizedRef.current = onFinalized;
   // Reuse the MediaElementAudioSourceNode: it can only be created once per element
   const mediaSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const streamDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -124,6 +129,7 @@ export function useRecorder({
       target
     });
     handlesRef.current.output = output;
+    handlesRef.current.target = target;
 
     // AC04: video track source — avc codec at 4 Mbps
     const videoSource = new MediaStreamVideoTrackSource(videoTrack, {
@@ -149,15 +155,20 @@ export function useRecorder({
 
   const stopRecording = useCallback(async () => {
     const output = handlesRef.current.output;
+    const target = handlesRef.current.target;
     if (!output) return;
 
     setIsRecording(false);
     setIsFinalizing(true);
     try {
       await output.finalize();
+      if (target?.buffer) {
+        onFinalizedRef.current?.(target.buffer);
+      }
     } finally {
       setIsFinalizing(false);
       handlesRef.current.output = null;
+      handlesRef.current.target = null;
     }
   }, []);
 

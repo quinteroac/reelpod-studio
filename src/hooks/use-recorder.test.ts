@@ -32,7 +32,9 @@ const {
   }));
 
   const MockMp4OutputFormat = vi.fn();
-  const MockBufferTarget = vi.fn();
+  const MockBufferTarget = vi.fn().mockImplementation(() => ({
+    buffer: new ArrayBuffer(1024)
+  }));
   const MockMediaStreamVideoTrackSource = vi.fn().mockImplementation(() => ({}));
   const MockMediaStreamAudioTrackSource = vi.fn().mockImplementation(() => ({}));
   const mockCanEncodeVideo = vi.fn().mockResolvedValue(true);
@@ -326,5 +328,48 @@ describe('useRecorder', () => {
     });
 
     expect(onStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it('US-003-AC01: calls onFinalized with the ArrayBuffer from target.buffer after finalize', async () => {
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+    const onFinalized = vi.fn();
+
+    const { result } = renderHook(() =>
+      useRecorder({ getCanvas: () => canvas, getVideoElement: () => video, onFinalized })
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(onFinalized).toHaveBeenCalledTimes(1);
+    expect(onFinalized).toHaveBeenCalledWith(expect.any(ArrayBuffer));
+  });
+
+  it('US-003-AC01: does not call onFinalized when target buffer is null', async () => {
+    MockBufferTarget.mockImplementationOnce(() => ({ buffer: null }));
+
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+    const onFinalized = vi.fn();
+
+    const { result } = renderHook(() =>
+      useRecorder({ getCanvas: () => canvas, getVideoElement: () => video, onFinalized })
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(onFinalized).not.toHaveBeenCalled();
   });
 });

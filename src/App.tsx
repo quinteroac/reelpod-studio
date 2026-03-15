@@ -36,6 +36,13 @@ type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
 type ToggleableEffectType = Exclude<EffectType, 'none'>;
 
+interface RecordingEntry {
+  id: number;
+  filename: string;
+  url: string;
+  sizeInMb: number;
+}
+
 interface QueueEntry {
   id: number;
   params: GenerationParams;
@@ -203,6 +210,8 @@ export function App() {
     useState<HTMLVideoElement | null>(null);
   const activeVideoObjectUrlRef = useRef<string | null>(null);
   const queueIdRef = useRef(1);
+  const recordingIdRef = useRef(1);
+  const [recordingEntries, setRecordingEntries] = useState<RecordingEntry[]>([]);
   const [_params, setParams] = useState<GenerationParams>(defaultParams);
   const [musicPrompt, setMusicPrompt] = useState('');
   const [musicPromptErrorMessage, setMusicPromptErrorMessage] = useState<
@@ -318,6 +327,20 @@ export function App() {
       void videoPlaybackRef.current?.play();
       setIsPlaying(true);
       startSeekPolling();
+    },
+    onFinalized: (buffer: ArrayBuffer) => {
+      const blob = new Blob([buffer], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      const timestamp = new Date().toISOString();
+      const filename = `recording-${timestamp}.mp4`;
+      const sizeInMb = parseFloat((blob.size / (1024 * 1024)).toFixed(2));
+      const entry: RecordingEntry = {
+        id: recordingIdRef.current++,
+        filename,
+        url,
+        sizeInMb
+      };
+      setRecordingEntries((prev) => [...prev, entry]);
     }
   });
 
@@ -1137,6 +1160,48 @@ export function App() {
                       );
                     })()}
                 </div>
+                {recordingEntries.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                      Recordings
+                    </h3>
+                    <ul className="space-y-2">
+                      {recordingEntries.map((rec) => (
+                        <li
+                          key={rec.id}
+                          data-testid={`recording-entry-${rec.id}`}
+                          className="rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3 text-sm"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 space-y-0.5">
+                              <p
+                                data-testid={`recording-filename-${rec.id}`}
+                                className="truncate font-semibold text-lofi-text"
+                              >
+                                {rec.filename}
+                              </p>
+                              <p
+                                data-testid={`recording-size-${rec.id}`}
+                                className="text-lofi-accentMuted"
+                              >
+                                {rec.sizeInMb} MB
+                              </p>
+                            </div>
+                            <a
+                              data-testid={`recording-download-${rec.id}`}
+                              href={rec.url}
+                              download={rec.filename}
+                              className="interactive-lift min-h-11 shrink-0 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                            >
+                              Download
+                            </a>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {queueEntries.length === 0 ? (
                   <p className="text-sm text-lofi-accentMuted">No generations yet.</p>
                 ) : (

@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -12,16 +13,20 @@ const mockStopRecording = vi.fn().mockResolvedValue(undefined);
 const mockIsRecording = { value: false };
 const mockIsFinalizing = { value: false };
 const mockRecorderError = { value: null as string | null };
+let capturedOnFinalized: ((buffer: ArrayBuffer) => void) | undefined;
 
 vi.mock('./hooks/use-recorder', () => ({
-  useRecorder: () => ({
-    isRecording: mockIsRecording.value,
-    isFinalizing: mockIsFinalizing.value,
-    startRecording: mockStartRecording,
-    stopRecording: mockStopRecording,
-    recordingError: mockRecorderError.value,
-    handlesRef: { current: { output: null, audioContext: null } }
-  })
+  useRecorder: (options: { onFinalized?: (buffer: ArrayBuffer) => void }) => {
+    capturedOnFinalized = options.onFinalized;
+    return {
+      isRecording: mockIsRecording.value,
+      isFinalizing: mockIsFinalizing.value,
+      startRecording: mockStartRecording,
+      stopRecording: mockStopRecording,
+      recordingError: mockRecorderError.value,
+      handlesRef: { current: { output: null, target: null, audioContext: null } }
+    };
+  }
 }));
 
 type VisualSceneProps = {
@@ -1324,6 +1329,90 @@ describe('Recording auto-stop and UI states (US-002)', () => {
 
     await waitFor(() => {
       expect(mockStartRecording).toHaveBeenCalled();
+    });
+  });
+
+  it('US-003-AC01+AC02: onFinalized creates a Blob and adds a recording entry to the queue with filename, size, and Download link', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/rec-1');
+
+    render(<App />);
+
+    // Trigger the onFinalized callback as the hook would after finalization
+    const buffer = new ArrayBuffer(2 * 1024 * 1024); // 2 MB
+    act(() => {
+      capturedOnFinalized?.(buffer);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const entry = screen.getByTestId('recording-entry-1');
+      expect(entry).toBeInTheDocument();
+
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toMatch(/^recording-.*\.mp4$/);
+
+      const size = screen.getByTestId('recording-size-1');
+      expect(size.textContent).toMatch(/MB/);
+
+      const downloadLink = screen.getByTestId('recording-download-1');
+      expect(downloadLink).toHaveAttribute('href', 'blob:http://localhost/rec-1');
+      expect(downloadLink).toHaveAttribute('download');
+      expect(downloadLink.getAttribute('download')).toMatch(/^recording-.*\.mp4$/);
+      expect(downloadLink.textContent?.trim()).toBe('Download');
+    });
+  });
+
+  it('US-003-AC04: multiple recordings each produce a separate queue entry', async () => {
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/rec-1')
+      .mockReturnValueOnce('blob:http://localhost/rec-2');
+
+    render(<App />);
+
+    const buffer1 = new ArrayBuffer(1024);
+    const buffer2 = new ArrayBuffer(2048);
+
+    act(() => {
+      capturedOnFinalized?.(buffer1);
+    });
+    act(() => {
+      capturedOnFinalized?.(buffer2);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-entry-1')).toBeInTheDocument();
+      expect(screen.getByTestId('recording-entry-2')).toBeInTheDocument();
+
+      expect(screen.getByTestId('recording-download-1')).toHaveAttribute(
+        'href',
+        'blob:http://localhost/rec-1'
+      );
+      expect(screen.getByTestId('recording-download-2')).toHaveAttribute(
+        'href',
+        'blob:http://localhost/rec-2'
+      );
+    });
+  });
+
+  it('US-003-AC03: Download link uses <a download> pattern', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/rec-dl');
+
+    render(<App />);
+
+    act(() => {
+      capturedOnFinalized?.(new ArrayBuffer(512));
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const link = screen.getByTestId('recording-download-1');
+      expect(link.tagName).toBe('A');
+      expect(link).toHaveAttribute('href', 'blob:http://localhost/rec-dl');
+      expect(link).toHaveAttribute('download');
     });
   });
 });
