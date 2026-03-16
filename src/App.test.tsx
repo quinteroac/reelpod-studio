@@ -1810,3 +1810,70 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     });
   });
 });
+
+describe('YouTube connection UI (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('US-001-AC01: shows Connect YouTube button when no account is connected', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    expect(screen.getByTestId('connect-youtube-button')).toBeInTheDocument();
+    expect(screen.getByTestId('connect-youtube-button')).toHaveTextContent(
+      'Connect YouTube'
+    );
+  });
+
+  it('US-001-AC03+US-001-AC04: shows connected state when OAuth token is present in localStorage', async () => {
+    localStorage.setItem(
+      'reelpod.youtube.oauth-token',
+      JSON.stringify({
+        accessToken: 'persisted-token',
+        tokenType: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/youtube.upload',
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-connected-state')).toHaveTextContent(
+        'YouTube Connected'
+      );
+      expect(screen.queryByTestId('connect-youtube-button')).not.toBeInTheDocument();
+    });
+  });
+
+  it('US-001-AC05: shows a user-visible error and stays disconnected when OAuth is cancelled', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/#error=access_denied&error_description=The+user+denied+the+request',
+    );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'YouTube connection was cancelled.'
+      );
+      expect(screen.getByTestId('connect-youtube-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('youtube-connected-state')).not.toBeInTheDocument();
+    });
+  });
+});

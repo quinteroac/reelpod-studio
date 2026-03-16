@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRecorder } from './hooks/use-recorder';
+import { useYouTubeAuth } from './hooks/use-youtube-auth';
 import type { SongParameters } from './mcp/parameter-store';
 import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
@@ -426,6 +427,12 @@ export function App() {
       void uploadRecordingToBackend(entryId, blob, filename);
     }
   });
+  const {
+    connectedLabel: youtubeConnectedLabel,
+    connectionErrorMessage: youtubeConnectionErrorMessage,
+    isConnected: isYouTubeConnected,
+    connectYouTube,
+  } = useYouTubeAuth();
 
   useEffect(() => {
     const channel = createLiveMirrorChannel();
@@ -1298,8 +1305,9 @@ export function App() {
                 aria-label="Generation queue"
                 className="reveal-rise space-y-3 rounded-sm border border-lofi-accent/35 bg-lofi-panel/92 p-4 shadow-[0_18px_34px_-26px_var(--color-lofi-shadow-ring)]"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-3">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
                       Queue
                     </h2>
@@ -1310,6 +1318,24 @@ export function App() {
                     >
                       Go Live
                     </button>
+                    {isYouTubeConnected ? (
+                      <span
+                        data-testid="youtube-connected-state"
+                        className="inline-flex min-h-11 items-center rounded-sm border border-emerald-300/70 bg-emerald-500/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-200"
+                      >
+                        YouTube {youtubeConnectedLabel}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="connect-youtube-button"
+                        className="interactive-lift min-h-11 rounded-sm border border-red-300/70 bg-red-950/30 px-3 py-2 text-xs font-bold uppercase tracking-[0.1em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-300"
+                        onClick={connectYouTube}
+                        aria-label="Connect YouTube"
+                      >
+                        Connect YouTube
+                      </button>
+                    )}
                     {isQueueRecordingActive ? (
                       <button
                         type="button"
@@ -1348,22 +1374,28 @@ export function App() {
                       </button>
                     )}
                   </div>
-                  {playingEntryId !== null &&
-                    (() => {
-                      const idx = queueEntries.findIndex(
-                        (e) => e.id === playingEntryId
-                      );
-                      const position = idx >= 0 ? idx + 1 : 0;
-                      const total = queueEntries.length;
-                      return (
-                        <span
-                          aria-live="polite"
-                          className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-sm font-semibold text-lofi-accent"
-                        >
-                          Track {position} of {total}
-                        </span>
-                      );
-                    })()}
+                    {playingEntryId !== null &&
+                      (() => {
+                        const idx = queueEntries.findIndex(
+                          (e) => e.id === playingEntryId
+                        );
+                        const position = idx >= 0 ? idx + 1 : 0;
+                        const total = queueEntries.length;
+                        return (
+                          <span
+                            aria-live="polite"
+                            className="rounded-full bg-lofi-accent/20 px-2.5 py-1 text-sm font-semibold text-lofi-accent"
+                          >
+                            Track {position} of {total}
+                          </span>
+                        );
+                      })()}
+                  </div>
+                  {youtubeConnectionErrorMessage && (
+                    <p role="alert" className="text-xs font-semibold text-red-100">
+                      {youtubeConnectionErrorMessage}
+                    </p>
+                  )}
                 </div>
                 {recordingEntries.length > 0 && (
                   <div className="space-y-2">
