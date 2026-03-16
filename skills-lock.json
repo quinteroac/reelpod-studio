@@ -90,6 +90,11 @@
       "source": "pbakaus/impeccable",
       "sourceType": "github",
       "computedHash": "61855594bf79bc5b2665cfca3580b93840cfe645872c5a2deeaa5ad336570d5a"
+    },
+    "zikon": {
+      "source": "quinteroac/zikon",
+      "sourceType": "github",
+      "computedHash": "36e48e8e386b4618915959e4d571f224e1339f9e4a5984d37dc1bd1eec72f747"
     }
   }
 }

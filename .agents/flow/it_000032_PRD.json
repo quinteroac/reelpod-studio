@@ -1,0 +1,105 @@
+{
+  "goals": [
+    "Allow the end user to connect their YouTube account via OAuth (YouTube Data API v3) from within the app.",
+    "Allow the end user to upload any completed recording (entries in the recording queue) to their connected YouTube channel with one click.",
+    "Display a YouTube link to the published video once the upload completes."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "User connects their YouTube account",
+      "description": "As a content creator, I want to authenticate with my YouTube account inside ReelPod Studio so that the app can upload videos on my behalf.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "A \"Connect YouTube\" button is visible in the UI (e.g. in a settings area or in the recording queue header) when no account is connected."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "Clicking \"Connect YouTube\" initiates the Google OAuth 2.0 consent flow using the YouTube Data API v3 scope (`https://www.googleapis.com/auth/youtube.upload`)."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "After successful authorization the button changes to a connected state (e.g. shows the channel name or a \"Connected\" label)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The OAuth token is persisted in the browser (localStorage or sessionStorage) so the user does not need to re-authenticate on every page reload within the same session."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "If authorization fails or is cancelled the UI shows a user-visible error message and returns to the disconnected state."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Visually verified in browser."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "User uploads a completed recording to YouTube",
+      "description": "As a content creator, I want to click \"Upload to YouTube\" on a completed recording in the queue so that the video is published to my YouTube channel without leaving the app.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "Each entry in the recording queue displays an \"Upload to YouTube\" button only when a YouTube account is connected."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "The button is only rendered for completed recordings (entries that already have a downloadable MP4 blob); it must not appear on in-progress or failed recordings."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Clicking the button starts a `resumable upload` (or direct upload) via the YouTube Data API v3 `videos.insert` endpoint using the stored OAuth token."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "During upload the button is replaced by a progress indicator (percentage or spinner) and is non-interactive."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "On success the progress indicator is replaced by a clickable YouTube URL that opens the video in a new tab."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "On failure a user-visible error message is shown next to the recording entry and the button is re-enabled so the user can retry."
+        },
+        {
+          "id": "US-002-AC07",
+          "text": "Typecheck / lint passes."
+        },
+        {
+          "id": "US-002-AC08",
+          "text": "Visually verified in browser."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "The app must use the YouTube Data API v3 for all YouTube interactions."
+    },
+    {
+      "id": "FR-2",
+      "description": "The OAuth flow must use Google's OAuth 2.0 authorization endpoint; client credentials (client ID) are configured via an environment variable (e.g. `VITE_YOUTUBE_CLIENT_ID`)."
+    },
+    {
+      "id": "FR-3",
+      "description": "Upload must target only recordings present in the recording queue (MP4 blobs produced by `use-recorder.ts`); no other files can be uploaded through this path."
+    },
+    {
+      "id": "FR-4",
+      "description": "The video metadata sent on upload must include at minimum a non-empty title (default: the recording filename) and a privacy status (default: `\"unlisted\"`)."
+    },
+    {
+      "id": "FR-5",
+      "description": "The stored OAuth token must be cleared/refreshed if a 401 response is received from the YouTube API, prompting the user to reconnect."
+    }
+  ]
+}
