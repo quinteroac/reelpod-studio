@@ -6,7 +6,7 @@ const {
   mockOutputStart,
   mockOutputAddVideoTrack,
   mockOutputAddAudioTrack,
-  mockOutputCancel,
+  _mockOutputCancel,
   mockOutputFinalize,
   MockOutput,
   MockMp4OutputFormat,
@@ -19,14 +19,14 @@ const {
   const mockOutputStart = vi.fn().mockResolvedValue(undefined);
   const mockOutputAddVideoTrack = vi.fn();
   const mockOutputAddAudioTrack = vi.fn();
-  const mockOutputCancel = vi.fn().mockResolvedValue(undefined);
+  const _mockOutputCancel = vi.fn().mockResolvedValue(undefined);
   const mockOutputFinalize = vi.fn().mockResolvedValue(undefined);
 
   const MockOutput = vi.fn().mockImplementation(() => ({
     start: mockOutputStart,
     addVideoTrack: mockOutputAddVideoTrack,
     addAudioTrack: mockOutputAddAudioTrack,
-    cancel: mockOutputCancel,
+    cancel: _mockOutputCancel,
     finalize: mockOutputFinalize,
     state: 'pending'
   }));
@@ -44,7 +44,7 @@ const {
     mockOutputStart,
     mockOutputAddVideoTrack,
     mockOutputAddAudioTrack,
-    mockOutputCancel,
+    _mockOutputCancel,
     mockOutputFinalize,
     MockOutput,
     MockMp4OutputFormat,

@@ -236,6 +236,7 @@ export function App() {
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [playingEntryId, setPlayingEntryId] = useState<number | null>(null);
+  const [isQueueRecordingActive, setIsQueueRecordingActive] = useState(false);
   const [activeVisualizerType, setActiveVisualizerType] =
     useState<VisualizerType>('none');
   const [enabledEffects, setEnabledEffects] = useState<
@@ -256,6 +257,13 @@ export function App() {
   const activeEffects = useMemo(
     () => effectOrder.filter((effect) => enabledEffects[effect]),
     [effectOrder, enabledEffects]
+  );
+  const hasCompletedQueueEntry = useMemo(
+    () =>
+      queueEntries.some(
+        (entry) => entry.status === 'completed' && entry.videoBlob !== null
+      ),
+    [queueEntries]
   );
   const selectedSocialFormat =
     socialFormatOptions.find((option) => option.id === socialFormatId) ??
@@ -654,9 +662,30 @@ export function App() {
           entryId: nextCompleted.id,
           onEnded: createQueueOnEnded(nextCompleted)
         });
+      } else {
+        setPlayingEntryId(null);
+        if (isQueueRecordingActive) {
+          void (async () => {
+            try {
+              await stopRecording();
+            } catch (error) {
+              setStatus('error');
+              setErrorMessage(getErrorMessage(error));
+            } finally {
+              setIsQueueRecordingActive(false);
+            }
+          })();
+        }
       }
     };
-  }, [queueEntries, createVideoPlaybackUrl, playVideoFromUrl, createQueueOnEnded]);
+  }, [
+    queueEntries,
+    createVideoPlaybackUrl,
+    playVideoFromUrl,
+    createQueueOnEnded,
+    isQueueRecordingActive,
+    stopRecording
+  ]);
 
   useEffect(() => {
     if (status === 'loading') {
@@ -735,6 +764,30 @@ export function App() {
     }
   }
 
+  async function handleDeleteQueueEntry(entry: QueueEntry): Promise<void> {
+    if (isQueueRecordingActive) {
+      try {
+        await handleStopQueueRecording();
+      } catch (error) {
+        setStatus('error');
+        setErrorMessage(getErrorMessage(error));
+      }
+    }
+
+    if (entry.id === playingEntryId) {
+      const video = videoPlaybackRef.current;
+      if (video) {
+        video.pause();
+        video.onended = null;
+      }
+      setIsPlaying(false);
+      setPlayingEntryId(null);
+      stopSeekPolling();
+    }
+
+    setQueueEntries((prev) => prev.filter((queuedEntry) => queuedEntry.id !== entry.id));
+  }
+
   async function handlePlay(): Promise<void> {
     try {
       await videoPlaybackRef.current?.play();
@@ -773,6 +826,49 @@ export function App() {
     setIsPlaying(false);
     stopSeekPolling();
     await stopRecording();
+  }
+
+  async function handleRecordQueue(): Promise<void> {
+    if (isQueueRecordingActive || isRecording || isFinalizing) {
+      return;
+    }
+
+    const firstCompletedEntry = queueEntries.find(
+      (entry) => entry.status === 'completed' && entry.videoBlob !== null
+    );
+    if (!firstCompletedEntry || !firstCompletedEntry.videoBlob) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsQueueRecordingActive(true);
+
+    try {
+      await startRecording();
+      const playbackUrl = createVideoPlaybackUrl(firstCompletedEntry.videoBlob);
+      setPlayingEntryId(firstCompletedEntry.id);
+      await playVideoFromUrl(playbackUrl, {
+        entryId: firstCompletedEntry.id,
+        onEnded: createQueueOnEnded(firstCompletedEntry)
+      });
+    } catch (error) {
+      setIsQueueRecordingActive(false);
+      setStatus('error');
+      setErrorMessage(getErrorMessage(error));
+    }
+  }
+
+  async function handleStopQueueRecording(): Promise<void> {
+    if (!isQueueRecordingActive || isFinalizing) {
+      return;
+    }
+
+    try {
+      await handleStop();
+    } finally {
+      setIsQueueRecordingActive(false);
+      setPlayingEntryId(null);
+    }
   }
 
   function handlePause(): void {
@@ -1145,6 +1241,43 @@ export function App() {
                     >
                       Go Live
                     </button>
+                    {isQueueRecordingActive ? (
+                      <button
+                        type="button"
+                        data-testid="queue-stop-recording-button"
+                        className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-xs font-bold uppercase tracking-[0.1em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void handleStopQueueRecording()}
+                        aria-label="Stop queue recording"
+                        disabled={isFinalizing}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className="h-2.5 w-2.5 rounded-sm bg-red-500"
+                          />
+                          Stop Recording
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="record-queue-button"
+                        className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-xs font-bold uppercase tracking-[0.1em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void handleRecordQueue()}
+                        disabled={
+                          !hasCompletedQueueEntry || isRecording || isFinalizing
+                        }
+                        aria-label="Record queue"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className="h-2.5 w-2.5 rounded-full bg-red-500"
+                          />
+                          Record Queue
+                        </span>
+                      </button>
+                    )}
                   </div>
                   {playingEntryId !== null &&
                     (() => {
@@ -1278,7 +1411,15 @@ export function App() {
                             </span>
                           </div>
                           {isCompleted && entry.videoBlob && (
-                            <div className="mt-2 flex justify-end">
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                aria-label={`Delete entry ${trackNumber}`}
+                                className="interactive-lift min-h-11 min-w-11 rounded-sm border border-red-400/75 bg-red-950/35 px-3 py-2 text-base font-semibold leading-none text-red-100 outline-none transition hover:bg-red-900/45 focus-visible:ring-2 focus-visible:ring-red-300"
+                                onClick={() => void handleDeleteQueueEntry(entry)}
+                              >
+                                ×
+                              </button>
                               <button
                                 type="button"
                                 aria-label={`Play generation ${entry.id}`}
@@ -1286,6 +1427,18 @@ export function App() {
                                 onClick={() => void handlePlayQueueEntry(entry)}
                               >
                                 Play
+                              </button>
+                            </div>
+                          )}
+                          {!isCompleted && !isGenerating && (
+                            <div className="mt-2 flex justify-end">
+                              <button
+                                type="button"
+                                aria-label={`Delete entry ${trackNumber}`}
+                                className="interactive-lift min-h-11 min-w-11 rounded-sm border border-red-400/75 bg-red-950/35 px-3 py-2 text-base font-semibold leading-none text-red-100 outline-none transition hover:bg-red-900/45 focus-visible:ring-2 focus-visible:ring-red-300"
+                                onClick={() => void handleDeleteQueueEntry(entry)}
+                              >
+                                ×
                               </button>
                             </div>
                           )}
@@ -1477,7 +1630,7 @@ export function App() {
                     data-testid="record-button"
                     className="interactive-lift min-h-11 rounded-sm border border-red-500/70 bg-red-950/30 px-3 py-2 text-sm font-bold uppercase tracking-[0.12em] text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60"
                     onClick={() => void handleRecord()}
-                    disabled={!activeVideoUrl || isFinalizing}
+                    disabled={!activeVideoUrl || isFinalizing || isQueueRecordingActive}
                     aria-label="Record canvas and audio to MP4"
                   >
                     <span className="inline-flex items-center gap-2">

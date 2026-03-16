@@ -59,6 +59,11 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
   const streamingTextureRef = useRef<THREE.Texture | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- Three.js texture mutation is intentional; colorSpace must be set after useLoader resolves
+    if (fallbackTexture) fallbackTexture.colorSpace = THREE.SRGBColorSpace;
+  }, [fallbackTexture]);
+
+  useEffect(() => {
     return () => {
       loadedTextureRef.current?.dispose();
       streamingTextureRef.current?.dispose();
@@ -89,6 +94,7 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
           tex.minFilter = THREE.LinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.generateMipmaps = false;
+          tex.colorSpace = THREE.SRGBColorSpace;
           streamingTextureRef.current = tex;
         } else {
           tex.image = img;
@@ -113,6 +119,7 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
         tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
         tex.generateMipmaps = false;
+        tex.colorSpace = THREE.SRGBColorSpace;
         setLoadedImageTexture((prev) => {
           loadedImageUrlRef.current = imageUrl;
           if (prev && prev !== streamingTextureRef.current) prev.dispose();
@@ -142,6 +149,7 @@ function SceneContent({ imageUrl, videoUrl, videoElement, audioCurrentTime, audi
     nextTexture.minFilter = THREE.LinearFilter;
     nextTexture.magFilter = THREE.LinearFilter;
     nextTexture.generateMipmaps = false;
+    nextTexture.colorSpace = THREE.SRGBColorSpace;
     return nextTexture;
   }, [videoElement, videoUrl]);
   const { viewport } = useThree();

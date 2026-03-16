@@ -2,11 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { ParameterStore, type SongParameters } from './parameter-store';
 
 const validParams: SongParameters = {
-  mood: 'chill',
-  tempo: 90,
-  style: 'jazz',
   duration: 60,
-  mode: 'parameters',
+  mode: 'llm',
   prompt: 'a mellow jazz track',
 };
 
@@ -43,7 +40,7 @@ describe('ParameterStore', () => {
   it('overwrites previous parameters', () => {
     const store = new ParameterStore();
     store.set(validParams);
-    const updated: SongParameters = { ...validParams, tempo: 120, mood: 'upbeat' };
+    const updated: SongParameters = { ...validParams, duration: 120 };
     store.set(updated);
     expect(store.get()).toEqual(updated);
   });

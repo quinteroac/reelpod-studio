@@ -14,15 +14,12 @@ const mockIsRecording = { value: false };
 const mockIsFinalizing = { value: false };
 const mockRecorderError = { value: null as string | null };
 let capturedOnFinalized:
-  | ((buffer: ArrayBuffer, meta: { mimeType: string; fileExtension: string }) => void)
+  | ((blob: Blob, meta: { mimeType: string; fileExtension: string }) => void)
   | undefined;
 
 vi.mock('./hooks/use-recorder', () => ({
   useRecorder: (options: {
-    onFinalized?: (
-      buffer: ArrayBuffer,
-      meta: { mimeType: string; fileExtension: string }
-    ) => void;
+    onFinalized?: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => void;
   }) => {
     capturedOnFinalized = options.onFinalized;
     return {
@@ -142,6 +139,20 @@ function setViewportWidth(width: number): void {
     value: width
   });
   window.dispatchEvent(new Event('resize'));
+}
+
+async function enqueueAndCompleteGeneration(prompt: string): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Creative brief'), {
+    target: { value: prompt }
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+  await waitFor(() => {
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+      'data-status',
+      'completed'
+    );
+  });
 }
 
 describe('App unified generate flow (US-003)', () => {
@@ -563,6 +574,70 @@ describe('App unified generate flow (US-003)', () => {
       expect(revokeObjectURLSpy).toHaveBeenCalledWith(
         'blob:http://localhost/generated-video-url-1'
       );
+    });
+  });
+
+  it('US-004-AC01 + US-004-AC05: renders a delete button on each queue entry with an accessible label', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('delete button coverage');
+
+    const deleteButton = screen.getByRole('button', { name: 'Delete entry 1' });
+    expect(deleteButton).toBeInTheDocument();
+    expect(deleteButton).toHaveTextContent('×');
+  });
+
+  it('US-004-AC02: removes a queue entry immediately after clicking delete', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('remove queue entry');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete entry 1' }));
+    expect(screen.queryByTestId('queue-entry-1')).not.toBeInTheDocument();
+  });
+
+  it('US-004-AC03: deleting the currently playing entry pauses playback and clears current playing state', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('delete currently playing');
+
+    await waitFor(() => {
+      expect(screen.getByText('Track 1 of 1')).toBeInTheDocument();
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    expect(playbackVideo.paused).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete entry 1' }));
+
+    expect(playbackVideo.paused).toBe(true);
+    expect(screen.queryByText('Track 1 of 1')).not.toBeInTheDocument();
+  });
+
+  it('US-004-AC04: stops queue recording before removing the deleted entry', async () => {
+    render(<App />);
+    await enqueueAndCompleteGeneration('delete while queue recording');
+
+    let resolveStopRecording: (() => void) | undefined;
+    const pendingStopRecording = new Promise<void>((resolve) => {
+      resolveStopRecording = resolve;
+    });
+    mockStopRecording.mockImplementationOnce(() => pendingStopRecording);
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-stop-recording-button')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete entry 1' }));
+
+    expect(mockStopRecording).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('queue-entry-1')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveStopRecording?.();
+      await pendingStopRecording;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('queue-entry-1')).not.toBeInTheDocument();
     });
   });
 });
@@ -1191,6 +1266,231 @@ describe('App queue playback binding (US-006)', () => {
   });
 });
 
+describe('Queue recording controls (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    let createdUrlIndex = 0;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => {
+      createdUrlIndex += 1;
+      return `blob:http://localhost/generated-video-url-${createdUrlIndex}`;
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  async function renderWithTwoCompletedEntries(): Promise<void> {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'first queue clip' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'second queue clip' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+    });
+  }
+
+  it('AC01+AC02: shows Record Queue in queue header and enables only when completed entries are available', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    const recordQueueButton = screen.getByTestId('record-queue-button');
+    expect(recordQueueButton).toBeInTheDocument();
+    expect(recordQueueButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Music Generation' }));
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'queue-ready clip' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed'
+      );
+      expect(screen.getByTestId('record-queue-button')).toBeEnabled();
+    });
+  });
+
+  it('AC03+AC04: starts recorder and plays completed entries sequentially from the top of the queue', async () => {
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play generation 2' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    act(() => {
+      playbackVideo.onended?.(new Event('ended'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+  });
+
+  it('US-003-AC01: clicking Stop Recording during queue-recording pauses playback and calls stopRecording', async () => {
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-stop-recording-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('record-queue-button')).not.toBeInTheDocument();
+      expect(screen.getByTestId('record-button')).toBeDisabled();
+    });
+
+    const stopQueueButton = screen.getByTestId('queue-stop-recording-button');
+    expect(stopQueueButton.className).toContain('border-red-500/70');
+    expect(within(stopQueueButton).getByText('Stop Recording')).toBeInTheDocument();
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+    Object.defineProperty(playbackVideo, 'paused', {
+      configurable: true,
+      value: false
+    });
+
+    fireEvent.click(stopQueueButton);
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(playbackVideo.paused).toBe(true);
+    });
+  });
+
+  it('US-003-AC02+US-003-AC03: stopping queue-recording early finalizes a partial file and restores Record Queue', async () => {
+    mockStopRecording.mockImplementation(async () => {
+      capturedOnFinalized?.(
+        new Blob([new Uint8Array(1024)], { type: 'video/mp4' }),
+        {
+          mimeType: 'video/mp4',
+          fileExtension: '.mp4'
+        }
+      );
+    });
+
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-stop-recording-button')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('queue-stop-recording-button'));
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('record-queue-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('queue-stop-recording-button')).not.toBeInTheDocument();
+      expect(screen.getByTestId('recording-entry-1')).toBeInTheDocument();
+    });
+  });
+
+  it('US-002-AC01+AC02+AC03: when last completed entry ends during queue recording, it auto-stops, finalizes, and restores Record Queue button', async () => {
+    vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:http://localhost/generated-video-url-1')
+      .mockReturnValueOnce('blob:http://localhost/generated-video-url-2')
+      .mockReturnValueOnce('blob:http://localhost/queue-recording-finalized');
+
+    mockStopRecording.mockImplementation(async () => {
+      capturedOnFinalized?.(
+        new Blob([new Uint8Array(3 * 1024 * 1024)], { type: 'video/mp4' }),
+        {
+          mimeType: 'video/mp4',
+          fileExtension: '.mp4'
+        }
+      );
+    });
+
+    await renderWithTwoCompletedEntries();
+
+    fireEvent.click(screen.getByTestId('record-queue-button'));
+
+    await waitFor(() => {
+      expect(mockStartRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+    });
+
+    const playbackVideo = screen.getByTestId('playback-video') as HTMLVideoElement;
+
+    // End first completed entry -> second starts, recording continues.
+    act(() => {
+      playbackVideo.onended?.(new Event('ended'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('queue-entry-2')).toHaveAttribute(
+        'data-playing',
+        'true'
+      );
+      expect(mockStopRecording).toHaveBeenCalledTimes(0);
+    });
+
+    // End last completed entry -> queue recording auto-stops and finalizes.
+    act(() => {
+      playbackVideo.onended?.(new Event('ended'));
+    });
+
+    await waitFor(() => {
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('record-queue-button')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('queue-stop-recording-button')
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('recording-entry-1')).toBeInTheDocument();
+      expect(screen.getByTestId('recording-download-1')).toHaveAttribute(
+        'download'
+      );
+    });
+  });
+});
+
 describe('Record button (US-001)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -1418,9 +1718,11 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     render(<App />);
 
     // Trigger the onFinalized callback as the hook would after finalization
-    const buffer = new ArrayBuffer(2 * 1024 * 1024); // 2 MB
+    const blob = new Blob([new Uint8Array(2 * 1024 * 1024)], {
+      type: 'video/mp4'
+    }); // 2 MB
     act(() => {
-      capturedOnFinalized?.(buffer, {
+      capturedOnFinalized?.(blob, {
         mimeType: 'video/mp4',
         fileExtension: '.mp4'
       });
@@ -1453,17 +1755,17 @@ describe('Recording auto-stop and UI states (US-002)', () => {
 
     render(<App />);
 
-    const buffer1 = new ArrayBuffer(1024);
-    const buffer2 = new ArrayBuffer(2048);
+    const blob1 = new Blob([new Uint8Array(1024)], { type: 'video/mp4' });
+    const blob2 = new Blob([new Uint8Array(2048)], { type: 'video/mp4' });
 
     act(() => {
-      capturedOnFinalized?.(buffer1, {
+      capturedOnFinalized?.(blob1, {
         mimeType: 'video/mp4',
         fileExtension: '.mp4'
       });
     });
     act(() => {
-      capturedOnFinalized?.(buffer2, {
+      capturedOnFinalized?.(blob2, {
         mimeType: 'video/mp4',
         fileExtension: '.mp4'
       });
@@ -1492,7 +1794,7 @@ describe('Recording auto-stop and UI states (US-002)', () => {
     render(<App />);
 
     act(() => {
-      capturedOnFinalized?.(new ArrayBuffer(512), {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
         mimeType: 'video/mp4',
         fileExtension: '.mp4'
       });

@@ -10,7 +10,7 @@ import type { EffectProps } from './types';
  * mesh material opacity.  The flicker cadence uses layered sine waves
  * so the rhythm feels natural rather than mechanical.
  */
-export function FlickerEffect({ isPlaying, texture }: EffectProps) {
+export function FlickerEffect({ isPlaying, texture: _texture }: EffectProps) {
     const timeRef = useRef(0);
     const meshRef = useRef<THREE.Mesh>(null);
     // Random phase offsets so each session starts with a unique color

@@ -51,11 +51,9 @@ describe('useAgentParameters', () => {
     renderHook(() => useAgentParameters({ onParametersUpdate: callback }));
 
     const params: SongParameters = {
-      mood: 'upbeat',
-      tempo: 100,
-      style: 'hip-hop',
       duration: 120,
-      mode: 'parameters',
+      mode: 'llm',
+      prompt: 'hip-hop track',
     };
     MockEventSource.instances[0].simulateMessage(JSON.stringify(params));
 
