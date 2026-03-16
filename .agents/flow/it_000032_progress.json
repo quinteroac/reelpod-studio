@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "use_case_id": "US-001",
+      "status": "failed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 1,
+      "quality_checks": [],
+      "last_error_summary": "Agent or quality check failed",
+      "updated_at": "2026-03-16T20:18:18.015Z",
+      "audit_artifact_path": ".agents/flow/it_000032_audit.json",
+      "refactor_report_path": ".agents/flow/it_000032_refactor-report.md"
+    },
+    {
+      "use_case_id": "US-002",
+      "status": "failed",
+      "attempt_count": 1,
+      "last_agent_exit_code": 1,
+      "quality_checks": [],
+      "last_error_summary": "Agent or quality check failed",
+      "updated_at": "2026-03-16T20:18:18.723Z",
+      "audit_artifact_path": ".agents/flow/it_000032_audit.json",
+      "refactor_report_path": ".agents/flow/it_000032_refactor-report.md"
+    }
+  ]
+}
