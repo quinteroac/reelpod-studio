@@ -93,6 +93,15 @@ def startup() -> None:
         image_pipeline = None
         image_model_load_error = str(exc)
 
+    try:
+        image_repository.ensure_realesrgan_anime_weights()
+        logger.info("Real-ESRGAN startup weights check completed")
+    except Exception as exc:  # pragma: no cover - startup fallback safety
+        logger.error(
+            "Real-ESRGAN startup weights check failed; continuing without guaranteed upscaling: %s",
+            exc,
+        )
+
 
 def generate_image_png(body: GenerateImageRequestBody) -> bytes:
     if image_pipeline is None:

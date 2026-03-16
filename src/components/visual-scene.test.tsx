@@ -92,6 +92,66 @@ describe('VisualScene', () => {
     expect(screen.getByTestId('visual-image-plane')).toHaveAttribute('data-texture-source', 'video');
   });
 
+  it.each([
+    {
+      label: '16:9',
+      viewport: { width: 8, height: 4.5 },
+      video: { width: 1920, height: 1080 }
+    },
+    {
+      label: '9:16',
+      viewport: { width: 4.5, height: 8 },
+      video: { width: 1080, height: 1920 }
+    },
+    {
+      label: '1:1',
+      viewport: { width: 6, height: 6 },
+      video: { width: 1080, height: 1080 }
+    }
+  ])(
+    'fills the viewport without letterboxing when video and container share $label aspect ratio',
+    ({ viewport, video }) => {
+      useThreeMock.mockReturnValue({ viewport });
+
+      const videoElement = document.createElement('video');
+      Object.defineProperty(videoElement, 'videoWidth', {
+        configurable: true,
+        value: video.width
+      });
+      Object.defineProperty(videoElement, 'videoHeight', {
+        configurable: true,
+        value: video.height
+      });
+
+      render(
+        <VisualScene
+          imageUrl={null}
+          videoUrl="blob:http://localhost/generated-video"
+          videoElement={videoElement}
+          audioCurrentTime={3}
+          audioDuration={40}
+          isPlaying={true}
+          aspectRatio={video.width / video.height}
+          visualizerType="none"
+          effects={['none']}
+        />
+      );
+
+      expect(screen.getByTestId('visual-image-plane')).toHaveAttribute(
+        'data-plane-width',
+        viewport.width.toFixed(3)
+      );
+      expect(screen.getByTestId('visual-image-plane')).toHaveAttribute(
+        'data-plane-height',
+        viewport.height.toFixed(3)
+      );
+      expect(screen.getByTestId('visual-image-plane')).toHaveAttribute(
+        'data-texture-source',
+        'video'
+      );
+    }
+  );
+
   it('shows a visible waveform overlay in the scene', () => {
     render(
       <VisualScene

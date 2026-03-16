@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
+import logging
 import os
 import sys
-import time
+import urllib.request
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -22,6 +22,8 @@ from models.constants import (
     REAL_ESRGAN_ANIME_WEIGHTS_URL,
     REAL_ESRGAN_SCALE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AnimaComfyPipeline(NamedTuple):
@@ -167,21 +169,71 @@ def _get_realesrgan_weights_dir() -> Path:
 
 
 def _ensure_realesrgan_anime_weights() -> Path:
-    """Ensure RealESRGAN_x4plus_anime_6B.pth exists under backend/.realesrgan/, downloading if needed."""
+    """Ensure Real-ESRGAN anime weights exist under backend/.realesrgan/, downloading if needed."""
     weights_dir = _get_realesrgan_weights_dir()
     weights_path = weights_dir / REAL_ESRGAN_ANIME_WEIGHTS_FILENAME
     if weights_path.is_file():
+        logger.info("Real-ESRGAN weights already available at %s", weights_path)
         return weights_path
-    weights_dir.mkdir(parents=True, exist_ok=True)
-    from basicsr.utils.download_util import load_file_from_url
 
-    load_file_from_url(
-        url=REAL_ESRGAN_ANIME_WEIGHTS_URL,
-        model_dir=str(weights_dir),
-        progress=True,
-        file_name=REAL_ESRGAN_ANIME_WEIGHTS_FILENAME,
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    _download_realesrgan_weights(
+        download_url=REAL_ESRGAN_ANIME_WEIGHTS_URL,
+        destination=weights_path,
     )
     return weights_path
+
+
+def _download_realesrgan_weights(download_url: str, destination: Path) -> None:
+    temp_destination = destination.with_suffix(destination.suffix + ".part")
+    downloaded_bytes = 0
+    next_progress_mark = 0.1
+
+    try:
+        with urllib.request.urlopen(download_url) as response, temp_destination.open("wb") as output:
+            content_length = response.headers.get("Content-Length")
+            total_size = int(content_length) if content_length else 0
+            if total_size > 0:
+                logger.info(
+                    "Downloading Real-ESRGAN weights to %s (%d bytes total)",
+                    destination,
+                    total_size,
+                )
+            else:
+                logger.info("Downloading Real-ESRGAN weights to %s (unknown size)", destination)
+
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                downloaded_bytes += len(chunk)
+
+                if total_size > 0:
+                    completion = downloaded_bytes / total_size
+                    if completion >= next_progress_mark or downloaded_bytes == total_size:
+                        logger.info(
+                            "Real-ESRGAN weights download progress: %d/%d bytes (%.1f%%)",
+                            downloaded_bytes,
+                            total_size,
+                            min(completion * 100.0, 100.0),
+                        )
+                        next_progress_mark += 0.1
+                else:
+                    logger.info(
+                        "Real-ESRGAN weights download progress: %d bytes downloaded",
+                        downloaded_bytes,
+                    )
+    except Exception:
+        if temp_destination.exists():
+            temp_destination.unlink()
+        raise
+
+    temp_destination.replace(destination)
+
+
+def ensure_realesrgan_anime_weights() -> Path:
+    return _ensure_realesrgan_anime_weights()
 
 
 def _apply_torchvision_compat_shim() -> None:
@@ -209,7 +261,7 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
     from PIL import Image
     from realesrgan import RealESRGANer
 
-    weights_path = _ensure_realesrgan_anime_weights()
+    weights_path = ensure_realesrgan_anime_weights()
     model = RRDBNet(
         num_in_ch=3,
         num_out_ch=3,
@@ -218,20 +270,12 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
         num_grow_ch=32,
         scale=REAL_ESRGAN_SCALE,
     )
-    mem_before: dict[str, int] | None = None
-    mem_after: dict[str, int] | None = None
-    mem_after_empty: dict[str, int] | None = None
     torch_mod: Any | None = None
     try:
         import torch as _torch
 
         torch_mod = _torch
-        if _torch.cuda.is_available():
-            free, total = _torch.cuda.mem_get_info()
-            mem_before = {"free": int(free), "total": int(total)}
-            gpu_id = 0
-        else:
-            gpu_id = None
+        gpu_id = 0 if _torch.cuda.is_available() else None
     except ImportError:
         gpu_id = None
     upsampler = RealESRGANer(
@@ -253,46 +297,12 @@ def upscale_image_with_realesrgan_anime(image: Any) -> Any:
     out_pil = Image.fromarray(output_rgb).convert("RGB").copy()
     if torch_mod is not None and getattr(torch_mod, "cuda", None) is not None and torch_mod.cuda.is_available():
         try:
-            free2, total2 = torch_mod.cuda.mem_get_info()
-            mem_after = {"free": int(free2), "total": int(total2)}
-        except Exception:
-            mem_after = None
-        try:
             # Explicitly release references and empty CUDA cache to offload VRAM between requests.
             del upsampler, model, bgr, rgb, output_bgr, output_rgb
         except Exception:
             pass
         try:
             torch_mod.cuda.empty_cache()
-            free3, total3 = torch_mod.cuda.mem_get_info()
-            mem_after_empty = {"free": int(free3), "total": int(total3)}
         except Exception:
-            mem_after_empty = None
-    # #region agent log
-    _out_w, _out_h = out_pil.size
-    _log_path = Path(__file__).resolve().parent.parent.parent / ".cursor" / "debug.log"  # backend/repositories -> workspace
-    try:
-        _log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(_log_path, "a") as _f:
-            _f.write(
-                json.dumps(
-                    {
-                        "timestamp": int(time.time() * 1000),
-                        "location": "image_repository.py:upscale_exit",
-                        "message": "realesrgan exit",
-                        "data": {
-                            "input_size": [in_w, in_h],
-                            "output_size": [_out_w, _out_h],
-                            "mem_before": mem_before,
-                            "mem_after": mem_after,
-                            "mem_after_empty": mem_after_empty,
-                        },
-                        "hypothesisId": "H4",
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # #endregion
+            pass
     return out_pil

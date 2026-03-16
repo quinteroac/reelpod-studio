@@ -34,8 +34,8 @@
         "file": null
       },
       "project_context": {
-        "status": "pending",
-        "file": null
+        "status": "pending_approval",
+        "file": ".agents/PROJECT_CONTEXT.md"
       },
       "test_plan": {
         "status": "pending",

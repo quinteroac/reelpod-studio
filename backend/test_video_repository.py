@@ -7,6 +7,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+import numpy as np
 
 from models import constants
 from repositories import video_repository
@@ -261,3 +262,204 @@ def test_constants_define_comfy_sampling_params() -> None:
     assert constants.WAN_COMFY_CFG == 7.0
     assert constants.WAN_COMFY_SAMPLER == "euler"
     assert constants.WAN_COMFY_SCHEDULER == "normal"
+
+
+def test_build_realesrgan_video_upsampler_uses_srvgg_and_tile_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+    class FakeTorch:
+        cuda = FakeCuda()
+
+    class FakeUpsampler:
+        def enhance(self, img: Any, outscale: int = 4) -> tuple[Any, int]:
+            return img, outscale
+
+    def fake_srvgg(**kwargs: Any) -> object:
+        seen["srvgg_kwargs"] = kwargs
+        return object()
+
+    def fake_realesrganer(*, scale: int, model_path: str, model: Any, **kwargs: Any) -> FakeUpsampler:
+        seen["scale"] = scale
+        seen["model_path"] = model_path
+        seen["realesrgan_kwargs"] = kwargs
+        return FakeUpsampler()
+
+    fake_realesrgan_module = ModuleType("realesrgan")
+    fake_realesrgan_module.RealESRGANer = fake_realesrganer
+    fake_realesrgan_arch_module = ModuleType("realesrgan.archs.srvgg_arch")
+    fake_realesrgan_arch_module.SRVGGNetCompact = fake_srvgg
+
+    monkeypatch.setattr(video_repository, "_apply_torchvision_compat_shim", lambda: None)
+    monkeypatch.setitem(sys.modules, "torch", FakeTorch())
+    monkeypatch.setitem(sys.modules, "realesrgan", fake_realesrgan_module)
+    monkeypatch.setitem(sys.modules, "realesrgan.archs.srvgg_arch", fake_realesrgan_arch_module)
+    monkeypatch.setattr(
+        "repositories.image_repository.ensure_realesrgan_anime_weights",
+        lambda: Path("/tmp/realesr-animevideov3.pth"),
+    )
+
+    config = video_repository.build_realesrgan_video_upsampler(tile=256, tile_pad=10)
+
+    assert config.gpu_id == 0
+    assert config.half is True
+    assert seen["srvgg_kwargs"] == {
+        "num_in_ch": 3,
+        "num_out_ch": 3,
+        "num_feat": 64,
+        "num_conv": 16,
+        "upscale": 4,
+        "act_type": "prelu",
+    }
+    assert seen["scale"] == 4
+    assert seen["model_path"] == "/tmp/realesr-animevideov3.pth"
+    assert seen["realesrgan_kwargs"]["tile"] == 256
+    assert seen["realesrgan_kwargs"]["tile_pad"] == 10
+
+
+def test_build_realesrgan_video_upsampler_falls_back_to_cpu_without_half(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    class FakeTorch:
+        cuda = FakeCuda()
+
+    def fake_realesrganer(*, scale: int, model_path: str, model: Any, **kwargs: Any) -> object:
+        seen["kwargs"] = kwargs
+        return object()
+
+    fake_realesrgan_module = ModuleType("realesrgan")
+    fake_realesrgan_module.RealESRGANer = fake_realesrganer
+    fake_realesrgan_arch_module = ModuleType("realesrgan.archs.srvgg_arch")
+    fake_realesrgan_arch_module.SRVGGNetCompact = lambda **kwargs: object()
+
+    monkeypatch.setattr(video_repository, "_apply_torchvision_compat_shim", lambda: None)
+    monkeypatch.setitem(sys.modules, "torch", FakeTorch())
+    monkeypatch.setitem(sys.modules, "realesrgan", fake_realesrgan_module)
+    monkeypatch.setitem(sys.modules, "realesrgan.archs.srvgg_arch", fake_realesrgan_arch_module)
+    monkeypatch.setattr(
+        "repositories.image_repository.ensure_realesrgan_anime_weights",
+        lambda: Path("/tmp/realesr-animevideov3.pth"),
+    )
+
+    config = video_repository.build_realesrgan_video_upsampler()
+
+    assert config.gpu_id is None
+    assert config.half is False
+    assert seen["kwargs"]["half"] is False
+    assert seen["kwargs"]["gpu_id"] is None
+
+
+def test_upscale_video_with_realesrgan_and_resize_upscales_4x_then_lanczos_to_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    seen: dict[str, Any] = {}
+    encoded_frames: list[Any] = []
+
+    class FakeUpsampler:
+        def enhance(self, img: Any, outscale: int = 4) -> tuple[Any, int]:
+            seen["enhance_input_shape"] = img.shape
+            seen["outscale"] = outscale
+            h, w = img.shape[:2]
+            upscaled = np.zeros((h * outscale, w * outscale, 3), dtype=np.uint8)
+            upscaled[:, :, 0] = 10
+            return upscaled, outscale
+
+    class FakeRate:
+        def __float__(self) -> float:
+            return 16.0
+
+    class FakeInputVideoStream:
+        average_rate = FakeRate()
+
+    class FakeInputContainer:
+        streams = type("Streams", (), {"video": [FakeInputVideoStream()]})()
+
+        def decode(self, stream: object):
+            arr = np.zeros((832, 480, 3), dtype=np.uint8)
+            yield type("FakeFrame", (), {"to_ndarray": lambda self, format="rgb24": arr})()
+
+        def close(self) -> None:
+            return None
+
+    class FakeOutputStream:
+        def __init__(self) -> None:
+            self.width = 0
+            self.height = 0
+            self.pix_fmt = ""
+
+        def encode(self, frame: Any | None = None) -> list[str]:
+            if frame is not None:
+                encoded_frames.append(frame)
+                return ["packet1"]
+            return ["flush"]
+
+    class FakeOutputContainer:
+        def __init__(self) -> None:
+            self.stream = FakeOutputStream()
+
+        def add_stream(self, codec: str, rate: float) -> FakeOutputStream:
+            seen["codec"] = codec
+            seen["rate"] = rate
+            return self.stream
+
+        def mux(self, packet: str) -> None:
+            seen.setdefault("packets", []).append(packet)
+
+        def close(self) -> None:
+            return None
+
+    fake_in = FakeInputContainer()
+    fake_out = FakeOutputContainer()
+
+    def fake_av_open(path: str, mode: str = "r") -> object:
+        if mode == "w":
+            return fake_out
+        return fake_in
+
+    def fake_from_ndarray(arr: np.ndarray, format: str = "rgb24") -> object:
+        seen["encoded_frame_shape"] = arr.shape
+        seen["encoded_frame_format"] = format
+        return {"arr": arr}
+
+    monkeypatch.setattr(
+        video_repository,
+        "build_realesrgan_video_upsampler",
+        lambda tile=256, tile_pad=10: video_repository.RealEsrganVideoUpsamplerConfig(
+            upsampler=FakeUpsampler(),
+            gpu_id=0,
+            half=True,
+        ),
+    )
+    fake_av_module = ModuleType("av")
+    fake_av_module.open = fake_av_open
+    fake_video_frame_cls = type("FakeVideoFrame", (), {"from_ndarray": staticmethod(fake_from_ndarray)})
+    fake_av_module.VideoFrame = fake_video_frame_cls
+    monkeypatch.setitem(sys.modules, "av", fake_av_module)
+
+    video_repository.upscale_video_with_realesrgan_and_resize(
+        tmp_path / "in.mp4",
+        tmp_path / "out.mp4",
+        target_width=1080,
+        target_height=1920,
+    )
+
+    assert seen["outscale"] == 4
+    assert seen["enhance_input_shape"] == (832, 480, 3)
+    assert seen["encoded_frame_shape"] == (1920, 1080, 3)
+    assert seen["encoded_frame_format"] == "rgb24"
+    assert seen["codec"] == "libx264"
+    assert encoded_frames
