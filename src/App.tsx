@@ -36,11 +36,15 @@ type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 type QueueEntryStatus = 'queued' | 'generating' | 'completed' | 'failed';
 type ToggleableEffectType = Exclude<EffectType, 'none'>;
 
+type RecordingBackendStatus = 'uploading' | 'converting' | 'ready' | 'error';
+
 interface RecordingEntry {
   id: number;
   filename: string;
-  url: string;
   sizeInMb: number;
+  backendStatus: RecordingBackendStatus;
+  mp4Url: string | null;
+  errorMessage: string | null;
 }
 
 interface QueueEntry {
@@ -335,6 +339,66 @@ export function App() {
     canvasRef.current = canvas;
   }, []);
 
+  const uploadRecordingToBackend = useCallback(
+    async (entryId: number, blob: Blob, filename: string): Promise<void> => {
+      setRecordingEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === entryId
+            ? { ...entry, backendStatus: 'uploading', errorMessage: null }
+            : entry,
+        ),
+      );
+
+      try {
+        const formData = new FormData();
+        formData.append('file', blob, filename);
+
+        const response = await fetch('/api/recordings/convert-mp4', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          let message = `Export failed with status ${response.status}`;
+          try {
+            const payload: unknown = await response.json();
+            if (typeof payload === 'object' && payload !== null) {
+              const record = payload as Record<string, unknown>;
+              const candidate = record.error ?? record.detail;
+              if (typeof candidate === 'string' && candidate.trim().length > 0) {
+                message = candidate.trim();
+              }
+            }
+          } catch {
+            // ignore JSON parse errors
+          }
+          throw new Error(message);
+        }
+
+        const mp4Blob = await response.blob();
+        const mp4Url = URL.createObjectURL(mp4Blob);
+
+        setRecordingEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === entryId
+              ? { ...entry, backendStatus: 'ready', mp4Url, errorMessage: null }
+              : entry,
+          ),
+        );
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setRecordingEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === entryId
+              ? { ...entry, backendStatus: 'error', errorMessage: message }
+              : entry,
+          ),
+        );
+      }
+    },
+    [],
+  );
+
   const { isRecording, isFinalizing, startRecording, stopRecording, recordingError: recorderError } = useRecorder({
     getCanvas: () => canvasRef.current,
     getVideoElement: () => videoPlaybackRef.current,
@@ -344,17 +408,22 @@ export function App() {
       startSeekPolling();
     },
     onFinalized: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => {
-      const url = URL.createObjectURL(blob);
       const timestamp = new Date().toISOString();
       const filename = `recording-${timestamp}${meta.fileExtension}`;
       const sizeInMb = parseFloat((blob.size / (1024 * 1024)).toFixed(2));
+      const entryId = recordingIdRef.current++;
+
       const entry: RecordingEntry = {
-        id: recordingIdRef.current++,
+        id: entryId,
         filename,
-        url,
-        sizeInMb
+        sizeInMb,
+        backendStatus: 'uploading',
+        mp4Url: null,
+        errorMessage: null,
       };
       setRecordingEntries((prev) => [...prev, entry]);
+
+      void uploadRecordingToBackend(entryId, blob, filename);
     }
   });
 
@@ -1308,29 +1377,46 @@ export function App() {
                           data-testid={`recording-entry-${rec.id}`}
                           className="rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/40 p-3 text-sm"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0 space-y-0.5">
-                              <p
-                                data-testid={`recording-filename-${rec.id}`}
-                                className="truncate font-semibold text-lofi-text"
-                              >
-                                {rec.filename}
-                              </p>
-                              <p
-                                data-testid={`recording-size-${rec.id}`}
-                                className="text-lofi-accentMuted"
-                              >
-                                {rec.sizeInMb} MB
-                              </p>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0 space-y-0.5">
+                                <p
+                                  data-testid={`recording-filename-${rec.id}`}
+                                  className="truncate font-semibold text-lofi-text"
+                                >
+                                  {rec.filename}
+                                </p>
+                                <p
+                                  data-testid={`recording-size-${rec.id}`}
+                                  className="text-lofi-accentMuted"
+                                >
+                                  {rec.sizeInMb} MB
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                <a
+                                  data-testid={`recording-download-${rec.id}`}
+                                  href={rec.mp4Url ?? undefined}
+                                  download={rec.filename.replace(/\.webm$/i, '.mp4')}
+                                  className="interactive-lift min-h-11 shrink-0 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-disabled={!rec.mp4Url}
+                                  onClick={(event) => {
+                                    if (!rec.mp4Url) {
+                                      event.preventDefault();
+                                    }
+                                  }}
+                                >
+                                  {rec.backendStatus === 'uploading' || rec.backendStatus === 'converting'
+                                    ? 'Converting…'
+                                    : 'Download MP4'}
+                                </a>
+                              </div>
                             </div>
-                            <a
-                              data-testid={`recording-download-${rec.id}`}
-                              href={rec.url}
-                              download={rec.filename}
-                              className="interactive-lift min-h-11 shrink-0 rounded-sm border border-lofi-accent bg-lofi-accent/25 px-3 py-2 text-sm font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/35 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                            >
-                              Download
-                            </a>
+                            {rec.backendStatus === 'error' && rec.errorMessage && (
+                              <p className="text-xs text-red-100">
+                                {rec.errorMessage}
+                              </p>
+                            )}
                           </div>
                         </li>
                       ))}

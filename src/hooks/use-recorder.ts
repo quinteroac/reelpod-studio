@@ -8,6 +8,7 @@ import {
   canEncodeAudio,
   canEncodeVideo
 } from 'mediabunny';
+import fixWebmDuration from 'fix-webm-duration';
 
 export interface RecorderHandles {
   output: Output | null;
@@ -65,6 +66,7 @@ export function useRecorder({
 
   // Accumulates chunks for the MediaRecorder path.
   const mrChunksRef = useRef<Blob[]>([]);
+  const mrStartTimeRef = useRef<number>(0);
 
   /** Shared setup: canvas stream + AudioContext audio stream. Returns both tracks or null on error. */
   const setupStreams = useCallback(
@@ -84,6 +86,7 @@ export function useRecorder({
       if (!handlesRef.current.audioContext) {
         handlesRef.current.audioContext = new AudioContext();
       }
+      
       const audioContext = handlesRef.current.audioContext;
       if (audioContext.state === 'suspended') {
         await audioContext.resume();
@@ -148,7 +151,6 @@ export function useRecorder({
       output.addAudioTrack(
         new MediaStreamAudioTrackSource(audioTrack, { codec: 'aac', bitrate: 128_000 })
       );
-
       await output.start();
       setIsRecording(true);
       onStarted?.();
@@ -175,6 +177,7 @@ export function useRecorder({
     };
 
     handlesRef.current.mediaRecorder = recorder;
+    mrStartTimeRef.current = performance.now();
     recorder.start();
     setIsRecording(true);
     onStarted?.();
@@ -190,10 +193,13 @@ export function useRecorder({
       if (mediaRecorder) {
         // MediaRecorder path: wait for onstop to fire.
         await new Promise<void>((resolve) => {
-          mediaRecorder.onstop = () => {
+          mediaRecorder.onstop = async () => {
+            const duration = performance.now() - mrStartTimeRef.current;
             const rawMime = mediaRecorder.mimeType.split(';')[0] || 'video/webm';
-            const blob = new Blob(mrChunksRef.current, { type: rawMime });
+            const rawBlob = new Blob(mrChunksRef.current, { type: rawMime });
             const fileExtension = rawMime.includes('mp4') ? '.mp4' : '.webm';
+            // Fix missing duration metadata so external players (VLC, mpv) render correctly.
+            const blob = await fixWebmDuration(rawBlob, duration, { logger: false });
             onFinalizedRef.current?.(blob, { mimeType: rawMime, fileExtension });
             mrChunksRef.current = [];
             resolve();

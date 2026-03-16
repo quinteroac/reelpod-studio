@@ -3,9 +3,11 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pathlib import Path
+import uuid
 
 from models.constants import INVALID_PAYLOAD_ERROR
 from models.errors import (
@@ -20,6 +22,7 @@ from models.errors import (
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from services import audio_service, image_service
 from services import video_service
+from repositories import media_repository
 
 router = APIRouter()
 
@@ -68,6 +71,31 @@ def generate_image(body: GenerateImageRequestBody) -> StreamingResponse:
     except ImageGenerationFailedError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return StreamingResponse(io.BytesIO(image_bytes), media_type="image/png")
+
+
+@router.post("/api/recordings/convert-mp4")
+async def convert_recording_to_mp4(file: UploadFile = File(...)) -> FileResponse:
+    if not file.content_type or not file.content_type.startswith("video/"):
+        raise HTTPException(status_code=400, detail="File must be a video")
+
+    tmp_dir = Path("media/tmp_recordings")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    input_id = uuid.uuid4().hex
+    input_path = tmp_dir / f"{input_id}.webm"
+    contents = await file.read()
+    input_path.write_bytes(contents)
+
+    try:
+        output_path = media_repository.transcode_to_mp4(input_path)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return FileResponse(
+        path=output_path,
+        media_type="video/mp4",
+        filename="recording.mp4",
+    )
 
 
 async def handle_validation_error(_request: Any, _exc: RequestValidationError) -> JSONResponse:

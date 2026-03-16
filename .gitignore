@@ -63,3 +63,4 @@ Thumbs.db
 # Duplicate lock files (project uses bun)
 package-lock.json
 backend/vendor/comfy-diffusion
+**/tmp_recordings/** 

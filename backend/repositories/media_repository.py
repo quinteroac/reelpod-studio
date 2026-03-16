@@ -129,6 +129,40 @@ def mux_video_and_audio_to_mp4(
         raise RuntimeError(detail or "ffmpeg video mux failed") from exc
 
 
+def transcode_to_mp4(
+    input_path: Path,
+    output_path: Path | None = None,
+) -> Path:
+    """
+    Transcode an arbitrary video file (e.g. WebM from the frontend) to a
+    streaming-friendly MP4 (H.264 + AAC).
+    """
+    ffmpeg_module = _load_ffmpeg_module()
+    if output_path is None:
+        output_path = input_path.with_suffix(".mp4")
+
+    try:
+        (
+            ffmpeg_module.input(str(input_path))
+            .output(
+                str(output_path),
+                vcodec="libx264",
+                acodec="aac",
+                pix_fmt="yuv420p",
+                audio_bitrate="192k",
+                ac=2,
+                movflags="+faststart",
+            )
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except ffmpeg_module.Error as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(detail or "ffmpeg transcode failed") from exc
+
+    return output_path
+
+
 def _load_ffmpeg_module() -> Any:
     try:
         import ffmpeg as ffmpeg_module
