@@ -7,6 +7,7 @@ import {
   within
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { YOUTUBE_VIDEOS_INSERT_UPLOAD_URL } from './lib/youtube-upload';
 
 const mockStartRecording = vi.fn().mockResolvedValue(undefined);
 const mockStopRecording = vi.fn().mockResolvedValue(undefined);
@@ -127,6 +128,12 @@ function mockVideoFetch(): ReturnType<typeof vi.fn> {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     if (url.endsWith('/api/generate')) {
       return createVideoResponse();
+    }
+    if (url.endsWith('/api/recordings/convert-mp4')) {
+      return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+        status: 200,
+        headers: { 'content-type': 'video/mp4' },
+      });
     }
     throw new Error(`Unexpected endpoint called: ${url}`);
   });
@@ -1744,7 +1751,7 @@ describe('Recording auto-stop and UI states (US-002)', () => {
       expect(downloadLink).toHaveAttribute('href', 'blob:http://localhost/rec-1');
       expect(downloadLink).toHaveAttribute('download');
       expect(downloadLink.getAttribute('download')).toMatch(/^recording-.*\.mp4$/);
-      expect(downloadLink.textContent?.trim()).toBe('Download');
+      expect(downloadLink.textContent?.trim()).toBe('Download MP4');
     });
   });
 
@@ -1874,6 +1881,268 @@ describe('YouTube connection UI (US-001)', () => {
       );
       expect(screen.getByTestId('connect-youtube-button')).toBeInTheDocument();
       expect(screen.queryByTestId('youtube-connected-state')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('YouTube recording uploads (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/converted-recording-mp4',
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+
+  function setConnectedYouTubeToken(): void {
+    localStorage.setItem(
+      'reelpod.youtube.oauth-token',
+      JSON.stringify({
+        accessToken: 'persisted-token',
+        tokenType: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/youtube.upload',
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+  }
+
+  async function createCompletedRecordingEntry(): Promise<void> {
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(1024)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4',
+      });
+    });
+
+    await waitFor(() => {
+      const download = screen.getByTestId('recording-download-1');
+      expect(download).toHaveTextContent('Download MP4');
+      expect(download).toHaveAttribute(
+        'href',
+        'blob:http://localhost/converted-recording-mp4',
+      );
+    });
+  }
+
+  it('US-002-AC01: shows Upload to YouTube only when account is connected', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      return createVideoResponse();
+    });
+
+    const firstRender = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    expect(
+      screen.queryByTestId('youtube-upload-button-1'),
+    ).not.toBeInTheDocument();
+    firstRender.unmount();
+
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    expect(screen.getByTestId('youtube-upload-button-1')).toHaveTextContent(
+      'Upload to YouTube',
+    );
+  });
+
+  it('US-002-AC02: does not render Upload to YouTube for in-progress or failed recordings', async () => {
+    let resolveConvert: ((response: Response) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Promise<Response>((resolve) => {
+            resolveConvert = resolve;
+          }),
+      );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-download-1')).toHaveTextContent(
+        'Converting…',
+      );
+    });
+    expect(
+      screen.queryByTestId('youtube-upload-button-1'),
+    ).not.toBeInTheDocument();
+
+    resolveConvert?.(
+      new Response(JSON.stringify({ error: 'conversion failed' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('conversion failed')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId('youtube-upload-button-1'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('US-002-AC03+AC04: starts videos.insert upload with OAuth token and shows non-interactive uploading indicator', async () => {
+    let resolveUpload: ((response: Response) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url.endsWith('/api/recordings/convert-mp4')) {
+          return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+            status: 200,
+            headers: { 'content-type': 'video/mp4' },
+          });
+        }
+        if (url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL) {
+          expect(init?.method).toBe('POST');
+          expect((init?.headers as Record<string, string>).authorization).toBe(
+            'Bearer persisted-token',
+          );
+          return new Promise<Response>((resolve) => {
+            resolveUpload = resolve;
+          });
+        }
+        throw new Error(`Unexpected endpoint called: ${url}`);
+      });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-upload-progress-1')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId('youtube-upload-button-1'),
+    ).not.toBeInTheDocument();
+
+    resolveUpload?.(
+      new Response(JSON.stringify({ id: 'yt-video-123' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  });
+
+  it('US-002-AC05: replaces progress indicator with a clickable YouTube URL after success', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL) {
+        return new Response(JSON.stringify({ id: 'yt-video-789' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      const link = screen.getByTestId('youtube-upload-link-1');
+      expect(link).toHaveAttribute(
+        'href',
+        'https://www.youtube.com/watch?v=yt-video-789',
+      );
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+  });
+
+  it('US-002-AC06: shows upload error and re-enables Upload to YouTube button for retry', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL) {
+        return new Response(
+          JSON.stringify({ error: { message: 'Quota exceeded.' } }),
+          {
+            status: 403,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-upload-error-1')).toHaveTextContent(
+        'Quota exceeded.',
+      );
+      expect(screen.getByTestId('youtube-upload-button-1')).toBeInTheDocument();
     });
   });
 });

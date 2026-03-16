@@ -4,6 +4,10 @@ import { useYouTubeAuth } from './hooks/use-youtube-auth';
 import type { SongParameters } from './mcp/parameter-store';
 import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
+import {
+  readYouTubeUploadTokenFromStorage,
+  uploadVideoToYouTube,
+} from './lib/youtube-upload';
 
 type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
 
@@ -45,7 +49,11 @@ interface RecordingEntry {
   sizeInMb: number;
   backendStatus: RecordingBackendStatus;
   mp4Url: string | null;
+  mp4Blob: Blob | null;
   errorMessage: string | null;
+  youtubeUploadStatus: 'idle' | 'uploading' | 'success' | 'error';
+  youtubeUploadErrorMessage: string | null;
+  youtubeVideoUrl: string | null;
 }
 
 interface QueueEntry {
@@ -382,7 +390,13 @@ export function App() {
         setRecordingEntries((prev) =>
           prev.map((entry) =>
             entry.id === entryId
-              ? { ...entry, backendStatus: 'ready', mp4Url, errorMessage: null }
+              ? {
+                  ...entry,
+                  backendStatus: 'ready',
+                  mp4Url,
+                  mp4Blob,
+                  errorMessage: null,
+                }
               : entry,
           ),
         );
@@ -420,7 +434,11 @@ export function App() {
         sizeInMb,
         backendStatus: 'uploading',
         mp4Url: null,
+        mp4Blob: null,
         errorMessage: null,
+        youtubeUploadStatus: 'idle',
+        youtubeUploadErrorMessage: null,
+        youtubeVideoUrl: null,
       };
       setRecordingEntries((prev) => [...prev, entry]);
 
@@ -433,6 +451,79 @@ export function App() {
     isConnected: isYouTubeConnected,
     connectYouTube,
   } = useYouTubeAuth();
+
+  const uploadRecordingToYouTube = useCallback(
+    async (recordingId: number): Promise<void> => {
+      const token = readYouTubeUploadTokenFromStorage();
+      if (!token) {
+        setRecordingEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === recordingId
+              ? {
+                  ...entry,
+                  youtubeUploadStatus: 'error',
+                  youtubeUploadErrorMessage:
+                    'YouTube connection expired. Reconnect and try again.',
+                }
+              : entry,
+          ),
+        );
+        return;
+      }
+
+      const recording = recordingEntries.find((entry) => entry.id === recordingId);
+      if (!recording || recording.backendStatus !== 'ready' || !recording.mp4Blob) {
+        return;
+      }
+
+      setRecordingEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === recordingId
+            ? {
+                ...entry,
+                youtubeUploadStatus: 'uploading',
+                youtubeUploadErrorMessage: null,
+                youtubeVideoUrl: null,
+              }
+            : entry,
+        ),
+      );
+
+      try {
+        const { videoUrl } = await uploadVideoToYouTube({
+          blob: recording.mp4Blob,
+          filename: recording.filename,
+          token,
+        });
+
+        setRecordingEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === recordingId
+              ? {
+                  ...entry,
+                  youtubeUploadStatus: 'success',
+                  youtubeUploadErrorMessage: null,
+                  youtubeVideoUrl: videoUrl,
+                }
+              : entry,
+          ),
+        );
+      } catch (error) {
+        setRecordingEntries((prev) =>
+          prev.map((entry) =>
+            entry.id === recordingId
+              ? {
+                  ...entry,
+                  youtubeUploadStatus: 'error',
+                  youtubeUploadErrorMessage: getErrorMessage(error),
+                }
+              : entry,
+          ),
+        );
+      }
+    },
+    [recordingEntries],
+  );
 
   useEffect(() => {
     const channel = createLiveMirrorChannel();
@@ -1442,6 +1533,48 @@ export function App() {
                                     ? 'Converting…'
                                     : 'Download MP4'}
                                 </a>
+                                {isYouTubeConnected &&
+                                  rec.backendStatus === 'ready' &&
+                                  rec.mp4Blob &&
+                                  rec.youtubeUploadStatus !== 'success' &&
+                                  rec.youtubeUploadStatus !== 'uploading' && (
+                                    <button
+                                      type="button"
+                                      data-testid={`youtube-upload-button-${rec.id}`}
+                                      className="interactive-lift min-h-11 rounded-sm border border-red-300/70 bg-red-950/30 px-3 py-2 text-sm font-semibold text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-300"
+                                      onClick={() => void uploadRecordingToYouTube(rec.id)}
+                                    >
+                                      Upload to YouTube
+                                    </button>
+                                  )}
+                                {isYouTubeConnected &&
+                                  rec.backendStatus === 'ready' &&
+                                  rec.mp4Blob &&
+                                  rec.youtubeUploadStatus === 'uploading' && (
+                                    <span
+                                      data-testid={`youtube-upload-progress-${rec.id}`}
+                                      className="inline-flex min-h-11 items-center gap-2 rounded-sm border border-lofi-accent/70 bg-lofi-accent/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-lofi-accent"
+                                    >
+                                      <span
+                                        aria-hidden="true"
+                                        className="h-3 w-3 animate-spin rounded-full border border-lofi-accent border-t-transparent"
+                                      />
+                                      Uploading…
+                                    </span>
+                                  )}
+                                {isYouTubeConnected &&
+                                  rec.youtubeUploadStatus === 'success' &&
+                                  rec.youtubeVideoUrl && (
+                                    <a
+                                      data-testid={`youtube-upload-link-${rec.id}`}
+                                      href={rec.youtubeVideoUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="interactive-lift min-h-11 rounded-sm border border-emerald-300/70 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 outline-none transition hover:bg-emerald-500/25 focus-visible:ring-2 focus-visible:ring-emerald-300"
+                                    >
+                                      Open on YouTube
+                                    </a>
+                                  )}
                               </div>
                             </div>
                             {rec.backendStatus === 'error' && rec.errorMessage && (
@@ -1449,6 +1582,15 @@ export function App() {
                                 {rec.errorMessage}
                               </p>
                             )}
+                            {rec.youtubeUploadStatus === 'error' &&
+                              rec.youtubeUploadErrorMessage && (
+                                <p
+                                  data-testid={`youtube-upload-error-${rec.id}`}
+                                  className="text-xs text-red-100"
+                                >
+                                  {rec.youtubeUploadErrorMessage}
+                                </p>
+                              )}
                           </div>
                         </li>
                       ))}
