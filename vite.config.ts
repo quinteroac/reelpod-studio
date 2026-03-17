@@ -7,13 +7,14 @@ export default defineConfig({
       '/mcp': {
         target: 'http://127.0.0.1:3100',
         changeOrigin: true,
-        proxyTimeout: 600_000, // 10 min for audio generation
-        timeout: 0, // no read timeout — SSE connections stay open with no data until generation runs
+        ws: true, // proxy WebSocket upgrades for /mcp/ws
+        proxyTimeout: 600_000, // 10 min for bridge HTTP calls
+        timeout: 0, // no read timeout — WS connections stay open
         configure: (proxy) => {
           proxy.on('error', (err: NodeJS.ErrnoException, _req, _res) => {
-            // ECONNRESET / socket hang up: client or backend closed the connection (e.g. EventSource closed, page nav, or MCP server not running)
+            // ECONNRESET / socket hang up: client or server closed the connection normally
             if (err.code === 'ECONNRESET' || err.message?.includes('socket hang up')) {
-              return; // suppress noisy log; connection already closed
+              return;
             }
             console.error('[vite proxy /mcp]', err);
           });

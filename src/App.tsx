@@ -119,7 +119,8 @@ const effectOptions: ReadonlyArray<ToggleableEffectType> = [
   'chromaticAberration',
   'scanLines',
   'colorDrift',
-  'lightingMovement'
+  'lightingMovement',
+  'cameraMovement'
 ];
 const defaultEffectOrder: ToggleableEffectType[] = [...effectOptions];
 const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
@@ -130,7 +131,8 @@ const defaultEnabledEffects: Record<ToggleableEffectType, boolean> = {
   chromaticAberration: false,
   scanLines: false,
   colorDrift: false,
-  lightingMovement: false
+  lightingMovement: false,
+  cameraMovement: false
 };
 const SEEK_MIN = 0;
 const SEEK_MAX = 100;

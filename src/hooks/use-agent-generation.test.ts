@@ -1,20 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useAgentGeneration, AGENT_GENERATION_STREAM_URL, type GenerationCommand } from './use-agent-generation';
+import { useAgentGeneration, AGENT_WS_URL, type GenerationCommand } from './use-agent-generation';
 
-class MockEventSource {
-  static instances: MockEventSource[] = [];
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
   url: string;
   onmessage: ((event: MessageEvent) => void) | null = null;
   closed = false;
+  readyState: number = 1; // WebSocket.OPEN
 
   constructor(url: string) {
     this.url = url;
-    MockEventSource.instances.push(this);
+    MockWebSocket.instances.push(this);
   }
 
   close() {
     this.closed = true;
+    this.readyState = 3; // WebSocket.CLOSED
   }
 
   simulateMessage(data: string) {
@@ -25,27 +27,27 @@ class MockEventSource {
 }
 
 describe('useAgentGeneration', () => {
-  let originalEventSource: typeof EventSource;
+  let originalWebSocket: typeof WebSocket;
 
   beforeEach(() => {
-    MockEventSource.instances = [];
-    originalEventSource = globalThis.EventSource;
-    globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
+    MockWebSocket.instances = [];
+    originalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
   });
 
   afterEach(() => {
-    globalThis.EventSource = originalEventSource;
+    globalThis.WebSocket = originalWebSocket;
   });
 
-  it('creates an EventSource connected to the generation stream URL', () => {
+  it('creates a WebSocket connected to the agent WS URL', () => {
     const callback = vi.fn();
     renderHook(() => useAgentGeneration({ onGenerationCommand: callback }));
 
-    expect(MockEventSource.instances).toHaveLength(1);
-    expect(MockEventSource.instances[0].url).toBe(AGENT_GENERATION_STREAM_URL);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0].url).toBe(AGENT_WS_URL);
   });
 
-  it('calls onGenerationCommand when a valid message is received', () => {
+  it('calls onGenerationCommand when a generation message is received', () => {
     const callback = vi.fn();
     renderHook(() => useAgentGeneration({ onGenerationCommand: callback }));
 
@@ -58,31 +60,40 @@ describe('useAgentGeneration', () => {
       targetWidth: 1920,
       targetHeight: 1080,
     };
-    MockEventSource.instances[0].simulateMessage(JSON.stringify(command));
+    MockWebSocket.instances[0].simulateMessage(JSON.stringify({ type: 'generation', data: command }));
 
     expect(callback).toHaveBeenCalledOnce();
     expect(callback).toHaveBeenCalledWith(command);
+  });
+
+  it('ignores messages of other types without calling the callback', () => {
+    const callback = vi.fn();
+    renderHook(() => useAgentGeneration({ onGenerationCommand: callback }));
+
+    MockWebSocket.instances[0].simulateMessage(JSON.stringify({ type: 'parameters', data: {} }));
+
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it('ignores malformed messages without throwing', () => {
     const callback = vi.fn();
     renderHook(() => useAgentGeneration({ onGenerationCommand: callback }));
 
-    MockEventSource.instances[0].simulateMessage('not valid json');
+    MockWebSocket.instances[0].simulateMessage('not valid json');
 
     expect(callback).not.toHaveBeenCalled();
   });
 
-  it('closes EventSource on unmount', () => {
+  it('closes WebSocket on unmount', () => {
     const callback = vi.fn();
     const { unmount } = renderHook(() =>
       useAgentGeneration({ onGenerationCommand: callback })
     );
 
-    const eventSource = MockEventSource.instances[0];
-    expect(eventSource.closed).toBe(false);
+    const ws = MockWebSocket.instances[0];
+    expect(ws.closed).toBe(false);
 
     unmount();
-    expect(eventSource.closed).toBe(true);
+    expect(ws.closed).toBe(true);
   });
 });

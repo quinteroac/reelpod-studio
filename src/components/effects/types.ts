@@ -1,6 +1,6 @@
 import type * as THREE from 'three';
 
-export type EffectType = 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'lightingMovement' | 'none';
+export type EffectType = 'zoom' | 'flicker' | 'vignette' | 'filmGrain' | 'chromaticAberration' | 'scanLines' | 'colorDrift' | 'lightingMovement' | 'cameraMovement' | 'none';
 
 export type EffectProps = {
     audioCurrentTime: number;

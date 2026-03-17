@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { SongParameters } from '../mcp/parameter-store';
 
-export const AGENT_GENERATION_STREAM_URL = '/mcp/generation/stream';
+export const AGENT_WS_URL = '/mcp/ws';
 
 export interface GenerationCommand {
   parameters: SongParameters;
@@ -16,19 +16,25 @@ export interface UseAgentGenerationCallbacks {
 
 export function useAgentGeneration({ onGenerationCommand }: UseAgentGenerationCallbacks): void {
   useEffect(() => {
-    const eventSource = new EventSource(AGENT_GENERATION_STREAM_URL);
+    const ws = new WebSocket(AGENT_WS_URL);
 
-    eventSource.onmessage = (event: MessageEvent) => {
+    ws.onmessage = (event: MessageEvent) => {
       try {
-        const command: GenerationCommand = JSON.parse(event.data);
-        onGenerationCommand(command);
+        const msg: unknown = JSON.parse(event.data as string);
+        if (
+          typeof msg === 'object' &&
+          msg !== null &&
+          (msg as Record<string, unknown>).type === 'generation'
+        ) {
+          onGenerationCommand((msg as Record<string, unknown>).data as GenerationCommand);
+        }
       } catch {
         // Ignore malformed messages
       }
     };
 
     return () => {
-      eventSource.close();
+      ws.close();
     };
   }, [onGenerationCommand]);
 }

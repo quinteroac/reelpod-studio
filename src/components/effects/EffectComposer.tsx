@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import { CameraMovementEffect } from './CameraMovementEffect';
 import { ChromaticAberrationEffect } from './ChromaticAberrationEffect';
 import { ColorDriftEffect } from './ColorDriftEffect';
 import { FilmGrainEffect } from './FilmGrainEffect';
@@ -22,6 +23,7 @@ const EFFECT_REGISTRY: Record<Exclude<EffectType, 'none'>, ComponentType<EffectP
     scanLines: ScanLinesEffect,
     colorDrift: ColorDriftEffect,
     lightingMovement: LightingMovementEffect,
+    cameraMovement: CameraMovementEffect,
 };
 
 interface EffectComposerProps extends EffectProps {

@@ -280,6 +280,7 @@ export function VisualScene({
         orthographic
         camera={{ position: [0, 0, 4], zoom: 120 }}
         gl={{ preserveDrawingBuffer: true }}
+        style={{ filter: 'saturate(1.45) contrast(1.12) brightness(1.06)' }}
         onCreated={({ gl }) => {
           if (outputWidth && outputHeight) {
             gl.setSize(outputWidth, outputHeight, false);

@@ -1,4 +1,5 @@
 export * from './types';
+export * from './CameraMovementEffect';
 export * from './FlickerEffect';
 export * from './ZoomEffect';
 export * from './VignetteEffect';
