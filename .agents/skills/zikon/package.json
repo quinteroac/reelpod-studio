@@ -1,0 +1,15 @@
+{
+  "name": "zikon",
+  "version": "0.1.0",
+  "description": "Generate an SVG logo from a text prompt using Zikon's pipeline (prompt → PNG → SVG). Returns a JSON object with paths and inline SVG markup.",
+  "main": "index.js",
+  "keywords": [
+    "skill",
+    "logo",
+    "svg",
+    "icon",
+    "diffusion",
+    "agent"
+  ],
+  "license": "MIT"
+}

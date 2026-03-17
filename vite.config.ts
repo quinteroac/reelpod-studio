@@ -30,6 +30,11 @@ export default defineConfig({
         changeOrigin: true,
         proxyTimeout: 0, // no timeout — video generation with Wan I2V can take 10+ minutes
         timeout: 0
+      },
+      '/yt-upload': {
+        target: 'https://www.googleapis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/yt-upload/, ''),
       }
     }
   },

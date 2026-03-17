@@ -149,6 +149,7 @@ def transcode_to_mp4(
                 vcodec="libx264",
                 acodec="aac",
                 pix_fmt="yuv420p",
+                vf="scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 audio_bitrate="192k",
                 ac=2,
                 movflags="+faststart",

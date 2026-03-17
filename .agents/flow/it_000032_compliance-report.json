@@ -1,0 +1,54 @@
+{
+  "iteration": "000032",
+  "generatedAt": "2026-03-16",
+  "executiveSummary": "Both user stories (US-001, US-002) are implemented and their acceptance criteria are substantially satisfied. The OAuth connection flow, token persistence, connected-state UI, upload trigger, spinner, success link, and per-entry error messages are all present. Two gaps exist: (1) FR-4 is not complied with because the upload uses `uploadType=media` — a raw-body upload — while sending `part=snippet,status` in the URL but no JSON metadata body, so neither the video title nor the privacy status (`unlisted`) is actually transmitted to the YouTube API. (2) FR-5 is only partially satisfied: the token is cleared on client-side expiration, but a 401 response from the YouTube API does not trigger token removal or reconnection prompting.",
+  "verificationByFR": [
+    {
+      "frId": "FR-1",
+      "assessment": "comply",
+      "notes": "All YouTube interactions use the YouTube Data API v3 endpoint (`https://www.googleapis.com/upload/youtube/v3/videos`) and the OAuth scope `https://www.googleapis.com/auth/youtube.upload`."
+    },
+    {
+      "frId": "FR-2",
+      "assessment": "comply",
+      "notes": "OAuth uses `https://accounts.google.com/o/oauth2/v2/auth` with implicit flow. Client ID is read from `import.meta.env.VITE_YOUTUBE_CLIENT_ID` with a local fallback, satisfying the env-var requirement."
+    },
+    {
+      "frId": "FR-3",
+      "assessment": "comply",
+      "notes": "The upload button is gated on `rec.mp4Blob` (blob produced by the recording pipeline) and is only reachable from entries in the recording queue. No other file path triggers the upload."
+    },
+    {
+      "frId": "FR-4",
+      "assessment": "does_not_comply",
+      "notes": "The upload is performed with `uploadType=media`, which is a raw binary upload. The title is passed only as an `x-upload-file-name` header (non-standard for the YouTube API) and no JSON snippet body is included, so the title and `privacyStatus: 'unlisted'` are never received by the API. To include metadata the upload must use `uploadType=multipart` (JSON part + binary part) or `uploadType=resumable` with an initial metadata POST."
+    },
+    {
+      "frId": "FR-5",
+      "assessment": "partially_comply",
+      "notes": "The token is validated and cleared from localStorage when it is expired before an upload attempt, and the UI returns to the disconnected state. However, a 401 response returned by the YouTube API mid-upload does not trigger token removal or a reconnection prompt; the error is surfaced only as a generic upload error message."
+    }
+  ],
+  "verificationByUS": [
+    {
+      "usId": "US-001",
+      "assessment": "comply",
+      "notes": "AC01–AC07 all satisfied. 'Connect YouTube' button is shown only when disconnected (AC01). OAuth popup is triggered with the correct scope (AC02). Connected state shows channel label (AC03). Token is persisted in localStorage (AC04). Auth failures display a role=alert error and revert to disconnected state (AC05). Progress entry shows 'completed' with exit code 0, implying typecheck/lint pass (AC06) and visual verification (AC07)."
+    },
+    {
+      "usId": "US-002",
+      "assessment": "partially_comply",
+      "notes": "AC01 (button only when connected), AC02 (button only for ready+mp4Blob recordings), AC03 (direct upload via videos.insert), AC04 (spinner replaces button during upload), AC05 (clickable YouTube URL on success, target=_blank), AC06 (error message shown, button re-enabled on failure), AC07–AC08 (completed status) are all satisfied. Partial compliance is recorded because the upload violates FR-4: the video title and privacy status are not properly sent to the API, so published videos will receive YouTube-assigned defaults rather than the filename-derived title and 'unlisted' privacy the PRD requires."
+    }
+  ],
+  "minorObservations": [
+    "The 'Connect YouTube' and upload buttons use `data-testid` attributes consistently, which is good for test coverage.",
+    "The OAuth implicit flow (`response_type=token`) is used instead of the authorization-code-with-PKCE flow. The implicit flow is deprecated by Google and may be blocked in future; migrating to PKCE is recommended for security and longevity.",
+    "The upload progress indicator shows only a spinner ('Uploading…') with no percentage. The PRD allows this ('percentage or spinner'), so it is compliant, but a byte-progress counter would improve UX for large video files.",
+    "The `x-upload-content-length` and `x-upload-content-type` headers are not standard YouTube Data API v3 upload headers and will be ignored by the server.",
+    "There is no upper-bound validation on the blob size before upload; very large files may cause browser memory or timeout issues.",
+    "The `youtubeConnectedLabel` in the connected-state button (e.g. channel name vs. a generic 'Connected') was not fully inspectable from the audit, but the structure is present and correct.",
+    "No `.env.example` entry for `VITE_YOUTUBE_CLIENT_ID` was found; documenting the required env variable in `.env.example` would help onboarding."
+  ],
+  "conclusionsAndRecommendations": "The implementation successfully delivers the core OAuth connection flow and upload workflow described in US-001 and US-002. The primary gap is FR-4: because `uploadType=media` cannot carry metadata, videos are uploaded without the required title or `unlisted` privacy status. The fix is to switch to `uploadType=multipart` — sending a `multipart/related` body with a JSON metadata part (containing `snippet.title` and `status.privacyStatus`) followed by the binary video part — or to use `uploadType=resumable` with an initial metadata POST. The secondary gap (FR-5) requires catching 401 responses from the YouTube API, clearing the stored token, and prompting the user to reconnect. Both fixes are isolated to `src/lib/youtube-upload.ts` and a small change in the error-handling block of the upload callback in `App.tsx`. Additionally, a medium-term recommendation is to migrate the OAuth flow from implicit (`response_type=token`) to authorization-code-with-PKCE to follow current Google OAuth 2.0 best practices."
+}
