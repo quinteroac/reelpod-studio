@@ -20,6 +20,8 @@ type VisualSceneProps = {
   audioDuration: number;
   isPlaying: boolean;
   aspectRatio: number;
+  outputWidth?: number;
+  outputHeight?: number;
   visualizerType: VisualizerType;
   effects: EffectType[];
   backgroundColor?: string;
@@ -221,6 +223,8 @@ export function VisualScene({
   audioDuration,
   isPlaying,
   aspectRatio,
+  outputWidth,
+  outputHeight,
   visualizerType,
   effects,
   backgroundColor = '#1a2340',
@@ -276,7 +280,14 @@ export function VisualScene({
         orthographic
         camera={{ position: [0, 0, 4], zoom: 120 }}
         gl={{ preserveDrawingBuffer: true }}
-        onCreated={onCanvasCreated ? ({ gl }) => onCanvasCreated(gl.domElement) : undefined}
+        onCreated={({ gl }) => {
+          if (outputWidth && outputHeight) {
+            gl.setSize(outputWidth, outputHeight, false);
+          }
+          if (onCanvasCreated) {
+            onCanvasCreated(gl.domElement);
+          }
+        }}
       >
         <color attach="background" args={[backgroundColor]} />
         <SceneContent

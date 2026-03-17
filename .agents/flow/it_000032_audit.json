@@ -1,0 +1,41 @@
+{
+  "iteration": "000032",
+  "generatedAt": "2026-03-16",
+  "executiveSummary": "Both user stories are fully compliant after two remediations applied during this audit cycle. FR-4 was fixed by switching to uploadType=multipart with a proper JSON metadata body (title + privacyStatus: unlisted). FR-5 was fixed by throwing YouTubeUnauthorizedError on 401, clearing the localStorage token, and calling disconnectYouTube() to reset the UI.",
+  "verificationByFR": [
+    { "frId": "FR-1", "assessment": "comply" },
+    { "frId": "FR-2", "assessment": "comply" },
+    { "frId": "FR-3", "assessment": "comply" },
+    { "frId": "FR-4", "assessment": "comply" },
+    { "frId": "FR-5", "assessment": "comply" }
+  ],
+  "verificationByUS": [
+    { "usId": "US-001", "assessment": "comply" },
+    { "usId": "US-002", "assessment": "comply" }
+  ],
+  "minorObservations": [
+    "OAuth implicit flow (response_type=token) is deprecated by Google; PKCE migration recommended.",
+    "Upload progress shows spinner only, no byte percentage — acceptable per PRD but suboptimal for large files.",
+    "VITE_YOUTUBE_CLIENT_ID not documented in .env.example.",
+    "No client-side file-size guard before upload."
+  ],
+  "conclusionsAndRecommendations": "All FRs and USs comply after the two remediations. Minor observations are non-blocking and suitable for a future iteration.",
+  "refactorPlan": {
+    "applied": [
+      {
+        "id": "FR-4-fix",
+        "description": "Switch to uploadType=multipart with multipart/related body carrying JSON metadata (snippet.title, status.privacyStatus: unlisted) and binary video. Removed non-standard x-upload-* headers.",
+        "files": ["src/lib/youtube-upload.ts"]
+      },
+      {
+        "id": "FR-5-fix",
+        "description": "Export YouTubeUnauthorizedError; throw on 401 after clearing localStorage token. Add disconnectYouTube() to useYouTubeAuth and UseYouTubeAuthResult. Catch error in App.tsx uploadRecordingToYouTube callback and call disconnectYouTube().",
+        "files": [
+          "src/lib/youtube-upload.ts",
+          "src/hooks/use-youtube-auth.ts",
+          "src/App.tsx"
+        ]
+      }
+    ]
+  }
+}

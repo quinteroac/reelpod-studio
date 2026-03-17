@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export const YOUTUBE_UPLOAD_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
 export const YOUTUBE_TOKEN_STORAGE_KEY = 'reelpod.youtube.oauth-token';
@@ -35,6 +35,7 @@ export interface UseYouTubeAuthResult {
   connectionErrorMessage: string | null;
   isConnected: boolean;
   connectYouTube: () => void;
+  disconnectYouTube: () => void;
 }
 
 interface YouTubeAuthState {
@@ -225,13 +226,52 @@ export function useYouTubeAuth(options: UseYouTubeAuthOptions = {}): UseYouTubeA
     navigate(authorizeUrl);
   }, [options.clientId, options.navigate, options.randomState]);
 
+  const disconnectYouTube = useCallback(() => {
+    localStorage.removeItem(YOUTUBE_TOKEN_STORAGE_KEY);
+    setAuthState({ connectedLabel: null, connectionErrorMessage: null });
+  }, []);
+
+  // Keep a ref so the expiry timer always calls the latest connectYouTube
+  const connectYouTubeRef = useRef(connectYouTube);
+  useEffect(() => {
+    connectYouTubeRef.current = connectYouTube;
+  }, [connectYouTube]);
+
+  useEffect(() => {
+    if (authState.connectedLabel === null) return;
+
+    const raw = localStorage.getItem(YOUTUBE_TOKEN_STORAGE_KEY);
+    if (!raw) return;
+
+    let expiresAt: number;
+    try {
+      expiresAt = (JSON.parse(raw) as Partial<StoredYoutubeToken>).expiresAt ?? 0;
+    } catch {
+      return;
+    }
+
+    const now = options.now ?? (() => Date.now());
+    const msUntilExpiry = expiresAt - now();
+    if (msUntilExpiry <= 0) {
+      connectYouTubeRef.current();
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      connectYouTubeRef.current();
+    }, msUntilExpiry);
+
+    return () => window.clearTimeout(timerId);
+  }, [authState.connectedLabel, options.now]);
+
   return useMemo(
     () => ({
       connectedLabel: authState.connectedLabel,
       connectionErrorMessage: authState.connectionErrorMessage,
       isConnected: authState.connectedLabel !== null,
       connectYouTube,
+      disconnectYouTube,
     }),
-    [authState.connectedLabel, authState.connectionErrorMessage, connectYouTube],
+    [authState.connectedLabel, authState.connectionErrorMessage, connectYouTube, disconnectYouTube],
   );
 }

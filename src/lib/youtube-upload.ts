@@ -18,8 +18,32 @@ export interface UploadVideoToYouTubeParams {
   token: YouTubeUploadToken;
 }
 
-export const YOUTUBE_VIDEOS_INSERT_UPLOAD_URL =
-  'https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=media';
+const YOUTUBE_UPLOAD_PATH = '/upload/youtube/v3/videos?part=snippet,status&uploadType=multipart';
+export const YOUTUBE_VIDEOS_INSERT_UPLOAD_URL = import.meta.env.DEV
+  ? `/yt-upload${YOUTUBE_UPLOAD_PATH}`
+  : `https://www.googleapis.com${YOUTUBE_UPLOAD_PATH}`;
+
+/** Thrown when the YouTube API returns a 401 — the stored token must be cleared. */
+export class YouTubeUnauthorizedError extends Error {
+  constructor() {
+    super('YouTube session expired. Please reconnect your account.');
+    this.name = 'YouTubeUnauthorizedError';
+  }
+}
+
+function buildMultipartBody(
+  metadata: Record<string, unknown>,
+  blob: Blob,
+  boundary: string,
+): Blob {
+  const encoder = new TextEncoder();
+  const metadataJson = JSON.stringify(metadata);
+  const preamble = encoder.encode(
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataJson}\r\n--${boundary}\r\nContent-Type: ${blob.type || 'video/mp4'}\r\n\r\n`,
+  );
+  const epilogue = encoder.encode(`\r\n--${boundary}--`);
+  return new Blob([preamble, blob, epilogue]);
+}
 
 function extractErrorMessage(payload: unknown): string | null {
   if (typeof payload !== 'object' || payload === null) {
@@ -90,19 +114,28 @@ export async function uploadVideoToYouTube({
   filename,
   token,
 }: UploadVideoToYouTubeParams): Promise<YouTubeUploadResult> {
+  const boundary = `reelpod-${Date.now()}`;
+  const metadata = {
+    snippet: { title: buildVideoTitle(filename) },
+    status: { privacyStatus: 'unlisted' },
+  };
+  const body = buildMultipartBody(metadata, blob, boundary);
+
   const response = await fetch(YOUTUBE_VIDEOS_INSERT_UPLOAD_URL, {
     method: 'POST',
     headers: {
       authorization: `${token.tokenType} ${token.accessToken}`,
-      'content-type': blob.type || 'video/mp4',
-      'x-upload-content-length': String(blob.size),
-      'x-upload-content-type': blob.type || 'video/mp4',
-      'x-upload-file-name': buildVideoTitle(filename),
+      'content-type': `multipart/related; boundary="${boundary}"`,
     },
-    body: blob,
+    body,
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem(YOUTUBE_TOKEN_STORAGE_KEY);
+      throw new YouTubeUnauthorizedError();
+    }
+
     let errorMessage: string | null = null;
     try {
       const payload: unknown = await response.json();

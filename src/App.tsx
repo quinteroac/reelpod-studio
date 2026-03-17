@@ -7,6 +7,7 @@ import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-ge
 import {
   readYouTubeUploadTokenFromStorage,
   uploadVideoToYouTube,
+  YouTubeUnauthorizedError,
 } from './lib/youtube-upload';
 
 type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
@@ -450,6 +451,7 @@ export function App() {
     connectionErrorMessage: youtubeConnectionErrorMessage,
     isConnected: isYouTubeConnected,
     connectYouTube,
+    disconnectYouTube,
   } = useYouTubeAuth();
 
   const uploadRecordingToYouTube = useCallback(
@@ -509,6 +511,9 @@ export function App() {
           ),
         );
       } catch (error) {
+        if (error instanceof YouTubeUnauthorizedError) {
+          disconnectYouTube();
+        }
         setRecordingEntries((prev) =>
           prev.map((entry) =>
             entry.id === recordingId
@@ -522,7 +527,7 @@ export function App() {
         );
       }
     },
-    [recordingEntries],
+    [recordingEntries, disconnectYouTube],
   );
 
   useEffect(() => {
@@ -1834,6 +1839,8 @@ export function App() {
                     audioDuration={audioDuration}
                     isPlaying={isPlaying}
                     aspectRatio={previewAspectRatio}
+            outputWidth={previewOutputWidth}
+            outputHeight={previewOutputHeight}
                     visualizerType={activeVisualizerType}
                     effects={activeEffects}
                     onCanvasCreated={handleCanvasCreated}
