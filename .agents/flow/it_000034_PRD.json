@@ -1,0 +1,128 @@
+{
+  "goals": [
+    "The LLM generates a concise, creative song title alongside the existing prompts in a single inference call.",
+    "The title is surfaced in the UI so the creator can see it immediately after generation.",
+    "The sanitized title is used as the MP4 recording filename (replacing the timestamp-based name)."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "LLM generates a song title as part of orchestration",
+      "description": "As a creator using LLM mode, I want the AI to produce a song title together with the audio/image/video prompts so that I don't have to name my track manually.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`CREATIVE_DIRECTOR_SYSTEM_PROMPT` instructs the LLM to include a `song_title` key in its JSON output — a short, evocative name (max 60 characters, no special characters except spaces, hyphens, and apostrophes)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "`OrchestrationResult` Pydantic model gains a `song_title: str` field with `min_length=1, max_length=60`."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "A `_strip_text` validator strips leading/trailing whitespace from `song_title`."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "The `orchestrate()` function returns the `song_title` in its result."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "If the LLM omits `song_title` or it fails validation, the existing retry logic attempts again (consistent with current `JSON_PARSE_RETRIES` behaviour); on persistent failure the error surfaces as `OrchestrationFailedError`."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Song title is displayed in the UI after generation completes",
+      "description": "As a creator, I want to see the generated song title displayed in the UI so that I know what my track is called.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "The backend propagates `song_title` from `OrchestrationResult` through to the API response (or queue entry metadata) accessible to the frontend."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "After a generation completes, the queue entry (or a dedicated label near the player) shows the song title as plain text."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The displayed text is the raw title (e.g. \"Midnight Rain Lofi\") — not the sanitized filename version."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "If the generation used `text` mode (no LLM), no title is shown (field is absent/null)."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Visually verified in browser."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Song title is used as the MP4 recording filename",
+      "description": "As a creator, I want the exported MP4 to be named after the generated song title so that my files are easy to identify without renaming them.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "Before using the title as a filename, it is sanitized: lowercased, spaces replaced with underscores, characters outside `[a-z0-9_-]` removed, and the result trimmed to a reasonable length (max 80 chars)."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "The recording filename becomes `<sanitized_title><fileExtension>` (e.g. `midnight_rain_lofi.mp4`)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "If no song title is available (text mode, or title is empty after sanitization), the existing fallback `recording-<timestamp><fileExtension>` is used."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "The download anchor (`download` attribute) and the displayed filename in the recording queue both reflect the new name."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "Add `song_title` to `CREATIVE_DIRECTOR_SYSTEM_PROMPT` as a required JSON key with explicit constraints (max 60 chars, no special chars except spaces, hyphens, apostrophes)."
+    },
+    {
+      "id": "FR-2",
+      "description": "Add `song_title: str` field to `OrchestrationResult` with Pydantic validation (`min_length=1`, `max_length=60`, `_strip_text` validator)."
+    },
+    {
+      "id": "FR-3",
+      "description": "Propagate `song_title` from `OrchestrationResult` through the backend pipeline to the frontend (via API response payload or queue entry metadata)."
+    },
+    {
+      "id": "FR-4",
+      "description": "Frontend stores `song_title` per queue entry in the generation queue state."
+    },
+    {
+      "id": "FR-5",
+      "description": "Frontend displays `song_title` per completed queue entry in the UI."
+    },
+    {
+      "id": "FR-6",
+      "description": "A pure `sanitizeTitle(title: string): string` utility function implements the filename sanitization rule: lowercase → replace spaces with `_` → strip non-`[a-z0-9_-]` characters → trim to 80 chars."
+    },
+    {
+      "id": "FR-7",
+      "description": "The `onFinalized` callback in `use-recorder.ts` (or its call-site in `App.tsx`) accepts an optional `songTitle` parameter and applies `sanitizeTitle` to derive the filename; falls back to timestamp name when `songTitle` is absent or sanitizes to an empty string."
+    }
+  ]
+}
