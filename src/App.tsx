@@ -6,10 +6,12 @@ import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
 import { useAgentCommands } from './hooks/use-agent-commands';
 import {
+  buildVideoTitle,
   readYouTubeUploadTokenFromStorage,
   uploadVideoToYouTube,
   YouTubeUnauthorizedError,
 } from './lib/youtube-upload';
+import { YouTubePublishDialog } from './components/youtube-publish-dialog';
 
 type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
 
@@ -57,6 +59,8 @@ interface RecordingEntry {
   youtubeUploadStatus: 'idle' | 'uploading' | 'success' | 'error';
   youtubeUploadErrorMessage: string | null;
   youtubeVideoUrl: string | null;
+  youtubeTitle: string | null;
+  youtubeDescription: string | null;
 }
 
 interface QueueEntry {
@@ -285,6 +289,11 @@ export function App() {
   const [fontSizePercent, setFontSizePercent] = useState(103);
   const seekPollRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [youtubePublishDialog, setYoutubePublishDialog] = useState<{
+    recordingId: number;
+    initialTitle: string;
+    initialDescription: string;
+  } | null>(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -471,6 +480,8 @@ export function App() {
         youtubeUploadStatus: 'idle',
         youtubeUploadErrorMessage: null,
         youtubeVideoUrl: null,
+        youtubeTitle: activePreviewEntry?.youtubeTitle ?? null,
+        youtubeDescription: activePreviewEntry?.youtubeDescription ?? null,
       };
       setRecordingEntries((prev) => [...prev, entry]);
 
@@ -486,7 +497,7 @@ export function App() {
   } = useYouTubeAuth();
 
   const uploadRecordingToYouTube = useCallback(
-    async (recordingId: number): Promise<void> => {
+    async (recordingId: number, title: string, description: string): Promise<void> => {
       const token = readYouTubeUploadTokenFromStorage();
       if (!token) {
         setRecordingEntries((prev) =>
@@ -527,6 +538,8 @@ export function App() {
           blob: recording.mp4Blob,
           filename: recording.filename,
           token,
+          title,
+          description,
         });
 
         setRecordingEntries((prev) =>
@@ -1096,11 +1109,15 @@ export function App() {
       setEnabledEffects(next);
     },
     onRecordQueue: () => void handleRecordQueue(),
-    onPublishToYoutube: () => {
+    onPublishToYoutube: (opts) => {
       const readyRecording = [...recordingEntries]
         .reverse()
         .find((e) => e.backendStatus === 'ready' && e.mp4Blob);
-      if (readyRecording) void uploadRecordingToYouTube(readyRecording.id);
+      if (readyRecording) {
+        const title = opts.title ?? readyRecording.youtubeTitle ?? buildVideoTitle(readyRecording.filename);
+        const description = opts.description ?? readyRecording.youtubeDescription ?? '';
+        void uploadRecordingToYouTube(readyRecording.id, title, description);
+      }
     },
   });
 
@@ -1625,9 +1642,15 @@ export function App() {
                                       type="button"
                                       data-testid={`youtube-upload-button-${rec.id}`}
                                       className="interactive-lift min-h-11 rounded-sm border border-red-300/70 bg-red-950/30 px-3 py-2 text-sm font-semibold text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-300"
-                                      onClick={() => void uploadRecordingToYouTube(rec.id)}
+                                      onClick={() => {
+                                        setYoutubePublishDialog({
+                                          recordingId: rec.id,
+                                          initialTitle: rec.youtubeTitle ?? buildVideoTitle(rec.filename),
+                                          initialDescription: rec.youtubeDescription ?? '',
+                                        });
+                                      }}
                                     >
-                                      Upload to YouTube
+                                      Publish to YouTube
                                     </button>
                                   )}
                                 {isYouTubeConnected &&
@@ -2060,6 +2083,18 @@ export function App() {
           </div>
         </div>
       </div>
+      {youtubePublishDialog && (
+        <YouTubePublishDialog
+          initialTitle={youtubePublishDialog.initialTitle}
+          initialDescription={youtubePublishDialog.initialDescription}
+          onCancel={() => setYoutubePublishDialog(null)}
+          onPublish={(title, description) => {
+            const { recordingId } = youtubePublishDialog;
+            setYoutubePublishDialog(null);
+            void uploadRecordingToYouTube(recordingId, title, description);
+          }}
+        />
+      )}
     </main>
   );
 }

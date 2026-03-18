@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { YOUTUBE_VIDEOS_INSERT_UPLOAD_URL } from './lib/youtube-upload';
+import * as YouTubeUploadModule from './lib/youtube-upload';
 
 const mockStartRecording = vi.fn().mockResolvedValue(undefined);
 const mockStopRecording = vi.fn().mockResolvedValue(undefined);
@@ -2130,7 +2131,7 @@ describe('YouTube recording uploads (US-002)', () => {
     await createCompletedRecordingEntry();
 
     expect(screen.getByTestId('youtube-upload-button-1')).toHaveTextContent(
-      'Upload to YouTube',
+      'Publish to YouTube',
     );
   });
 
@@ -2219,6 +2220,11 @@ describe('YouTube recording uploads (US-002)', () => {
     fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
 
     await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
       expect(screen.getByTestId('youtube-upload-progress-1')).toBeInTheDocument();
     });
     expect(
@@ -2264,6 +2270,11 @@ describe('YouTube recording uploads (US-002)', () => {
     fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
 
     await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
       const link = screen.getByTestId('youtube-upload-link-1');
       expect(link).toHaveAttribute(
         'href',
@@ -2305,6 +2316,11 @@ describe('YouTube recording uploads (US-002)', () => {
     await createCompletedRecordingEntry();
 
     fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
 
     await waitFor(() => {
       expect(screen.getByTestId('youtube-upload-error-1')).toHaveTextContent(
@@ -2511,5 +2527,273 @@ describe('App YouTube metadata in queue (US-003)', () => {
     const entry = screen.getByTestId('queue-entry-1');
     expect(entry).not.toHaveAttribute('data-youtube-title');
     expect(entry).not.toHaveAttribute('data-youtube-description');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// US-004 – Preview/edit dialog before YouTube publish
+// ---------------------------------------------------------------------------
+
+describe('YouTube publish dialog (US-004)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/converted-recording-mp4',
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+
+  function setConnectedYouTubeToken(): void {
+    localStorage.setItem(
+      'reelpod.youtube.oauth-token',
+      JSON.stringify({
+        accessToken: 'persisted-token',
+        tokenType: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/youtube.upload',
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+  }
+
+  function mockConvertFetch(): ReturnType<typeof vi.fn> {
+    return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL) {
+        return new Response(JSON.stringify({ id: 'yt-video-us004' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/mcp/')) {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+  }
+
+  async function createCompletedRecordingEntry(): Promise<void> {
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(1024)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4',
+      });
+    });
+
+    await waitFor(() => {
+      const download = screen.getByTestId('recording-download-1');
+      expect(download).toHaveTextContent('Download MP4');
+    });
+  }
+
+  it('US-004-AC01: clicking Publish to YouTube opens a dialog (not a new page)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockConvertFetch());
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    expect(screen.queryByTestId('youtube-publish-dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    // Still on the same page — no navigation
+    expect(screen.getByTestId('youtube-publish-dialog')).toHaveAttribute(
+      'role',
+      'dialog',
+    );
+  });
+
+  it('US-004-AC02: Cancel button closes the dialog without uploading', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(mockConvertFetch());
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('youtube-publish-cancel'));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('youtube-publish-dialog'),
+      ).not.toBeInTheDocument();
+    });
+
+    // No upload request was made
+    const uploadCalls = fetchSpy.mock.calls.filter(([input]) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+      return url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL;
+    });
+    expect(uploadCalls).toHaveLength(0);
+  });
+
+  it('US-004-AC03: edited title and description are sent verbatim to uploadVideoToYouTube', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockConvertFetch());
+    const uploadSpy = vi
+      .spyOn(YouTubeUploadModule, 'uploadVideoToYouTube')
+      .mockResolvedValue({ videoId: 'yt-video-us004', videoUrl: 'https://www.youtube.com/watch?v=yt-video-us004' });
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('youtube-publish-dialog-title'), {
+      target: { value: 'My Edited Title' },
+    });
+    fireEvent.change(screen.getByTestId('youtube-publish-dialog-description'), {
+      target: { value: 'My edited description.' },
+    });
+
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
+      expect(uploadSpy).toHaveBeenCalledOnce();
+    });
+
+    const callArgs = uploadSpy.mock.calls[0][0];
+    expect(callArgs.title).toBe('My Edited Title');
+    expect(callArgs.description).toBe('My edited description.');
+  });
+
+  it('US-004-AC04: Publish button is disabled and shows required hint when title is empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockConvertFetch());
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    // Clear the title
+    fireEvent.change(screen.getByTestId('youtube-publish-dialog-title'), {
+      target: { value: '' },
+    });
+
+    expect(screen.getByTestId('youtube-publish-confirm')).toBeDisabled();
+    expect(
+      screen.getByTestId('youtube-publish-title-required'),
+    ).toBeInTheDocument();
+  });
+
+  it('US-004-AC01: dialog pre-fills with LLM youtube title and description from queue entry', async () => {
+    // Mock fetch to handle both /api/generate (with yt meta) and /api/recordings/convert-mp4
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : (input as Request).url;
+        if (url.endsWith('/api/generate')) {
+          return createVideoResponseWithYouTubeMeta(
+            'Neon Solitude - Synthwave Lofi',
+            'A moody synthwave track for late-night drives.',
+          );
+        }
+        if (url.endsWith('/api/recordings/convert-mp4')) {
+          return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+            status: 200,
+            headers: { 'content-type': 'video/mp4' },
+          });
+        }
+        if (url.includes('/mcp/')) {
+          return new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        throw new Error(`Unexpected endpoint called: ${url}`);
+      },
+    );
+    setConnectedYouTubeToken();
+
+    render(<App />);
+
+    // Generate a queue entry with youtube metadata
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'late night synthwave' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed',
+      );
+    });
+
+    // Create a recording entry (activePreviewEntry is null in tests since we don't play)
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-download-1')).toHaveTextContent(
+        'Download MP4',
+      );
+    });
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    // The title input should be pre-filled (non-empty)
+    const titleInput = screen.getByTestId('youtube-publish-dialog-title') as HTMLInputElement;
+    expect(titleInput.value.length).toBeGreaterThan(0);
   });
 });

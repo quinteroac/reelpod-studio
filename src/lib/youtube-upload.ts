@@ -16,6 +16,8 @@ export interface UploadVideoToYouTubeParams {
   blob: Blob;
   filename: string;
   token: YouTubeUploadToken;
+  title?: string;
+  description?: string;
 }
 
 const YOUTUBE_UPLOAD_PATH = '/upload/youtube/v3/videos?part=snippet,status&uploadType=multipart';
@@ -68,7 +70,7 @@ function extractErrorMessage(payload: unknown): string | null {
   return null;
 }
 
-function buildVideoTitle(filename: string): string {
+export function buildVideoTitle(filename: string): string {
   const trimmed = filename.trim();
   if (trimmed.length === 0) {
     return 'ReelPod Studio Recording';
@@ -113,10 +115,15 @@ export async function uploadVideoToYouTube({
   blob,
   filename,
   token,
+  title,
+  description,
 }: UploadVideoToYouTubeParams): Promise<YouTubeUploadResult> {
   const boundary = `reelpod-${Date.now()}`;
   const metadata = {
-    snippet: { title: buildVideoTitle(filename) },
+    snippet: {
+      title: title !== undefined ? title : buildVideoTitle(filename),
+      ...(description !== undefined ? { description } : {}),
+    },
     status: { privacyStatus: 'unlisted' },
   };
   const body = buildMultipartBody(metadata, blob, boundary);
