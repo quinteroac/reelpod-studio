@@ -69,6 +69,8 @@ interface QueueEntry {
   errorMessage: string | null;
   videoBlob: Blob | null;
   songTitle: string | null;
+  youtubeTitle: string | null;
+  youtubeDescription: string | null;
 }
 
 const defaultParams: GenerationParams = {
@@ -188,7 +190,7 @@ async function requestGeneratedVideo(
   imagePrompt: string,
   targetWidth: number,
   targetHeight: number
-): Promise<{ blob: Blob; songTitle: string | null }> {
+): Promise<{ blob: Blob; songTitle: string | null; youtubeTitle: string | null; youtubeDescription: string | null }> {
   const payload = {
     ...params,
     imagePrompt,
@@ -231,8 +233,12 @@ async function requestGeneratedVideo(
 
   const rawTitle = response.headers.get('x-song-title');
   const songTitle = rawTitle && rawTitle.trim().length > 0 ? rawTitle.trim() : null;
+  const rawYoutubeTitle = response.headers.get('x-youtube-title');
+  const youtubeTitle = rawYoutubeTitle && rawYoutubeTitle.trim().length > 0 ? rawYoutubeTitle.trim() : null;
+  const rawYoutubeDescription = response.headers.get('x-youtube-description');
+  const youtubeDescription = rawYoutubeDescription && rawYoutubeDescription.trim().length > 0 ? rawYoutubeDescription.trim() : null;
   const blob = await response.blob();
-  return { blob, songTitle };
+  return { blob, songTitle, youtubeTitle, youtubeDescription };
 }
 
 export function App() {
@@ -337,6 +343,8 @@ export function App() {
       errorMessage: null,
       videoBlob: null,
       songTitle: null,
+      youtubeTitle: null,
+      youtubeDescription: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }, []);
@@ -791,7 +799,7 @@ export function App() {
       );
 
       try {
-        const { blob: videoBlob, songTitle } = await requestGeneratedVideo(
+        const { blob: videoBlob, songTitle, youtubeTitle, youtubeDescription } = await requestGeneratedVideo(
           entry.params,
           entry.imagePrompt,
           entry.targetWidth,
@@ -806,7 +814,9 @@ export function App() {
                 status: 'completed',
                 errorMessage: null,
                 videoBlob,
-                songTitle
+                songTitle,
+                youtubeTitle,
+                youtubeDescription
               }
               : item
           )
@@ -940,6 +950,8 @@ export function App() {
       errorMessage: null,
       videoBlob: null,
       songTitle: null,
+      youtubeTitle: null,
+      youtubeDescription: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
@@ -1688,6 +1700,8 @@ export function App() {
                           data-testid={`queue-entry-${entry.id}`}
                           data-status={entry.status}
                           data-playing={isCurrentlyPlaying ? 'true' : undefined}
+                          data-youtube-title={entry.youtubeTitle ?? undefined}
+                          data-youtube-description={entry.youtubeDescription ?? undefined}
                           className={`rounded-sm border p-3 text-sm ${isCurrentlyPlaying
                             ? 'queue-playing-glow'
                             : ''

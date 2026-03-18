@@ -2410,3 +2410,106 @@ describe('App song title display (US-002)', () => {
     expect(screen.queryByTestId('queue-entry-song-title-1')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// US-003 – Queue entries carry YouTube metadata to the frontend
+// ---------------------------------------------------------------------------
+
+function createVideoResponseWithYouTubeMeta(
+  youtubeTitle: string,
+  youtubeDescription: string
+): Response {
+  return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+    status: 200,
+    headers: {
+      'content-type': 'video/mp4',
+      'x-song-title': 'Test Track',
+      'x-youtube-title': youtubeTitle,
+      'x-youtube-description': youtubeDescription,
+    },
+  });
+}
+
+function mockVideoFetchWithYouTubeMeta(
+  youtubeTitle: string,
+  youtubeDescription: string
+): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : (input as Request).url;
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponseWithYouTubeMeta(youtubeTitle, youtubeDescription);
+    }
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`Unexpected endpoint called: ${url}`);
+  });
+}
+
+describe('App YouTube metadata in queue (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('AC02: stores youtube title and description from response headers on the queue entry', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      mockVideoFetchWithYouTubeMeta(
+        'Neon Solitude - Synthwave Lofi',
+        'A moody synthwave track for late-night drives.'
+      )
+    );
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'late night synthwave' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const entry = screen.getByTestId('queue-entry-1');
+    expect(entry).toHaveAttribute('data-youtube-title', 'Neon Solitude - Synthwave Lofi');
+    expect(entry).toHaveAttribute(
+      'data-youtube-description',
+      'A moody synthwave track for late-night drives.'
+    );
+  });
+
+  it('AC03: queue entry has null youtube fields when no youtube headers are returned', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'no metadata test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const entry = screen.getByTestId('queue-entry-1');
+    expect(entry).not.toHaveAttribute('data-youtube-title');
+    expect(entry).not.toHaveAttribute('data-youtube-description');
+  });
+});
