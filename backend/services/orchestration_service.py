@@ -30,8 +30,10 @@ CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
     "audiovisual concept rather than rephrasing it. Make autonomous creative decisions for genre, mood, "
     "tempo, instrumentation, lyrical theme, visual style, character or scene composition. Prefer static or "
     "minimal camera motion so the video feels like a seamless loop rather than an action sequence. "
-    "Return ONLY valid JSON with keys audio_prompt, image_prompt, video_prompt.\n"
+    "Return ONLY valid JSON with keys song_title, audio_prompt, image_prompt, video_prompt.\n"
     "Rules:\n"
+    "0) song_title: a short, evocative name for the track (max 60 characters, no special characters "
+    "except spaces, hyphens, and apostrophes).\n"
     "1) audio_prompt: ACEStep-ready music brief including genre, mood, tempo hint (e.g. 90 BPM), "
     "instrumentation, and lyrical theme.\n"
     "2) image_prompt: Danbooru tags in strict order: [quality/meta/year/safety tags] [count tag] "
@@ -44,11 +46,12 @@ CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
 
 
 class OrchestrationResult(BaseModel):
+    song_title: str = Field(min_length=1, max_length=60)
     audio_prompt: str = Field(min_length=10, max_length=10000)
     image_prompt: str = Field(min_length=10, max_length=10000)
     video_prompt: str = Field(min_length=20, max_length=10000)
 
-    @field_validator("audio_prompt", "image_prompt", "video_prompt")
+    @field_validator("song_title", "audio_prompt", "image_prompt", "video_prompt")
     @classmethod
     def _strip_text(cls, value: str) -> str:
         trimmed = value.strip()
@@ -170,8 +173,8 @@ def orchestrate(user_prompt: str) -> OrchestrationResult:
         reason = llm_pipeline_load_error or "LLM pipeline unavailable. Check REELPOD_LLM_MODEL_PATH."
         raise OrchestrationFailedError(f"LLM orchestration unavailable: {reason}")
 
-    last_json_error: Exception | None = None
-    payload: dict[str, Any] | None = None
+    last_error: Exception | None = None
+    validated: OrchestrationResult | None = None
     attempts = JSON_PARSE_RETRIES + 1
 
     for _ in range(attempts):
@@ -179,23 +182,20 @@ def orchestrate(user_prompt: str) -> OrchestrationResult:
         logger.info("LLM JSON output: %s", raw_output)
         try:
             payload = _extract_json_object(raw_output)
+            validated = OrchestrationResult.model_validate(payload)
             break
-        except (json.JSONDecodeError, ValueError) as exc:
-            last_json_error = exc
+        except (json.JSONDecodeError, ValueError, ValidationError) as exc:
+            last_error = exc
 
-    if payload is None:
-        reason = str(last_json_error) if last_json_error is not None else "Invalid JSON output."
-        raise OrchestrationFailedError(f"LLM orchestration returned invalid JSON: {reason}")
-
-    try:
-        validated = OrchestrationResult.model_validate(payload)
-    except ValidationError as exc:
-        raise OrchestrationFailedError(f"Invalid orchestration output: {exc}") from exc
+    if validated is None:
+        reason = str(last_error) if last_error is not None else "Invalid output."
+        raise OrchestrationFailedError(f"LLM orchestration returned invalid output: {reason}")
 
     try:
         ltx2_prompt = _generate_video_prompt_ltx2(llm_pipeline, validated.video_prompt)
         return OrchestrationResult.model_validate(
             {
+                "song_title": validated.song_title,
                 "audio_prompt": validated.audio_prompt,
                 "image_prompt": validated.image_prompt,
                 ##Use the same image prompt for video to produce more static videos as we are looking for loopable videos.

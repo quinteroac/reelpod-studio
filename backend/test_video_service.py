@@ -129,6 +129,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
 
     def fake_orchestrate(prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Warm Ambient Lofi",
             audio_prompt="warm ambient lofi, 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, warm ambient lofi artwork",
             video_prompt="A calm scene with warm ambient lighting and lofi vibes.",
@@ -251,6 +252,7 @@ def test_generate_video_uses_orchestration_image_prompt_and_target_resolution(
 
     def fake_orchestrate(prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Blue Hour",
             audio_prompt="cinematic ambient, 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, cinematic skyline at blue hour",
             video_prompt="A cinematic shot of the skyline at blue hour.",
@@ -307,6 +309,7 @@ def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.Monke
         video_service.orchestration_service,
         "orchestrate",
         lambda prompt: video_service.orchestration_service.OrchestrationResult(
+            song_title="Rooftop Reverie",
             audio_prompt="future garage, introspective, 92 BPM, airy synths, vinyl texture",
             image_prompt="score_9, score_8, best quality, highres, newest, safe, 1girl, city rooftop at dusk",
             video_prompt="Slow dolly shot across a rainy rooftop as neon signs pulse in the background.",
@@ -389,6 +392,7 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -423,6 +427,7 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -450,6 +455,7 @@ def test_generate_video_times_out_when_audio_step_exceeds_deadline(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -500,6 +506,7 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -575,6 +582,7 @@ def test_generate_video_completes_for_platform_presets(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Warm Ambient",
             audio_prompt="warm ambient 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, warm ambient artwork",
             video_prompt="A warm ambient scene.",
@@ -660,6 +668,7 @@ def test_generate_video_upscale_fallback_logs_warning_and_uses_pre_upscale_clip(
         video_service.orchestration_service,
         "orchestrate",
         lambda _prompt: OrchestrationResult(
+            song_title="Ambient Groove",
             audio_prompt="lofi ambient groove",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft fog and warm city lights.",
@@ -736,6 +745,7 @@ def test_generate_video_upscale_called_with_tile_and_target_settings(
         video_service.orchestration_service,
         "orchestrate",
         lambda _prompt: OrchestrationResult(
+            song_title="Ambient Groove",
             audio_prompt="lofi ambient groove",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft fog and warm city lights.",
@@ -788,6 +798,7 @@ def test_generate_video_rejects_mismatched_final_frame_dimensions(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -836,6 +847,7 @@ def test_us003_ac01_muxed_output_has_one_h264_and_one_aac_stream(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -906,6 +918,7 @@ def test_us003_ac02_frame_dimensions_match_target(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -946,6 +959,7 @@ def test_us003_ac03_duration_within_tolerance_passes(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -985,6 +999,7 @@ def test_us003_ac03_duration_outside_tolerance_fails(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
@@ -1087,6 +1102,7 @@ def test_us003_pipeline_loops_wan_clip_to_audio_duration(
 
     def fake_orchestrate(_prompt: str) -> OrchestrationResult:
         return OrchestrationResult(
+            song_title="Lofi Session",
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
