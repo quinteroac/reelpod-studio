@@ -55,8 +55,8 @@ describe('MCP Server', () => {
 
   // US-001 AC02: Server responds to tools/list with all registered tools and their JSON schemas
   describe('AC02 – tools/list returns all registered tools', () => {
-    it('returns exactly four tools', () => {
-      expect(tools).toHaveLength(4);
+    it('returns exactly ten tools', () => {
+      expect(tools).toHaveLength(10);
     });
 
     it('registers the expected tool names', () => {
@@ -64,8 +64,14 @@ describe('MCP Server', () => {
       expect(names).toEqual([
         'add_to_queue',
         'generate_audio',
+        'get_effects',
         'get_queue',
+        'get_visualizers',
+        'publish_to_youtube',
+        'record_queue',
+        'set_effects',
         'set_song_parameters',
+        'set_visualizer',
       ]);
     });
 
@@ -273,8 +279,16 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
       prompt: 'chill lofi',
     });
 
+    // First call: POST /mcp/generate
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    // Second call: GET /mcp/events/poll (generation_complete ACK)
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ type: 'generation_complete', data: { id: 1 } }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -285,7 +299,7 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
       arguments: { imagePrompt: 'sunset beach' },
     });
 
-    expect(mockFetch).toHaveBeenCalledOnce();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
     const [url, options] = mockFetch.mock.calls[0];
     expect(url).toBe(`${SSE_BASE_URL}/mcp/generate`);
     expect(options.method).toBe('POST');
@@ -299,7 +313,7 @@ describe('SSE Bridge – generate_audio with sseBaseUrl', () => {
 
     expect(result.isError).toBeFalsy();
     const parsed = parseToolResult(result);
-    expect(parsed.status).toBe('queued');
+    expect(parsed.status).toBe('completed');
   });
 
   it('returns error when SSE bridge is unreachable', async () => {

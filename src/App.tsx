@@ -4,6 +4,7 @@ import { useYouTubeAuth } from './hooks/use-youtube-auth';
 import type { SongParameters } from './mcp/parameter-store';
 import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
+import { useAgentCommands } from './hooks/use-agent-commands';
 import {
   readYouTubeUploadTokenFromStorage,
   uploadVideoToYouTube,
@@ -142,6 +143,15 @@ const DURATION_MIN_SECONDS = 40;
 const DURATION_MAX_SECONDS = 300;
 const MUSIC_PROMPT_REQUIRED_ERROR = 'Please enter a creative brief.';
 const DURATION_RANGE_ERROR = `Duration must be between ${DURATION_MIN_SECONDS} and ${DURATION_MAX_SECONDS} seconds.`;
+
+// Best-effort notification to the MCP bridge (fire-and-forget)
+function notifyAgent(type: string, data?: unknown): void {
+  fetch('/mcp/events/notify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type, data }),
+  }).catch(() => {});
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -403,6 +413,7 @@ export function App() {
               : entry,
           ),
         );
+        notifyAgent('recording_complete', { filename });
       } catch (error) {
         const message = getErrorMessage(error);
         setRecordingEntries((prev) =>
@@ -512,6 +523,7 @@ export function App() {
               : entry,
           ),
         );
+        notifyAgent('upload_complete', { url: videoUrl });
       } catch (error) {
         if (error instanceof YouTubeUnauthorizedError) {
           disconnectYouTube();
@@ -788,6 +800,7 @@ export function App() {
               : item
           )
         );
+        notifyAgent('generation_complete', { id: entry.id });
 
         const isPlayingVideo =
           videoPlaybackRef.current && !videoPlaybackRef.current.paused;
@@ -1044,6 +1057,45 @@ export function App() {
       setPlayingEntryId(null);
     }
   }
+
+  // ---- Agent command handlers (MCP → UI) ------------------------------------
+
+  useAgentCommands({
+    onSetVisualizer: (type) => {
+      setActiveVisualizerType(type as typeof activeVisualizerType);
+    },
+    onSetEffects: (effects) => {
+      const next = { ...defaultEnabledEffects };
+      for (const effect of effects) {
+        if (effect in next) next[effect as ToggleableEffectType] = true;
+      }
+      setEnabledEffects(next);
+    },
+    onRecordQueue: () => void handleRecordQueue(),
+    onPublishToYoutube: () => {
+      const readyRecording = [...recordingEntries]
+        .reverse()
+        .find((e) => e.backendStatus === 'ready' && e.mp4Blob);
+      if (readyRecording) void uploadRecordingToYouTube(readyRecording.id);
+    },
+  });
+
+  // Publish capabilities whenever visualizer/effects state changes
+  useEffect(() => {
+    const caps = {
+      visualizers: visualizerOptions.map((o) => o.value),
+      effects: effectOptions as string[],
+      activeVisualizer: activeVisualizerType,
+      activeEffects: effectOrder.filter((e) => enabledEffects[e]) as string[],
+    };
+    fetch('/mcp/capabilities', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(caps),
+    }).catch(() => {});
+  }, [activeVisualizerType, enabledEffects, effectOrder]);
+
+  // ---------------------------------------------------------------------------
 
   function handlePause(): void {
     try {

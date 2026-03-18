@@ -135,6 +135,13 @@ function mockVideoFetch(): ReturnType<typeof vi.fn> {
         headers: { 'content-type': 'video/mp4' },
       });
     }
+    // MCP bridge endpoints are fire-and-forget — return 200 silently
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     throw new Error(`Unexpected endpoint called: ${url}`);
   });
 }
@@ -192,13 +199,12 @@ describe('App unified generate flow (US-003)', () => {
         headers: { 'content-type': 'application/json' },
         body: expect.stringContaining('"mode":"llm"')
       });
-      const call = fetchMock.mock.calls[0];
-      const body = JSON.parse(call[1].body as string);
+      const call = fetchMock.mock.calls.find(([url]) => url === '/api/generate');
+      const body = JSON.parse(call![1].body as string);
       expect(body.prompt).toBe('neon city street at night');
       expect(body.duration).toBe(40);
       expect(body.targetWidth).toBe(1920);
       expect(body.targetHeight).toBe(1080);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -233,11 +239,11 @@ describe('App unified generate flow (US-003)', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
       await waitFor(() => {
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledWith('/api/generate', expect.anything());
       });
 
-      const call = fetchMock.mock.calls[0];
-      const body = JSON.parse(call[1].body as string);
+      const call = fetchMock.mock.calls.find(([url]) => url === '/api/generate');
+      const body = JSON.parse(call![1].body as string);
       expect(body.targetWidth).toBe(targetWidth);
       expect(body.targetHeight).toBe(targetHeight);
     }
@@ -292,15 +298,21 @@ describe('App unified generate flow (US-003)', () => {
   it('keeps Generate enabled while processing and transitions queue from Queued -> Generating -> Completed', async () => {
     let resolveVideo: ((value: Response) => void) | undefined;
 
-    const fetchMock = vi
-      .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveVideo = resolve;
-          })
-      )
-      .mockImplementation(async () => createVideoResponse());
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      // MCP bridge calls — return immediately
+      if (url.includes('/mcp/')) {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      // First /api/generate call — held pending to test the "generating" state
+      if (!resolveVideo) {
+        return new Promise<Response>((resolve) => { resolveVideo = resolve; });
+      }
+      return createVideoResponse();
+    });
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
@@ -523,7 +535,7 @@ describe('App unified generate flow (US-003)', () => {
       'Please enter a creative brief.'
     );
     expect(screen.queryAllByTestId(/queue-entry-/)).toHaveLength(0);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/generate', expect.anything());
   });
 
   it('fails with a clear error when /api/generate does not return video/mp4', async () => {
@@ -1175,10 +1187,11 @@ describe('App shared prompt toggle (US-005)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith('/api/generate', expect.anything());
     });
 
-    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const generateCall = fetchMock.mock.calls.find(([url]) => url === '/api/generate') as [string, RequestInit];
+    const [, requestInit] = generateCall;
     const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
     expect(payload).toMatchObject({
       mode: 'llm',
