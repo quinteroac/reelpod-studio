@@ -1831,6 +1831,161 @@ describe('Recording auto-stop and UI states (US-002)', () => {
   });
 });
 
+describe('US-003 (song title as MP4 filename)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  function mockFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
+    return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/api/generate')) {
+        return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4', 'x-song-title': title }
+        });
+      }
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url.includes('/mcp/')) {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+  }
+
+  it('US-003-AC02: filename uses sanitized song title when a title is available', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchWithTitle('Midnight Rain Lofi'));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/titled-rec');
+
+    render(<App />);
+
+    // Generate a track so activePreviewEntry gets a songTitle
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chill lofi' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    // Trigger onFinalized while the titled entry is playing
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toBe('midnight_rain_lofi.mp4');
+
+      const downloadLink = screen.getByTestId('recording-download-1');
+      expect(downloadLink.getAttribute('download')).toBe('midnight_rain_lofi.mp4');
+    });
+  });
+
+  it('US-003-AC03: falls back to recording-<timestamp> when no title is available', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/notitled-rec');
+
+    render(<App />);
+
+    // Trigger onFinalized without any active entry (no title available)
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toMatch(/^recording-.*\.mp4$/);
+
+      const downloadLink = screen.getByTestId('recording-download-1');
+      expect(downloadLink.getAttribute('download')).toMatch(/^recording-.*\.mp4$/);
+    });
+  });
+
+  it('US-003-AC01: sanitizes special characters and caps at 80 chars', async () => {
+    const longTitle = 'A'.repeat(100); // 100 chars → sanitized to 80
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchWithTitle(longTitle));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/long-rec');
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'long title track' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      // 'A'.repeat(100) lowercased + trimmed to 80 = 'a'.repeat(80) + '.mp4'
+      expect(filename.textContent).toBe('a'.repeat(80) + '.mp4');
+    });
+  });
+
+  it('US-003-AC03: falls back to timestamp filename when title sanitizes to empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchWithTitle('!!!###'));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/empty-title-rec');
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'special chars track' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toMatch(/^recording-.*\.mp4$/);
+    });
+  });
+});
+
 describe('YouTube connection UI (US-001)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

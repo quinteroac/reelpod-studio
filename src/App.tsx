@@ -29,6 +29,7 @@ interface GenerationParams {
 import {
   GENERATE_ENDPOINT_PATH
 } from './api/constants';
+import { sanitizeFilename } from './lib/sanitize-filename';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -442,8 +443,12 @@ export function App() {
       startSeekPolling();
     },
     onFinalized: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => {
+      const rawTitle = activePreviewEntry?.songTitle ?? null;
+      const sanitized = rawTitle ? sanitizeFilename(rawTitle) : null;
       const timestamp = new Date().toISOString();
-      const filename = `recording-${timestamp}${meta.fileExtension}`;
+      const filename = sanitized
+        ? `${sanitized}${meta.fileExtension}`
+        : `recording-${timestamp}${meta.fileExtension}`;
       const sizeInMb = parseFloat((blob.size / (1024 * 1024)).toFixed(2));
       const entryId = recordingIdRef.current++;
 
