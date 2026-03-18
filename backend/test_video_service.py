@@ -133,6 +133,8 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
             audio_prompt="warm ambient lofi, 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, warm ambient lofi artwork",
             video_prompt="A calm scene with warm ambient lighting and lofi vibes.",
+            youtube_title="Warm Ambient Lofi | Lofi Music",
+            youtube_description="A calm scene with warm ambient lighting and lofi vibes.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -225,7 +227,7 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
     body = GenerateRequestBody(prompt="warm ambient lofi", duration=40)
-    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
     assert song_title == "Warm Ambient Lofi"
@@ -257,6 +259,8 @@ def test_generate_video_uses_orchestration_image_prompt_and_target_resolution(
             audio_prompt="cinematic ambient, 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, cinematic skyline at blue hour",
             video_prompt="A cinematic shot of the skyline at blue hour.",
+            youtube_title="Blue Hour | Cinematic Ambient",
+            youtube_description="A cinematic shot of the skyline at blue hour.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -291,7 +295,7 @@ def test_generate_video_uses_orchestration_image_prompt_and_target_resolution(
         targetHeight=1920,
     )
 
-    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
     assert song_title == "Blue Hour"
@@ -315,6 +319,8 @@ def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.Monke
             audio_prompt="future garage, introspective, 92 BPM, airy synths, vinyl texture",
             image_prompt="score_9, score_8, best quality, highres, newest, safe, 1girl, city rooftop at dusk",
             video_prompt="Slow dolly shot across a rainy rooftop as neon signs pulse in the background.",
+            youtube_title="Rooftop Reverie | Future Garage",
+            youtube_description="Slow dolly shot across a rainy rooftop as neon signs pulse in the background.",
         ),
     )
 
@@ -361,7 +367,7 @@ def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.Monke
     )
 
     body = GenerateRequestBody(mode="llm", prompt=" moody rooftop performance ", duration=40)
-    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
     assert song_title == "Rooftop Reverie"
@@ -399,6 +405,8 @@ def test_generate_video_rejects_invalid_stream_layout(monkeypatch: pytest.Monkey
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -434,6 +442,8 @@ def test_generate_video_rejects_duration_mismatch(monkeypatch: pytest.MonkeyPatc
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -462,6 +472,8 @@ def test_generate_video_times_out_when_audio_step_exceeds_deadline(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -513,6 +525,8 @@ def test_generate_video_cleans_intermediate_files_when_muxing_fails(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -588,11 +602,13 @@ def test_generate_video_completes_for_platform_presets(
             song_title="Warm Ambient",
             audio_prompt="warm ambient 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, warm ambient artwork",
-            video_prompt="A warm ambient scene.",
+            video_prompt="A warm ambient scene with glowing city lights.",
+            youtube_title="Warm Ambient | Lofi Music",
+            youtube_description="A warm ambient scene with glowing city lights.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
-    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
+    mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(
             prompt="warm ambient",
             duration=40,
@@ -676,11 +692,13 @@ def test_generate_video_upscale_fallback_logs_warning_and_uses_pre_upscale_clip(
             audio_prompt="lofi ambient groove",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft fog and warm city lights.",
+            youtube_title="Ambient Groove | Lofi Music",
+            youtube_description="A calm lofi scene with soft fog and warm city lights.",
         ),
     )
 
     caplog.set_level("WARNING")
-    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+    mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
 
     assert mp4_bytes == MP4_HEADER
     assert song_title == "Ambient Groove"
@@ -754,10 +772,12 @@ def test_generate_video_upscale_called_with_tile_and_target_settings(
             audio_prompt="lofi ambient groove",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft fog and warm city lights.",
+            youtube_title="Ambient Groove | Lofi Music",
+            youtube_description="A calm lofi scene with soft fog and warm city lights.",
         ),
     )
 
-    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
+    mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(
             prompt="lofi",
             duration=40,
@@ -808,6 +828,8 @@ def test_generate_video_rejects_mismatched_final_frame_dimensions(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -857,10 +879,12 @@ def test_us003_ac01_muxed_output_has_one_h264_and_one_aac_stream(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
-    mp4_bytes, _ = video_service.generate_video_mp4_for_request(
+    mp4_bytes, *_ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(prompt="lofi", duration=40)
     )
 
@@ -928,11 +952,13 @@ def test_us003_ac02_frame_dimensions_match_target(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     body = GenerateRequestBody(prompt="lofi", duration=40, targetWidth=1080, targetHeight=1920)
-    mp4_bytes, _ = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, *_ = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
     assert output_probe_dimensions == {"width": 1080, "height": 1920}
@@ -969,10 +995,12 @@ def test_us003_ac03_duration_within_tolerance_passes(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
-    mp4_bytes, _ = video_service.generate_video_mp4_for_request(
+    mp4_bytes, *_ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(prompt="lofi", duration=40)
     )
     assert mp4_bytes == MP4_HEADER
@@ -1009,6 +1037,8 @@ def test_us003_ac03_duration_outside_tolerance_fails(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -1112,6 +1142,8 @@ def test_us003_pipeline_loops_wan_clip_to_audio_duration(
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Lofi Session | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
@@ -1146,6 +1178,8 @@ def _patch_full_pipeline_noop(monkeypatch: pytest.MonkeyPatch, song_title: str =
             audio_prompt="lofi 90 BPM",
             image_prompt="score_9, score_8, best quality, highres, lofi artwork",
             video_prompt="A calm lofi scene with soft lighting and warm tones.",
+            youtube_title="Test Track | Lofi Music",
+            youtube_description="A calm lofi scene with soft lighting and warm tones.",
         ),
     )
     monkeypatch.setattr(
@@ -1177,7 +1211,7 @@ def test_us002_ac01_song_title_returned_for_llm_mode(monkeypatch: pytest.MonkeyP
     """AC01: generate_video_mp4_for_request returns the LLM-generated song_title for llm mode."""
     _patch_full_pipeline_noop(monkeypatch, song_title="Midnight Rain Lofi")
 
-    _mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
+    _mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(mode="llm", prompt="rainy night lofi", duration=40)
     )
 
@@ -1188,7 +1222,7 @@ def test_us002_ac04_song_title_is_none_for_text_mode(monkeypatch: pytest.MonkeyP
     """AC04: generate_video_mp4_for_request returns None song_title for text mode (no LLM title)."""
     _patch_full_pipeline_noop(monkeypatch, song_title="Should Not Appear")
 
-    _mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
+    _mp4_bytes, song_title, *_ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(mode="text", prompt="rainy night lofi", duration=40)
     )
 
