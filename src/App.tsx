@@ -1719,10 +1719,10 @@ export function App() {
                               <p className="text-lofi-text">
                                 {isCurrentlyPlaying && (
                                   <span
-                                    className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
+                                    className="text-lofi-accent"
                                     aria-hidden="true"
                                   >
-                                    ▶ Now playing
+                                    ▶ Now playing{' '}
                                   </span>
                                 )}
                                 {buildQueueSummary(entry.params)}

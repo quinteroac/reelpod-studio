@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pathlib import Path
 import uuid
 
@@ -38,7 +38,7 @@ def generate_video(body: GenerateRequestBody) -> StreamingResponse:
     headers: dict[str, str] = {}
     if song_title:
         headers["X-Song-Title"] = song_title
-    return StreamingResponse(io.BytesIO(mp4_bytes), media_type="video/mp4", headers=headers)
+    return Response(content=mp4_bytes, media_type="video/mp4", headers=headers)
 
 
 @router.post("/api/generate-requests")

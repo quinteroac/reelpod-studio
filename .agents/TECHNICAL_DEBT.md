@@ -1,5 +1,10 @@
 # Technical Debt
 
+## Iteration 000034
+
+- Title: LTX2 video prompt bypass in video_service.py
+  Description: `_resolve_pipeline_prompts` sets `video_prompt` to `validated.image_prompt` instead of the actual LTX2-formatted prompt; the `_generate_video_prompt_ltx2` call is commented out. Restore when LTX2 video prompt quality is satisfactory.
+
 ## Iteration 000024
 
 - Title: Restore repo-wide lint compliance
