@@ -64,3 +64,4 @@ Thumbs.db
 package-lock.json
 backend/vendor/comfy-diffusion
 **/tmp_recordings/** 
+backend/vendor/comfy-diffusion
