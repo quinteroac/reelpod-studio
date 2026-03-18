@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,8 @@ CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
     "audiovisual concept rather than rephrasing it. Make autonomous creative decisions for genre, mood, "
     "tempo, instrumentation, lyrical theme, visual style, character or scene composition. Prefer static or "
     "minimal camera motion so the video feels like a seamless loop rather than an action sequence. "
-    "Return ONLY valid JSON with keys song_title, audio_prompt, image_prompt, video_prompt.\n"
+    "Return ONLY valid JSON with keys song_title, audio_prompt, image_prompt, video_prompt, "
+    "youtube_title, youtube_description.\n"
     "Rules:\n"
     "0) song_title: a short, evocative name for the track (max 60 characters, no special characters "
     "except spaces, hyphens, and apostrophes).\n"
@@ -41,8 +43,15 @@ CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
     "'score_9, score_8, best quality, highres'.\n"
     "3) video_prompt: short, static or slow-loop scene intent (e.g. ambient, idle motion, subtle loop) "
     "that can be expanded into LTX-Video 2 format. Aim for a calm, loopable clip, not an action movie.\n"
-    "4) No markdown, no code fences, no explanations, JSON only."
+    "4) youtube_title: a YouTube-optimised title for the track (max 100 characters). Must be human-readable "
+    "with no underscores and no file-extension suffixes (e.g. no .mp3, .mp4, .wav).\n"
+    "5) youtube_description: a short paragraph (1–3 sentences) describing the song concept, mood, and "
+    "listening context. Max 5000 characters.\n"
+    "6) No markdown, no code fences, no explanations, JSON only."
 )
+
+
+_FILE_EXTENSION_PATTERN = re.compile(r"\.[a-zA-Z0-9]{2,4}$")
 
 
 class OrchestrationResult(BaseModel):
@@ -50,8 +59,10 @@ class OrchestrationResult(BaseModel):
     audio_prompt: str = Field(min_length=10, max_length=10000)
     image_prompt: str = Field(min_length=10, max_length=10000)
     video_prompt: str = Field(min_length=20, max_length=10000)
+    youtube_title: str = Field(min_length=1, max_length=100)
+    youtube_description: str = Field(min_length=10, max_length=5000)
 
-    @field_validator("song_title", "audio_prompt", "image_prompt", "video_prompt")
+    @field_validator("song_title", "audio_prompt", "image_prompt", "video_prompt", "youtube_title", "youtube_description")
     @classmethod
     def _strip_text(cls, value: str) -> str:
         trimmed = value.strip()
@@ -73,6 +84,15 @@ class OrchestrationResult(BaseModel):
     def _validate_video_single_paragraph(cls, value: str) -> str:
         if "\n" in value or "\r" in value:
             raise ValueError("video_prompt must be a single paragraph with no newlines.")
+        return value
+
+    @field_validator("youtube_title")
+    @classmethod
+    def _validate_youtube_title(cls, value: str) -> str:
+        if "_" in value:
+            raise ValueError("youtube_title must not contain underscores.")
+        if _FILE_EXTENSION_PATTERN.search(value):
+            raise ValueError("youtube_title must not end with a file extension (e.g. .mp3, .mp4).")
         return value
 
 
@@ -201,6 +221,8 @@ def orchestrate(user_prompt: str) -> OrchestrationResult:
                 ##Use the same image prompt for video to produce more static videos as we are looking for loopable videos.
                 "video_prompt": validated.image_prompt,
                 #"video_prompt": ltx2_prompt,
+                "youtube_title": validated.youtube_title,
+                "youtube_description": validated.youtube_description,
             }
         )
     except ValidationError as exc:
