@@ -56,6 +56,12 @@ async function getCapabilities(sseBaseUrl: string) {
   }
 }
 
+function buildFallbackTitle(filename: string): string {
+  const trimmed = filename.trim();
+  if (trimmed.length === 0) return 'ReelPod Studio Recording';
+  return trimmed.replace(/\.[^.]+$/, '') || 'ReelPod Studio Recording';
+}
+
 // ---------------------------------------------------------------------------
 // Server factory
 // ---------------------------------------------------------------------------
@@ -72,6 +78,12 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     imagePrompt: string;
     completed: boolean;
     addedToQueue: boolean;
+  } | null = null;
+
+  let lastRecordingMeta: {
+    youtubeTitle: string | null;
+    youtubeDescription: string | null;
+    filename: string;
   } | null = null;
 
   const queue: QueueEntry[] = [];
@@ -527,11 +539,19 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
           };
         }
 
+        const eventData = (event.data ?? {}) as Record<string, unknown>;
+        lastRecordingMeta = {
+          youtubeTitle: typeof eventData.youtubeTitle === 'string' ? eventData.youtubeTitle : null,
+          youtubeDescription:
+            typeof eventData.youtubeDescription === 'string' ? eventData.youtubeDescription : null,
+          filename: typeof eventData.filename === 'string' ? eventData.filename : '',
+        };
+
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify({ status: 'recording_ready', ...((event.data as object) ?? {}) }),
+              text: JSON.stringify({ status: 'recording_ready', ...eventData }),
             },
           ],
         };
@@ -556,10 +576,13 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     {
       title: 'Publish to YouTube',
       description:
-        'Upload the most recently recorded video to YouTube. The user must have connected their YouTube account in the UI beforehand.',
+        'Upload the most recently recorded video to YouTube. The user must have connected their YouTube account in the UI beforehand. When title or description are omitted, the LLM-generated metadata from the last recording is used automatically.',
       inputSchema: {
-        title: z.string().optional().describe('YouTube video title'),
-        description: z.string().optional().describe('YouTube video description'),
+        title: z.string().optional().describe('YouTube video title (defaults to LLM-generated title)'),
+        description: z
+          .string()
+          .optional()
+          .describe('YouTube video description (defaults to LLM-generated description)'),
       },
     },
     async ({ title, description }) => {
@@ -575,11 +598,15 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
         };
       }
 
+      const resolvedTitle =
+        title ?? lastRecordingMeta?.youtubeTitle ?? buildFallbackTitle(lastRecordingMeta?.filename ?? '');
+      const resolvedDescription = description ?? lastRecordingMeta?.youtubeDescription ?? '';
+
       try {
         await fetch(`${sseBaseUrl}/mcp/youtube`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ title, description }),
+          body: JSON.stringify({ title: resolvedTitle, description: resolvedDescription }),
         });
 
         // Wait for upload to complete (up to 10 min)

@@ -912,3 +912,154 @@ describe('US-005 – get_queue tool', () => {
     });
   });
 });
+
+// US-005: publish_to_youtube MCP tool uses LLM-generated metadata
+describe('US-005 – publish_to_youtube metadata defaults', () => {
+  let client: Client;
+  const mockFetch = vi.fn();
+  const SSE_BASE_URL = 'http://127.0.0.1:3100';
+
+  // Helper to simulate a record_queue call followed by publish_to_youtube
+  async function simulateRecordThenPublish(
+    recordingMeta: { filename: string; youtubeTitle: string | null; youtubeDescription: string | null },
+    publishArgs: { title?: string; description?: string },
+  ) {
+    // record_queue: POST /mcp/record → OK
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    // record_queue: GET /mcp/events/poll?event=recording_complete
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ type: 'recording_complete', data: recordingMeta }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    await client.callTool({ name: 'record_queue', arguments: {} });
+
+    // publish_to_youtube: POST /mcp/youtube → OK
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    // publish_to_youtube: GET /mcp/events/poll?event=upload_complete
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ type: 'upload_complete', data: { url: 'https://youtu.be/test123' } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const result = await client.callTool({ name: 'publish_to_youtube', arguments: publishArgs });
+    return result;
+  }
+
+  beforeAll(async () => {
+    const server = createMcpServer({ sseBaseUrl: SSE_BASE_URL });
+    client = new Client({ name: 'test-client', version: '1.0.0' });
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterAll(async () => {
+    await client.close();
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  // US-005-AC01: When title and description are omitted, LLM-generated metadata is used
+  describe('AC01 – omitted title/description default to LLM-generated metadata', () => {
+    it('sends LLM-generated youtube title and description to the bridge when none are passed', async () => {
+      await simulateRecordThenPublish(
+        {
+          filename: 'lofi-night.webm',
+          youtubeTitle: 'Lofi Night Drive 🌙',
+          youtubeDescription: 'Chill beats for late-night coding sessions.',
+        },
+        {},
+      );
+
+      const youtubePostCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).endsWith('/mcp/youtube'),
+      );
+      expect(youtubePostCall).toBeDefined();
+      const body = JSON.parse(youtubePostCall![1].body);
+      expect(body.title).toBe('Lofi Night Drive 🌙');
+      expect(body.description).toBe('Chill beats for late-night coding sessions.');
+    });
+  });
+
+  // US-005-AC02: Explicitly passed values take precedence over LLM-generated metadata
+  describe('AC02 – explicit title/description override LLM-generated metadata', () => {
+    it('uses explicitly provided title and description over LLM-generated ones', async () => {
+      await simulateRecordThenPublish(
+        {
+          filename: 'track.webm',
+          youtubeTitle: 'LLM Title',
+          youtubeDescription: 'LLM Description',
+        },
+        {
+          title: 'Custom Title',
+          description: 'Custom description override',
+        },
+      );
+
+      const youtubePostCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).endsWith('/mcp/youtube'),
+      );
+      expect(youtubePostCall).toBeDefined();
+      const body = JSON.parse(youtubePostCall![1].body);
+      expect(body.title).toBe('Custom Title');
+      expect(body.description).toBe('Custom description override');
+    });
+  });
+
+  // US-005-AC03: When LLM metadata is null, fall back to filename-derived title
+  describe('AC03 – null metadata falls back to filename-derived title', () => {
+    it('strips file extension from filename when youtubeTitle is null', async () => {
+      await simulateRecordThenPublish(
+        {
+          filename: 'recording-2026-03-18.webm',
+          youtubeTitle: null,
+          youtubeDescription: null,
+        },
+        {},
+      );
+
+      const youtubePostCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).endsWith('/mcp/youtube'),
+      );
+      expect(youtubePostCall).toBeDefined();
+      const body = JSON.parse(youtubePostCall![1].body);
+      expect(body.title).toBe('recording-2026-03-18');
+      expect(body.description).toBe('');
+    });
+
+    it('uses default title when filename is empty', async () => {
+      await simulateRecordThenPublish(
+        { filename: '', youtubeTitle: null, youtubeDescription: null },
+        {},
+      );
+
+      const youtubePostCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).endsWith('/mcp/youtube'),
+      );
+      expect(youtubePostCall).toBeDefined();
+      const body = JSON.parse(youtubePostCall![1].body);
+      expect(body.title).toBe('ReelPod Studio Recording');
+    });
+  });
+});

@@ -385,7 +385,13 @@ export function App() {
   }, []);
 
   const uploadRecordingToBackend = useCallback(
-    async (entryId: number, blob: Blob, filename: string): Promise<void> => {
+    async (
+      entryId: number,
+      blob: Blob,
+      filename: string,
+      youtubeTitle: string | null,
+      youtubeDescription: string | null,
+    ): Promise<void> => {
       setRecordingEntries((prev) =>
         prev.map((entry) =>
           entry.id === entryId
@@ -436,7 +442,7 @@ export function App() {
               : entry,
           ),
         );
-        notifyAgent('recording_complete', { filename });
+        notifyAgent('recording_complete', { filename, youtubeTitle, youtubeDescription });
       } catch (error) {
         const message = getErrorMessage(error);
         setRecordingEntries((prev) =>
@@ -485,7 +491,7 @@ export function App() {
       };
       setRecordingEntries((prev) => [...prev, entry]);
 
-      void uploadRecordingToBackend(entryId, blob, filename);
+      void uploadRecordingToBackend(entryId, blob, filename, entry.youtubeTitle, entry.youtubeDescription);
     }
   });
   const {
