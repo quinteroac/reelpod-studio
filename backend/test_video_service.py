@@ -225,9 +225,10 @@ def test_generate_video_orchestrates_audio_image_and_muxing(
     monkeypatch.setattr(video_service.media_repository, "probe_media", fake_probe_media)
 
     body = GenerateRequestBody(prompt="warm ambient lofi", duration=40)
-    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
+    assert song_title == "Warm Ambient Lofi"
     # New pipeline order: audio → image → wan_i2v → probe_audio → loop → mux → probe_output
     assert calls == [
         "audio",
@@ -290,9 +291,10 @@ def test_generate_video_uses_orchestration_image_prompt_and_target_resolution(
         targetHeight=1920,
     )
 
-    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
+    assert song_title == "Blue Hour"
     assert seen == {
         "prompt": "score_9, score_8, best quality, highres, cinematic skyline at blue hour",
         "target_width": 1080,
@@ -359,9 +361,10 @@ def test_generate_video_uses_llm_orchestration_prompts(monkeypatch: pytest.Monke
     )
 
     body = GenerateRequestBody(mode="llm", prompt=" moody rooftop performance ", duration=40)
-    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
+    assert song_title == "Rooftop Reverie"
     assert seen["audio_mode"] == "text"
     assert seen["audio_prompt"] == "future garage, introspective, 92 BPM, airy synths, vinyl texture"
     assert seen["image_prompt"] == "score_9, score_8, best quality, highres, newest, safe, 1girl, city rooftop at dusk"
@@ -589,7 +592,7 @@ def test_generate_video_completes_for_platform_presets(
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
-    mp4_bytes = video_service.generate_video_mp4_for_request(
+    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(
             prompt="warm ambient",
             duration=40,
@@ -599,6 +602,7 @@ def test_generate_video_completes_for_platform_presets(
     )
 
     assert mp4_bytes == MP4_HEADER
+    assert song_title == "Warm Ambient"
     assert seen_mux == {"target_width": target_width, "target_height": target_height}
     assert probe_targets.count("output.mp4") == 1
 
@@ -676,9 +680,10 @@ def test_generate_video_upscale_fallback_logs_warning_and_uses_pre_upscale_clip(
     )
 
     caplog.set_level("WARNING")
-    mp4_bytes = video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
 
     assert mp4_bytes == MP4_HEADER
+    assert song_title == "Ambient Groove"
     assert seen["loop_input_name"] == "wan_clip.mp4"
     assert "Real-ESRGAN upscale failed; falling back to original Wan clip" in caplog.text
 
@@ -752,7 +757,7 @@ def test_generate_video_upscale_called_with_tile_and_target_settings(
         ),
     )
 
-    mp4_bytes = video_service.generate_video_mp4_for_request(
+    mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(
             prompt="lofi",
             duration=40,
@@ -762,6 +767,7 @@ def test_generate_video_upscale_called_with_tile_and_target_settings(
     )
 
     assert mp4_bytes == MP4_HEADER
+    assert song_title == "Ambient Groove"
     assert seen == {
         "input_name": "wan_clip.mp4",
         "output_name": "upscaled_resized_clip.mp4",
@@ -854,7 +860,7 @@ def test_us003_ac01_muxed_output_has_one_h264_and_one_aac_stream(
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
-    mp4_bytes = video_service.generate_video_mp4_for_request(
+    mp4_bytes, _ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(prompt="lofi", duration=40)
     )
 
@@ -926,7 +932,7 @@ def test_us003_ac02_frame_dimensions_match_target(
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
     body = GenerateRequestBody(prompt="lofi", duration=40, targetWidth=1080, targetHeight=1920)
-    mp4_bytes = video_service.generate_video_mp4_for_request(body)
+    mp4_bytes, _ = video_service.generate_video_mp4_for_request(body)
 
     assert mp4_bytes == MP4_HEADER
     assert output_probe_dimensions == {"width": 1080, "height": 1920}
@@ -966,7 +972,7 @@ def test_us003_ac03_duration_within_tolerance_passes(
         )
 
     monkeypatch.setattr(video_service.orchestration_service, "orchestrate", fake_orchestrate)
-    mp4_bytes = video_service.generate_video_mp4_for_request(
+    mp4_bytes, _ = video_service.generate_video_mp4_for_request(
         GenerateRequestBody(prompt="lofi", duration=40)
     )
     assert mp4_bytes == MP4_HEADER
@@ -1117,3 +1123,73 @@ def test_us003_pipeline_loops_wan_clip_to_audio_duration(
     assert loop_calls[0]["video_name"] == "upscaled_resized_clip.mp4"
     assert loop_calls[0]["target_duration"] == 42.5
     assert loop_calls[0]["output_name"] == "looped_clip.mp4"
+
+
+# ---------------------------------------------------------------------------
+# US-002 – Song title propagation
+# ---------------------------------------------------------------------------
+
+
+def _patch_full_pipeline_noop(monkeypatch: pytest.MonkeyPatch, song_title: str = "Test Track") -> None:
+    """Patch the entire video pipeline to succeed quickly, injecting a fake song title."""
+    from services.orchestration_service import OrchestrationResult
+
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+    _patch_wan_i2v_noop(monkeypatch)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+    monkeypatch.setattr(
+        video_service.orchestration_service,
+        "orchestrate",
+        lambda _prompt: OrchestrationResult(
+            song_title=song_title,
+            audio_prompt="lofi 90 BPM",
+            image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+            video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        ),
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "loop_video_to_duration",
+        lambda video_path, target_duration, output_path: output_path.write_bytes(video_path.read_bytes()),
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "mux_video_and_audio_to_mp4",
+        lambda _v, _a, output_path, **_kw: output_path.write_bytes(MP4_HEADER),
+    )
+    monkeypatch.setattr(
+        video_service.media_repository,
+        "probe_media",
+        lambda path: {"format": {"duration": "40.0"}}
+        if path.name == "audio_trimmed.wav"
+        else {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+            "format": {"duration": "40.0"},
+        },
+    )
+
+
+def test_us002_ac01_song_title_returned_for_llm_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC01: generate_video_mp4_for_request returns the LLM-generated song_title for llm mode."""
+    _patch_full_pipeline_noop(monkeypatch, song_title="Midnight Rain Lofi")
+
+    _mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(mode="llm", prompt="rainy night lofi", duration=40)
+    )
+
+    assert song_title == "Midnight Rain Lofi"
+
+
+def test_us002_ac04_song_title_is_none_for_text_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC04: generate_video_mp4_for_request returns None song_title for text mode (no LLM title)."""
+    _patch_full_pipeline_noop(monkeypatch, song_title="Should Not Appear")
+
+    _mp4_bytes, song_title = video_service.generate_video_mp4_for_request(
+        GenerateRequestBody(mode="text", prompt="rainy night lofi", duration=40)
+    )
+
+    assert song_title is None

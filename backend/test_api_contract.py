@@ -17,7 +17,7 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
         seen["mode"] = body.mode
         seen["prompt"] = body.prompt
         seen["duration"] = body.duration
-        return MP4_HEADER
+        return MP4_HEADER, "Midnight Rain Lofi"
 
     monkeypatch.setattr(
         api_routes.video_service,
@@ -39,6 +39,40 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
     assert seen["prompt"] == "warm hip-hop beat"
     assert seen["duration"] == 90
     assert wrong_method.status_code == 405
+
+
+def test_post_generate_includes_song_title_header_for_llm_mode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        api_routes.video_service,
+        "generate_video_mp4_for_request",
+        lambda _body: (MP4_HEADER, "Midnight Rain Lofi"),
+    )
+
+    with TestClient(app=main.app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/generate",
+            json={"mode": "llm", "prompt": "rainy night lofi", "duration": 40},
+        )
+
+    assert response.status_code == 200
+    assert response.headers.get("x-song-title") == "Midnight Rain Lofi"
+
+
+def test_post_generate_omits_song_title_header_when_none(monkeypatch) -> None:
+    monkeypatch.setattr(
+        api_routes.video_service,
+        "generate_video_mp4_for_request",
+        lambda _body: (MP4_HEADER, None),
+    )
+
+    with TestClient(app=main.app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/generate",
+            json={"mode": "llm", "prompt": "no title test", "duration": 40},
+        )
+
+    assert response.status_code == 200
+    assert "x-song-title" not in response.headers
 
 
 def test_post_generate_requests_preserves_contract(monkeypatch) -> None:

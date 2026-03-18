@@ -2159,3 +2159,99 @@ describe('YouTube recording uploads (US-002)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// US-002 – Song title displayed in UI after generation
+// ---------------------------------------------------------------------------
+
+function createVideoResponseWithTitle(title: string): Response {
+  return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+    status: 200,
+    headers: { 'content-type': 'video/mp4', 'x-song-title': title }
+  });
+}
+
+function mockVideoFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponseWithTitle(title);
+    }
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`Unexpected endpoint called: ${url}`);
+  });
+}
+
+describe('App song title display (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
+  });
+
+  it('AC02/AC03: displays the raw song title from X-Song-Title header in the queue entry after generation', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetchWithTitle('Midnight Rain Lofi'));
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'rainy night lofi' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const titleEl = screen.getByTestId('queue-entry-song-title-1');
+    expect(titleEl).toBeInTheDocument();
+    expect(titleEl).toHaveTextContent('Midnight Rain Lofi');
+  });
+
+  it('AC03: shows the raw title string unchanged (not sanitized)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetchWithTitle("Chill Sunday Groove"));
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'sunday vibes' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    expect(screen.getByTestId('queue-entry-song-title-1')).toHaveTextContent('Chill Sunday Groove');
+  });
+
+  it('AC04: no song title element shown when X-Song-Title header is absent', async () => {
+    // createVideoResponse returns no X-Song-Title header
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'no title test' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    expect(screen.queryByTestId('queue-entry-song-title-1')).toBeNull();
+  });
+});

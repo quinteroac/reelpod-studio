@@ -67,6 +67,7 @@ interface QueueEntry {
   status: QueueEntryStatus;
   errorMessage: string | null;
   videoBlob: Blob | null;
+  songTitle: string | null;
 }
 
 const defaultParams: GenerationParams = {
@@ -186,7 +187,7 @@ async function requestGeneratedVideo(
   imagePrompt: string,
   targetWidth: number,
   targetHeight: number
-): Promise<Blob> {
+): Promise<{ blob: Blob; songTitle: string | null }> {
   const payload = {
     ...params,
     imagePrompt,
@@ -227,7 +228,10 @@ async function requestGeneratedVideo(
     throw new Error('Could not generate video: Expected video/mp4 response');
   }
 
-  return response.blob();
+  const rawTitle = response.headers.get('x-song-title');
+  const songTitle = rawTitle && rawTitle.trim().length > 0 ? rawTitle.trim() : null;
+  const blob = await response.blob();
+  return { blob, songTitle };
 }
 
 export function App() {
@@ -331,6 +335,7 @@ export function App() {
       status: 'queued',
       errorMessage: null,
       videoBlob: null,
+      songTitle: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }, []);
@@ -781,7 +786,7 @@ export function App() {
       );
 
       try {
-        const videoBlob = await requestGeneratedVideo(
+        const { blob: videoBlob, songTitle } = await requestGeneratedVideo(
           entry.params,
           entry.imagePrompt,
           entry.targetWidth,
@@ -795,7 +800,8 @@ export function App() {
                 ...item,
                 status: 'completed',
                 errorMessage: null,
-                videoBlob
+                videoBlob,
+                songTitle
               }
               : item
           )
@@ -928,6 +934,7 @@ export function App() {
       status: 'queued',
       errorMessage: null,
       videoBlob: null,
+      songTitle: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
@@ -1696,6 +1703,14 @@ export function App() {
                               <p className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
                                 Track {trackNumber}
                               </p>
+                              {entry.songTitle && (
+                                <p
+                                  data-testid={`queue-entry-song-title-${entry.id}`}
+                                  className="text-sm font-semibold text-lofi-accent"
+                                >
+                                  {entry.songTitle}
+                                </p>
+                              )}
                               <p className="text-lofi-text">
                                 {isCurrentlyPlaying && (
                                   <span

@@ -58,7 +58,7 @@ def startup() -> None:
 
 def _resolve_pipeline_prompts(
     body: GenerateRequestBody,
-) -> tuple[GenerateRequestBody, str, str]:
+) -> tuple[GenerateRequestBody, str, str, str]:
     orchestration = orchestration_service.orchestrate(body.prompt or "")
     audio_request_body = body.model_copy(
         update={
@@ -66,7 +66,7 @@ def _resolve_pipeline_prompts(
             "prompt": orchestration.audio_prompt,
         }
     )
-    return audio_request_body, orchestration.image_prompt, orchestration.video_prompt
+    return audio_request_body, orchestration.image_prompt, orchestration.video_prompt, orchestration.song_title
 
 
 def _run_with_timeout(func: Callable[[], T], timeout_seconds: float, timeout_message: str) -> T:
@@ -134,7 +134,7 @@ def _parse_video_dimensions(mp4_probe_data: dict[str, Any]) -> tuple[int, int]:
     return width, height
 
 
-def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
+def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, str | None]:
     deadline = time.monotonic() + VIDEO_GENERATION_TIMEOUT_SECONDS
     temp_dir = Path(tempfile.mkdtemp(prefix="reelpod-video-"))
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -153,7 +153,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         return remaining
 
     try:
-        audio_request_body, image_prompt, video_prompt = _resolve_pipeline_prompts(body)
+        audio_request_body, image_prompt, video_prompt, song_title = _resolve_pipeline_prompts(body)
         logger.info(
             "Video pipeline: starting audio generation (mode=%s, mood=%s, tempo=%s, duration=%s, style=%s)",
             audio_request_body.mode,
@@ -324,7 +324,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             output_path.stat().st_size,
         )
 
-        return output_path.read_bytes()
+        return output_path.read_bytes(), (song_title if body.mode == "llm" else None)
     except (AudioGenerationTimeoutError, ImageGenerationFailedError, VideoGenerationTimeoutError):
         raise
     except Exception as exc:

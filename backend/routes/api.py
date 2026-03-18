@@ -30,12 +30,15 @@ router = APIRouter()
 @router.post("/api/generate")
 def generate_video(body: GenerateRequestBody) -> StreamingResponse:
     try:
-        mp4_bytes = video_service.generate_video_mp4_for_request(body)
+        mp4_bytes, song_title = video_service.generate_video_mp4_for_request(body)
     except (AudioGenerationTimeoutError, VideoGenerationTimeoutError) as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except (AudioGenerationFailedError, ImageGenerationFailedError, VideoGenerationFailedError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return StreamingResponse(io.BytesIO(mp4_bytes), media_type="video/mp4")
+    headers: dict[str, str] = {}
+    if song_title:
+        headers["X-Song-Title"] = song_title
+    return StreamingResponse(io.BytesIO(mp4_bytes), media_type="video/mp4", headers=headers)
 
 
 @router.post("/api/generate-requests")
