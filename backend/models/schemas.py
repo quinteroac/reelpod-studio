@@ -101,3 +101,16 @@ class GenerateImageRequestBody(BaseModel):
         if not trimmed:
             raise ValueError("Value must be a non-empty string.")
         return trimmed
+
+
+class PlaylistItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: StrictStr
+    name: StrictStr
+
+
+class PlaylistsListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    playlists: list[PlaylistItem]

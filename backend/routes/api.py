@@ -20,14 +20,20 @@ from models.errors import (
     VideoGenerationFailedError,
     VideoGenerationTimeoutError,
 )
-from models.schemas import GenerateImageRequestBody, GenerateRequestBody
-from services import audio_service, image_service
+from models.schemas import GenerateImageRequestBody, GenerateRequestBody, PlaylistItem, PlaylistsListResponse
+from services import audio_service, image_service, playlist_service
 from services import video_service
 from repositories import media_repository
 
 router = APIRouter()
 
 _MULTIPART_BOUNDARY = "reelpod"
+
+
+@router.get("/api/playlists", response_model=PlaylistsListResponse)
+def list_playlists() -> PlaylistsListResponse:
+    rows = playlist_service.get_playlists()
+    return PlaylistsListResponse(playlists=[PlaylistItem(**row) for row in rows])
 
 
 def _build_multipart_response(mp4_bytes: bytes, metadata: dict[str, str]) -> Response:

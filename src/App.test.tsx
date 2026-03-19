@@ -138,9 +138,21 @@ function createUnexpectedContentTypeResponse(): Response {
   });
 }
 
+function mockPlaylistsResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      playlists: [{ id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', name: 'My Playlist' }]
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } }
+  );
+}
+
 function mockVideoFetch(): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes('/api/playlists')) {
+      return mockPlaylistsResponse();
+    }
     if (url.endsWith('/api/generate')) {
       return createVideoResponse();
     }
@@ -183,6 +195,27 @@ async function enqueueAndCompleteGeneration(prompt: string): Promise<void> {
     );
   });
 }
+
+describe('Default playlist (US-001)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('AC03: shows default playlist name in the queue header after load', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('My Playlist');
+    });
+  });
+});
 
 describe('App unified generate flow (US-003)', () => {
   beforeEach(() => {
@@ -315,6 +348,9 @@ describe('App unified generate flow (US-003)', () => {
 
     const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
       // MCP bridge calls — return immediately
       if (url.includes('/mcp/')) {
         return new Response(JSON.stringify({ status: 'ok' }), {
@@ -372,7 +408,14 @@ describe('App unified generate flow (US-003)', () => {
   });
 
   it('marks queue entry as failed and shows descriptive error when generation fails', async () => {
-    const fetchMock = vi.fn().mockImplementation(async () => createVideoResponse(500));
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
+      return createVideoResponse(500);
+    });
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
@@ -513,7 +556,14 @@ describe('App unified generate flow (US-003)', () => {
   });
 
   it('does not commit generation when request fails', async () => {
-    const fetchMock = vi.fn().mockImplementation(async () => createVideoResponse(500));
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
+      return createVideoResponse(500);
+    });
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
 
@@ -555,7 +605,14 @@ describe('App unified generate flow (US-003)', () => {
 
   it('fails with a clear error when /api/generate does not return multipart/mixed', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
-      async () => createUnexpectedContentTypeResponse()
+      async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+        if (url.includes('/api/playlists')) {
+          return mockPlaylistsResponse();
+        }
+        return createUnexpectedContentTypeResponse();
+      }
     );
 
     render(<App />);
@@ -1862,6 +1919,9 @@ describe('US-003 (song title as MP4 filename)', () => {
   function mockFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
     return vi.fn().mockImplementation(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
       if (url.endsWith('/api/generate')) {
         const { body, contentType } = buildMultipartBody({ song_title: title });
         return new Response(body, { status: 200, headers: { 'content-type': contentType } });
@@ -2118,6 +2178,9 @@ describe('YouTube recording uploads (US-002)', () => {
           : input instanceof URL
             ? input.toString()
             : input.url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
           status: 200,
@@ -2151,12 +2214,20 @@ describe('YouTube recording uploads (US-002)', () => {
     let resolveConvert: ((response: Response) => void) | undefined;
     const fetchMock = vi
       .fn()
-      .mockImplementation(
-        async () =>
-          new Promise<Response>((resolve) => {
-            resolveConvert = resolve;
-          }),
-      );
+      .mockImplementation(async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url.includes('/api/playlists')) {
+          return mockPlaylistsResponse();
+        }
+        return new Promise<Response>((resolve) => {
+          resolveConvert = resolve;
+        });
+      });
     vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
     setConnectedYouTubeToken();
 
@@ -2205,6 +2276,9 @@ describe('YouTube recording uploads (US-002)', () => {
             : input instanceof URL
               ? input.toString()
               : input.url;
+        if (url.includes('/api/playlists')) {
+          return mockPlaylistsResponse();
+        }
         if (url.endsWith('/api/recordings/convert-mp4')) {
           return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
             status: 200,
@@ -2259,6 +2333,9 @@ describe('YouTube recording uploads (US-002)', () => {
           : input instanceof URL
             ? input.toString()
             : input.url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
           status: 200,
@@ -2304,6 +2381,9 @@ describe('YouTube recording uploads (US-002)', () => {
           : input instanceof URL
             ? input.toString()
             : input.url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
           status: 200,
@@ -2355,6 +2435,9 @@ function createVideoResponseWithTitle(title: string): Response {
 function mockVideoFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    if (url.includes('/api/playlists')) {
+      return mockPlaylistsResponse();
+    }
     if (url.endsWith('/api/generate')) {
       return createVideoResponseWithTitle(title);
     }
@@ -2464,6 +2547,9 @@ function mockVideoFetchWithYouTubeMeta(
         : input instanceof URL
           ? input.toString()
           : (input as Request).url;
+    if (url.includes('/api/playlists')) {
+      return mockPlaylistsResponse();
+    }
     if (url.endsWith('/api/generate')) {
       return createVideoResponseWithYouTubeMeta(youtubeTitle, youtubeDescription);
     }
@@ -2575,6 +2661,9 @@ describe('YouTube publish dialog (US-004)', () => {
           : input instanceof URL
             ? input.toString()
             : (input as Request).url;
+      if (url.includes('/api/playlists')) {
+        return mockPlaylistsResponse();
+      }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
           status: 200,
@@ -2740,6 +2829,9 @@ describe('YouTube publish dialog (US-004)', () => {
             : input instanceof URL
               ? input.toString()
               : (input as Request).url;
+        if (url.includes('/api/playlists')) {
+          return mockPlaylistsResponse();
+        }
         if (url.endsWith('/api/generate')) {
           return createVideoResponseWithYouTubeMeta(
             'Neon Solitude - Synthwave Lofi',

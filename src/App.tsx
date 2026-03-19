@@ -29,7 +29,8 @@ interface GenerationParams {
   prompt?: string;
 }
 import {
-  GENERATE_ENDPOINT_PATH
+  GENERATE_ENDPOINT_PATH,
+  PLAYLISTS_ENDPOINT_PATH
 } from './api/constants';
 import { sanitizeFilename } from './lib/sanitize-filename';
 import type { EffectType } from './components/effects';
@@ -336,10 +337,43 @@ export function App() {
     initialTitle: string;
     initialDescription: string;
   } | null>(null);
+  const [playlistHeaderName, setPlaylistHeaderName] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
   }, [fontSizePercent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(PLAYLISTS_ENDPOINT_PATH);
+        if (!res.ok || cancelled) {
+          return;
+        }
+        const data: unknown = await res.json();
+        if (
+          cancelled ||
+          typeof data !== 'object' ||
+          data === null ||
+          !('playlists' in data) ||
+          !Array.isArray((data as { playlists: unknown }).playlists)
+        ) {
+          return;
+        }
+        const playlists = (data as { playlists: Array<{ name?: unknown }> }).playlists;
+        const first = playlists[0];
+        if (first && typeof first.name === 'string' && first.name.trim()) {
+          setPlaylistHeaderName(first.name.trim());
+        }
+      } catch {
+        /* network or parse error — omit playlist title */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
   const activeEffects = useMemo(
@@ -1547,9 +1581,18 @@ export function App() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-3">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
-                      Queue
-                    </h2>
+                    <div className="min-w-0 max-w-[min(100%,20rem)]">
+                      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-lofi-accentMuted">
+                        Queue
+                      </p>
+                      <h2
+                        className="truncate text-sm font-semibold text-lofi-text"
+                        data-testid="playlist-header-name"
+                        title={playlistHeaderName ?? undefined}
+                      >
+                        {playlistHeaderName ?? '\u00a0'}
+                      </h2>
+                    </div>
                     <button
                       type="button"
                       onClick={() => window.open('/live', '_blank', 'noopener,noreferrer')}

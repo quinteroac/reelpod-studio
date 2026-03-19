@@ -127,6 +127,15 @@ describe('App live mirror sync (US-002)', () => {
               ? input.toString()
               : input.url;
 
+        if (url.includes('/api/playlists')) {
+          return new Response(
+            JSON.stringify({
+              playlists: [{ id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', name: 'My Playlist' }]
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+
         if (url.endsWith('/api/generate')) {
           return createVideoResponse();
         }

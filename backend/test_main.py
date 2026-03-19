@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import io
+import json
 import time
 import tomllib
+import uuid
 from pathlib import Path
 
 import pytest
@@ -18,7 +20,7 @@ from models.errors import (
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from repositories import audio_repository, image_repository
-from services import audio_service, image_service, video_service
+from services import audio_service, image_service, playlist_service, video_service
 
 WAV_HEADER = b"RIFF" + b"\x00" * 100
 MP4_HEADER = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 16
@@ -571,6 +573,48 @@ class TestLoadClipVariadicSignature:
         if calls:
             assert len(calls[0]["paths"]) == 2
             assert calls[0]["clip_type"] == "ace"
+
+
+class TestPlaylistsApi:
+    def test_get_playlists_creates_default_when_none_on_disk(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        assert not target.is_file()
+        r = client.get("/api/playlists")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["playlists"][0]["name"] == "My Playlist"
+        uuid.UUID(data["playlists"][0]["id"])
+        assert target.is_file()
+        stored = json.loads(target.read_text(encoding="utf-8"))
+        assert stored["playlists"][0]["id"] == data["playlists"][0]["id"]
+
+    def test_second_get_returns_same_playlist_without_duplicates(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        first = client.get("/api/playlists").json()
+        pid = first["playlists"][0]["id"]
+        second = client.get("/api/playlists").json()
+        assert second["playlists"][0]["id"] == pid
+        assert len(second["playlists"]) == 1
+
+    def test_existing_playlists_not_replaced(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        target.write_text(
+            json.dumps({"playlists": [{"id": "custom-id-1", "name": "Existing"}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        r = client.get("/api/playlists")
+        body = r.json()
+        assert body["playlists"][0]["id"] == "custom-id-1"
+        assert body["playlists"][0]["name"] == "Existing"
 
 
 class TestViteProxyConfiguration:
