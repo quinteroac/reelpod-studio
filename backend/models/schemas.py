@@ -103,14 +103,30 @@ class GenerateImageRequestBody(BaseModel):
         return trimmed
 
 
+class PlaylistTrackItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: StrictStr
+    filename: StrictStr
+    created_at: StrictStr
+    size_bytes: StrictInt
+
+
 class PlaylistItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: StrictStr
     name: StrictStr
+    tracks: list[PlaylistTrackItem] = Field(default_factory=list)
 
 
 class PlaylistsListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     playlists: list[PlaylistItem]
+
+
+class AddPlaylistTrackResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    track: PlaylistTrackItem

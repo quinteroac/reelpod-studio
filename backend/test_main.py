@@ -586,6 +586,7 @@ class TestPlaylistsApi:
         assert r.status_code == 200
         data = r.json()
         assert data["playlists"][0]["name"] == "My Playlist"
+        assert data["playlists"][0]["tracks"] == []
         uuid.UUID(data["playlists"][0]["id"])
         assert target.is_file()
         stored = json.loads(target.read_text(encoding="utf-8"))
@@ -615,6 +616,81 @@ class TestPlaylistsApi:
         body = r.json()
         assert body["playlists"][0]["id"] == "custom-id-1"
         assert body["playlists"][0]["name"] == "Existing"
+        assert body["playlists"][0]["tracks"] == []
+
+
+class TestPlaylistTrackUpload:
+    def test_post_track_saves_mp4_and_updates_playlists_json(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        recordings_root = tmp_path / "recordings"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        monkeypatch.setattr(playlist_service, "RECORDINGS_ROOT", recordings_root)
+
+        pid = "playlist-uuid-1"
+        playlists_path.write_text(
+            json.dumps({"playlists": [{"id": pid, "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+
+        r = client.post(
+            f"/api/playlists/{pid}/tracks",
+            files={"file": ("take.mp4", MP4_HEADER, "video/mp4")},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["track"]["filename"] == "take.mp4"
+        assert body["track"]["size_bytes"] == len(MP4_HEADER)
+        tid = body["track"]["id"]
+        uuid.UUID(tid)
+
+        dest = recordings_root / pid / f"{tid}.mp4"
+        assert dest.is_file()
+        assert dest.read_bytes() == MP4_HEADER
+
+        stored = json.loads(playlists_path.read_text(encoding="utf-8"))
+        assert len(stored["playlists"][0]["tracks"]) == 1
+        assert stored["playlists"][0]["tracks"][0]["id"] == tid
+
+    def test_post_track_unknown_playlist_returns_404(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        recordings_root = tmp_path / "recordings"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        monkeypatch.setattr(playlist_service, "RECORDINGS_ROOT", recordings_root)
+
+        playlists_path.write_text(
+            json.dumps({"playlists": [{"id": "x", "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+
+        r = client.post(
+            "/api/playlists/missing-id/tracks",
+            files={"file": ("take.mp4", MP4_HEADER, "video/mp4")},
+        )
+        assert r.status_code == 404
+
+    def test_post_track_empty_file_returns_400(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        recordings_root = tmp_path / "recordings"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        monkeypatch.setattr(playlist_service, "RECORDINGS_ROOT", recordings_root)
+
+        pid = "playlist-uuid-1"
+        playlists_path.write_text(
+            json.dumps({"playlists": [{"id": pid, "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+
+        r = client.post(
+            f"/api/playlists/{pid}/tracks",
+            files={"file": ("take.mp4", b"", "video/mp4")},
+        )
+        assert r.status_code == 400
 
 
 class TestViteProxyConfiguration:

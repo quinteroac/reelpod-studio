@@ -10,6 +10,9 @@ import {
 } from 'mediabunny';
 import fixWebmDuration from 'fix-webm-duration';
 
+import type { PlaylistTrack } from '../lib/playlist-api';
+import { uploadPlaylistTrack } from '../lib/playlist-api';
+
 export interface RecorderHandles {
   output: Output | null;
   target: BufferTarget | null;
@@ -23,6 +26,12 @@ interface UseRecorderOptions {
   onStarted?: () => void;
   /** Called once the recording is finalised and ready for download. */
   onFinalized?: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => void;
+  /** When set, MP4 recordings are posted to this playlist immediately after finalise. */
+  activePlaylistId?: string | null;
+  /** Filename for the playlist upload (should match the recording entry filename when possible). */
+  resolvePlaylistFilename?: (meta: { mimeType: string; fileExtension: string }) => string;
+  onPlaylistTrackUploaded?: (track: PlaylistTrack) => void;
+  onPlaylistUploadError?: (message: string) => void;
 }
 
 interface UseRecorderReturn {
@@ -46,6 +55,10 @@ export function useRecorder({
   getVideoElement,
   onStarted,
   onFinalized,
+  activePlaylistId = null,
+  resolvePlaylistFilename,
+  onPlaylistTrackUploaded,
+  onPlaylistUploadError,
 }: UseRecorderOptions): UseRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -59,6 +72,38 @@ export function useRecorder({
   });
   const onFinalizedRef = useRef(onFinalized);
   onFinalizedRef.current = onFinalized;
+  const activePlaylistIdRef = useRef(activePlaylistId);
+  activePlaylistIdRef.current = activePlaylistId;
+  const resolvePlaylistFilenameRef = useRef(resolvePlaylistFilename);
+  resolvePlaylistFilenameRef.current = resolvePlaylistFilename;
+  const onPlaylistTrackUploadedRef = useRef(onPlaylistTrackUploaded);
+  onPlaylistTrackUploadedRef.current = onPlaylistTrackUploaded;
+  const onPlaylistUploadErrorRef = useRef(onPlaylistUploadError);
+  onPlaylistUploadErrorRef.current = onPlaylistUploadError;
+
+  const maybeUploadPlaylist = useCallback(
+    async (blob: Blob, meta: { mimeType: string; fileExtension: string }) => {
+      const pid = activePlaylistIdRef.current;
+      if (!pid) {
+        return;
+      }
+      const isMp4 = blob.type === 'video/mp4' || meta.fileExtension === '.mp4';
+      if (!isMp4) {
+        return;
+      }
+      const name =
+        resolvePlaylistFilenameRef.current?.(meta) ??
+        `recording-${new Date().toISOString()}${meta.fileExtension}`;
+      try {
+        const track = await uploadPlaylistTrack(pid, blob, name);
+        onPlaylistTrackUploadedRef.current?.(track);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        onPlaylistUploadErrorRef.current?.(msg);
+      }
+    },
+    []
+  );
 
   // Reuse the MediaElementAudioSourceNode: it can only be created once per element.
   const mediaSourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -200,7 +245,9 @@ export function useRecorder({
             const fileExtension = rawMime.includes('mp4') ? '.mp4' : '.webm';
             // Fix missing duration metadata so external players (VLC, mpv) render correctly.
             const blob = await fixWebmDuration(rawBlob, duration, { logger: false });
-            onFinalizedRef.current?.(blob, { mimeType: rawMime, fileExtension });
+            const meta = { mimeType: rawMime, fileExtension };
+            onFinalizedRef.current?.(blob, meta);
+            await maybeUploadPlaylist(blob, meta);
             mrChunksRef.current = [];
             resolve();
           };
@@ -215,7 +262,9 @@ export function useRecorder({
         await output.finalize();
         if (target.buffer) {
           const blob = new Blob([target.buffer], { type: 'video/mp4' });
-          onFinalizedRef.current?.(blob, { mimeType: 'video/mp4', fileExtension: '.mp4' });
+          const meta = { mimeType: 'video/mp4', fileExtension: '.mp4' };
+          onFinalizedRef.current?.(blob, meta);
+          await maybeUploadPlaylist(blob, meta);
         }
         handlesRef.current.output = null;
         handlesRef.current.target = null;
@@ -223,7 +272,7 @@ export function useRecorder({
     } finally {
       setIsFinalizing(false);
     }
-  }, []);
+  }, [maybeUploadPlaylist]);
 
   return { isRecording, isFinalizing, startRecording, stopRecording, recordingError, handlesRef };
 }

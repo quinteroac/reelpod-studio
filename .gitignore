@@ -65,6 +65,8 @@ package-lock.json
 
 # Runtime playlist store (created by backend on first GET /api/playlists)
 backend/playlists.json
+# Uploaded playlist recordings (POST /api/playlists/{id}/tracks)
+backend/recordings/
 backend/vendor/comfy-diffusion
 **/tmp_recordings/** 
 backend/vendor/comfy-diffusion

@@ -33,6 +33,8 @@ import {
   PLAYLISTS_ENDPOINT_PATH
 } from './api/constants';
 import { sanitizeFilename } from './lib/sanitize-filename';
+import type { PlaylistTrack } from './lib/playlist-api';
+import { uploadPlaylistTrack } from './lib/playlist-api';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -338,6 +340,11 @@ export function App() {
     initialDescription: string;
   } | null>(null);
   const [playlistHeaderName, setPlaylistHeaderName] = useState<string | null>(null);
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[]>([]);
+  const [playlistTrackUploadError, setPlaylistTrackUploadError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -361,10 +368,42 @@ export function App() {
         ) {
           return;
         }
-        const playlists = (data as { playlists: Array<{ name?: unknown }> }).playlists;
+        const playlists = (data as { playlists: unknown[] }).playlists;
         const first = playlists[0];
-        if (first && typeof first.name === 'string' && first.name.trim()) {
-          setPlaylistHeaderName(first.name.trim());
+        if (first && typeof first === 'object' && first !== null) {
+          const row = first as Record<string, unknown>;
+          if (typeof row.name === 'string' && row.name.trim()) {
+            setPlaylistHeaderName(row.name.trim());
+          }
+          if (typeof row.id === 'string' && row.id.trim()) {
+            setActivePlaylistId(row.id.trim());
+          }
+          const rawTracks = row.tracks;
+          if (Array.isArray(rawTracks)) {
+            const parsed: PlaylistTrack[] = [];
+            for (const t of rawTracks) {
+              if (typeof t !== 'object' || t === null) {
+                continue;
+              }
+              const tr = t as Record<string, unknown>;
+              if (
+                typeof tr.id === 'string' &&
+                typeof tr.filename === 'string' &&
+                typeof tr.created_at === 'string' &&
+                typeof tr.size_bytes === 'number'
+              ) {
+                parsed.push({
+                  id: tr.id,
+                  filename: tr.filename,
+                  created_at: tr.created_at,
+                  size_bytes: tr.size_bytes,
+                });
+              }
+            }
+            setPlaylistTracks(parsed);
+          } else {
+            setPlaylistTracks([]);
+          }
         }
       } catch {
         /* network or parse error — omit playlist title */
@@ -393,6 +432,17 @@ export function App() {
   const activePreviewEntry = useMemo(
     () => queueEntries.find((entry) => entry.id === playingEntryId) ?? null,
     [queueEntries, playingEntryId]
+  );
+  const resolvePlaylistFilenameForPlaylist = useCallback(
+    (meta: { mimeType: string; fileExtension: string }) => {
+      const rawTitle = activePreviewEntry?.songTitle ?? null;
+      const sanitized = rawTitle ? sanitizeFilename(rawTitle) : null;
+      const timestamp = new Date().toISOString();
+      return sanitized
+        ? `${sanitized}${meta.fileExtension}`
+        : `recording-${timestamp}${meta.fileExtension}`;
+    },
+    [activePreviewEntry]
   );
   const previewOutputWidth = activePreviewEntry?.targetWidth ?? selectedSocialFormat.width;
   const previewOutputHeight = activePreviewEntry?.targetHeight ?? selectedSocialFormat.height;
@@ -467,6 +517,7 @@ export function App() {
       filename: string,
       youtubeTitle: string | null,
       youtubeDescription: string | null,
+      attachToPlaylistAfterMp4: boolean,
     ): Promise<void> => {
       setRecordingEntries((prev) =>
         prev.map((entry) =>
@@ -504,6 +555,7 @@ export function App() {
 
         const mp4Blob = await response.blob();
         const mp4Url = URL.createObjectURL(mp4Blob);
+        const mp4Filename = filename.replace(/\.webm$/i, '.mp4');
 
         setRecordingEntries((prev) =>
           prev.map((entry) =>
@@ -518,6 +570,19 @@ export function App() {
               : entry,
           ),
         );
+        if (attachToPlaylistAfterMp4 && activePlaylistId) {
+          try {
+            const track = await uploadPlaylistTrack(
+              activePlaylistId,
+              mp4Blob,
+              mp4Filename,
+            );
+            setPlaylistTracks((prev) => [...prev, track]);
+            setPlaylistTrackUploadError(null);
+          } catch (err) {
+            setPlaylistTrackUploadError(getErrorMessage(err));
+          }
+        }
         notifyAgent('recording_complete', { filename, youtubeTitle, youtubeDescription });
       } catch (error) {
         const message = getErrorMessage(error);
@@ -530,12 +595,21 @@ export function App() {
         );
       }
     },
-    [],
+    [activePlaylistId],
   );
 
   const { isRecording, isFinalizing, startRecording, stopRecording, recordingError: recorderError } = useRecorder({
     getCanvas: () => canvasRef.current,
     getVideoElement: () => videoPlaybackRef.current,
+    activePlaylistId,
+    resolvePlaylistFilename: resolvePlaylistFilenameForPlaylist,
+    onPlaylistTrackUploaded: (track) => {
+      setPlaylistTracks((prev) => [...prev, track]);
+      setPlaylistTrackUploadError(null);
+    },
+    onPlaylistUploadError: (message) => {
+      setPlaylistTrackUploadError(message);
+    },
     onStarted: () => {
       void videoPlaybackRef.current?.play();
       setIsPlaying(true);
@@ -567,7 +641,16 @@ export function App() {
       };
       setRecordingEntries((prev) => [...prev, entry]);
 
-      void uploadRecordingToBackend(entryId, blob, filename, entry.youtubeTitle, entry.youtubeDescription);
+      const attachAfterConvert =
+        meta.fileExtension !== '.mp4' || blob.type !== 'video/mp4';
+      void uploadRecordingToBackend(
+        entryId,
+        blob,
+        filename,
+        entry.youtubeTitle,
+        entry.youtubeDescription,
+        attachAfterConvert,
+      );
     }
   });
   const {
@@ -1679,6 +1762,45 @@ export function App() {
                     </p>
                   )}
                 </div>
+                {playlistTrackUploadError && (
+                  <div
+                    role="alert"
+                    data-testid="playlist-track-upload-error"
+                    className="rounded-md border border-red-400/60 bg-red-950/40 p-3 text-sm font-semibold text-red-100"
+                  >
+                    {playlistTrackUploadError}
+                  </div>
+                )}
+                {activePlaylistId !== null && (
+                  <div className="space-y-2" data-testid="playlist-tracks-panel">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
+                      Playlist
+                    </h3>
+                    {playlistTracks.length === 0 ? (
+                      <p
+                        className="text-xs text-lofi-accentMuted"
+                        data-testid="playlist-tracks-empty"
+                      >
+                        No tracks saved yet — recordings appear here automatically.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2" data-testid="playlist-tracks">
+                        {playlistTracks.map((t) => (
+                          <li
+                            key={t.id}
+                            data-testid={`playlist-track-${t.id}`}
+                            className="rounded-sm border border-lofi-accentMuted/50 bg-lofi-bg/30 px-3 py-2 text-sm"
+                          >
+                            <p className="truncate font-semibold text-lofi-text">{t.filename}</p>
+                            <p className="text-xs text-lofi-accentMuted">
+                              {(t.size_bytes / (1024 * 1024)).toFixed(2)} MB · {t.created_at}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 {recordingEntries.length > 0 && (
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">

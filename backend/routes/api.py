@@ -20,7 +20,14 @@ from models.errors import (
     VideoGenerationFailedError,
     VideoGenerationTimeoutError,
 )
-from models.schemas import GenerateImageRequestBody, GenerateRequestBody, PlaylistItem, PlaylistsListResponse
+from models.schemas import (
+    AddPlaylistTrackResponse,
+    GenerateImageRequestBody,
+    GenerateRequestBody,
+    PlaylistItem,
+    PlaylistTrackItem,
+    PlaylistsListResponse,
+)
 from services import audio_service, image_service, playlist_service
 from services import video_service
 from repositories import media_repository
@@ -34,6 +41,18 @@ _MULTIPART_BOUNDARY = "reelpod"
 def list_playlists() -> PlaylistsListResponse:
     rows = playlist_service.get_playlists()
     return PlaylistsListResponse(playlists=[PlaylistItem(**row) for row in rows])
+
+
+@router.post("/api/playlists/{playlist_id}/tracks", response_model=AddPlaylistTrackResponse)
+async def add_playlist_track(playlist_id: str, file: UploadFile = File(...)) -> AddPlaylistTrackResponse:
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        row = playlist_service.add_track(playlist_id, contents, file.filename)
+    except playlist_service.PlaylistNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AddPlaylistTrackResponse(track=PlaylistTrackItem(**row))
 
 
 def _build_multipart_response(mp4_bytes: bytes, metadata: dict[str, str]) -> Response:

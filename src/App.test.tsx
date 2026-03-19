@@ -141,7 +141,13 @@ function createUnexpectedContentTypeResponse(): Response {
 function mockPlaylistsResponse(): Response {
   return new Response(
     JSON.stringify({
-      playlists: [{ id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', name: 'My Playlist' }]
+      playlists: [
+        {
+          id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+          name: 'My Playlist',
+          tracks: [],
+        },
+      ],
     }),
     { status: 200, headers: { 'content-type': 'application/json' } }
   );
@@ -213,6 +219,74 @@ describe('Default playlist (US-001)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
     await waitFor(() => {
       expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('My Playlist');
+    });
+  });
+});
+
+describe('Playlist track upload (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      vi.fn().mockImplementation(async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url.includes('/api/playlists') && !url.includes('/tracks')) {
+          return new Response(
+            JSON.stringify({
+              playlists: [
+                {
+                  id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+                  name: 'My Playlist',
+                  tracks: [
+                    {
+                      id: 'existing-track-1',
+                      filename: 'existing.mp4',
+                      created_at: '2024-01-01T00:00:00Z',
+                      size_bytes: 1024000,
+                    },
+                  ],
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/api/generate')) {
+          return createVideoResponse();
+        }
+        if (url.endsWith('/api/recordings/convert-mp4')) {
+          return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+            status: 200,
+            headers: { 'content-type': 'video/mp4' },
+          });
+        }
+        if (url.includes('/mcp/')) {
+          return new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        throw new Error(`Unexpected endpoint called: ${url}`);
+      })
+    );
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('US-002-AC03: shows playlist tracks in the queue tab after load', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-track-existing-track-1')).toBeInTheDocument();
+      expect(screen.getByText('existing.mp4')).toBeInTheDocument();
     });
   });
 });

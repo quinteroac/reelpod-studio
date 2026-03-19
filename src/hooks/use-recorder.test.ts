@@ -300,6 +300,46 @@ describe('useRecorder', () => {
     expect(result.current.isFinalizing).toBe(false);
   });
 
+  it('US-002-AC01: POSTs MP4 to active playlist tracks endpoint after finalize', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        track: {
+          id: 'track-upload-1',
+          filename: 'my-recording.mp4',
+          created_at: '2020-01-01T00:00:00Z',
+          size_bytes: 1024,
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const canvas = createMockCanvas();
+    const video = createMockVideoElement();
+    const { result } = renderHook(() =>
+      useRecorder({
+        getCanvas: () => canvas,
+        getVideoElement: () => video,
+        activePlaylistId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        resolvePlaylistFilename: () => 'my-recording.mp4',
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/playlists/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/tracks',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('US-002: stopRecording is a no-op when not recording', async () => {
     const canvas = createMockCanvas();
     const video = createMockVideoElement();
@@ -348,7 +388,10 @@ describe('useRecorder', () => {
     });
 
     expect(onFinalized).toHaveBeenCalledTimes(1);
-    expect(onFinalized).toHaveBeenCalledWith(expect.any(ArrayBuffer));
+    expect(onFinalized).toHaveBeenCalledWith(
+      expect.any(Blob),
+      expect.objectContaining({ mimeType: 'video/mp4', fileExtension: '.mp4' }),
+    );
   });
 
   it('US-003-AC01: does not call onFinalized when target buffer is null', async () => {
