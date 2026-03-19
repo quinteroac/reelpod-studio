@@ -18,6 +18,10 @@ class PlaylistNotFoundError(Exception):
     """Raised when a playlist id does not exist in the store."""
 
 
+class TrackNotFoundError(Exception):
+    """Raised when a track id does not exist for the playlist."""
+
+
 def _read_store(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {"playlists": []}
@@ -243,3 +247,63 @@ def update_playlist_name(playlist_id: str, name: str) -> dict[str, Any]:
     if match is None:
         raise PlaylistNotFoundError(f"Playlist not found after update: {pid}")
     return match
+
+
+def get_track_mp4_path(playlist_id: str, track_id: str) -> tuple[Path, str]:
+    """Resolve the on-disk MP4 path and original filename for a persisted track."""
+    pid = playlist_id.strip()
+    tid = track_id.strip()
+    if not pid or not tid:
+        raise PlaylistNotFoundError("Missing playlist or track id")
+    playlists = get_playlists()
+    pl = next((p for p in playlists if p["id"] == pid), None)
+    if pl is None:
+        raise PlaylistNotFoundError(f"Playlist not found: {pid}")
+    track = next((t for t in pl["tracks"] if t["id"] == tid), None)
+    if track is None:
+        raise TrackNotFoundError(f"Track not found: {tid}")
+    path = RECORDINGS_ROOT / pid / f"{tid}.mp4"
+    filename = str(track["filename"])
+    return path, filename
+
+
+def delete_track(playlist_id: str, track_id: str) -> None:
+    """Remove a track from playlists.json and delete its MP4 file from disk."""
+    pid = playlist_id.strip()
+    tid = track_id.strip()
+    if not pid or not tid:
+        raise PlaylistNotFoundError("Missing playlist or track id")
+
+    playlists = get_playlists()
+    pl = next((p for p in playlists if p["id"] == pid), None)
+    if pl is None:
+        raise PlaylistNotFoundError(f"Playlist not found: {pid}")
+    if not any(t["id"] == tid for t in pl["tracks"]):
+        raise TrackNotFoundError(f"Track not found: {tid}")
+
+    store = _read_store(PLAYLISTS_JSON_PATH)
+    raw_list = store.get("playlists")
+    if not isinstance(raw_list, list):
+        raw_list = []
+    updated: list[Any] = []
+    found = False
+    for p in raw_list:
+        if isinstance(p, dict) and p.get("id") == pid:
+            found = True
+            pl_dict = dict(p)
+            tr = pl_dict.get("tracks")
+            if not isinstance(tr, list):
+                tr = []
+            new_tracks = [t for t in tr if not (isinstance(t, dict) and t.get("id") == tid)]
+            pl_dict["tracks"] = new_tracks
+            updated.append(pl_dict)
+        else:
+            updated.append(p)
+    if not found:
+        raise PlaylistNotFoundError(f"Playlist not found in store: {pid}")
+
+    _write_store(PLAYLISTS_JSON_PATH, {"playlists": updated})
+
+    file_path = RECORDINGS_ROOT / pid / f"{tid}.mp4"
+    if file_path.is_file():
+        file_path.unlink()

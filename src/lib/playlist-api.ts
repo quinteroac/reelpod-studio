@@ -1,6 +1,8 @@
 import {
   PLAYLISTS_ENDPOINT_PATH,
   playlistEndpoint,
+  playlistTrackEndpoint,
+  playlistTrackFileEndpoint,
   playlistTracksEndpoint,
 } from '../api/constants';
 
@@ -15,6 +17,11 @@ export interface PlaylistItem {
   id: string;
   name: string;
   tracks: PlaylistTrack[];
+}
+
+/** Same-origin URL for `<video src>` and download links. */
+export function playlistTrackFileUrl(playlistId: string, trackId: string): string {
+  return playlistTrackFileEndpoint(playlistId, trackId);
 }
 
 function parseErrorMessage(payload: unknown): string | null {
@@ -185,6 +192,27 @@ function parsePlaylistTracks(raw: unknown): PlaylistTrack[] {
 /**
  * Renames a playlist via PATCH /api/playlists/{id}.
  */
+/**
+ * Deletes a track via DELETE /api/playlists/{id}/tracks/{trackId}.
+ */
+export async function deletePlaylistTrack(playlistId: string, trackId: string): Promise<void> {
+  const res = await fetch(playlistTrackEndpoint(playlistId, trackId), { method: 'DELETE' });
+
+  if (!res.ok) {
+    let message = `Could not delete track (${res.status})`;
+    try {
+      const payload: unknown = await res.json();
+      const parsed = parseErrorMessage(payload);
+      if (parsed) {
+        message = parsed;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+}
+
 export async function patchPlaylistName(
   playlistId: string,
   name: string

@@ -36,10 +36,13 @@ import { sanitizeFilename } from './lib/sanitize-filename';
 import type { PlaylistTrack } from './lib/playlist-api';
 import {
   createPlaylist,
+  deletePlaylistTrack,
   fetchPlaylistTracks,
   patchPlaylistName,
+  playlistTrackFileUrl,
   uploadPlaylistTrack,
 } from './lib/playlist-api';
+import { formatPlaylistTrackCreatedAt } from './lib/format-playlist-track-timestamp';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -359,6 +362,9 @@ export function App() {
   const playlistNameInputRef = useRef<HTMLInputElement | null>(null);
   const playlistRenameInFlightRef = useRef(false);
   const skipPlaylistNameBlurCommitRef = useRef(false);
+  const [playlistTrackPlayingId, setPlaylistTrackPlayingId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -517,6 +523,7 @@ export function App() {
       const pl = allPlaylists.find((p) => p.id === nextId);
       setActivePlaylistId(nextId);
       setPlaylistHeaderName(pl?.name ?? null);
+      setPlaylistTrackPlayingId(null);
       setPlaylistPanelError(null);
       try {
         const tracks = await fetchPlaylistTracks(nextId);
@@ -541,6 +548,7 @@ export function App() {
       setPlaylistNameDraft('');
       setActivePlaylistId(created.id);
       setPlaylistHeaderName(created.name);
+      setPlaylistTrackPlayingId(null);
       setPlaylistTracks(created.tracks);
     } catch (err) {
       setPlaylistPanelError(
@@ -548,6 +556,35 @@ export function App() {
       );
     }
   }, []);
+
+  const togglePlaylistTrackPlayback = useCallback((trackId: string) => {
+    setPlaylistTrackPlayingId((prev) => (prev === trackId ? null : trackId));
+  }, []);
+
+  const handleDeletePlaylistTrack = useCallback(
+    async (track: PlaylistTrack) => {
+      if (activePlaylistId === null) {
+        return;
+      }
+      const confirmed = window.confirm(
+        `Delete "${track.filename}" from this playlist? This cannot be undone.`
+      );
+      if (!confirmed) {
+        return;
+      }
+      setPlaylistPanelError(null);
+      try {
+        await deletePlaylistTrack(activePlaylistId, track.id);
+        setPlaylistTracks((prev) => prev.filter((t) => t.id !== track.id));
+        setPlaylistTrackPlayingId((prev) => (prev === track.id ? null : prev));
+      } catch (err) {
+        setPlaylistPanelError(
+          err instanceof Error ? err.message : 'Could not delete track.'
+        );
+      }
+    },
+    [activePlaylistId]
+  );
 
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
@@ -2036,10 +2073,71 @@ export function App() {
                             data-testid={`playlist-track-${t.id}`}
                             className="rounded-sm border border-lofi-accentMuted/50 bg-lofi-bg/30 px-3 py-2 text-sm"
                           >
-                            <p className="truncate font-semibold text-lofi-text">{t.filename}</p>
-                            <p className="text-xs text-lofi-accentMuted">
-                              {(t.size_bytes / (1024 * 1024)).toFixed(2)} MB · {t.created_at}
-                            </p>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <p
+                                  data-testid={`playlist-track-filename-${t.id}`}
+                                  className="truncate font-semibold text-lofi-text"
+                                >
+                                  {t.filename}
+                                </p>
+                                <p
+                                  className="text-xs text-lofi-accentMuted"
+                                  data-testid={`playlist-track-meta-${t.id}`}
+                                >
+                                  <span data-testid={`playlist-track-size-${t.id}`}>
+                                    {(t.size_bytes / (1024 * 1024)).toFixed(2)} MB
+                                  </span>
+                                  <span className="mx-1">·</span>
+                                  <time
+                                    dateTime={t.created_at}
+                                    data-testid={`playlist-track-created-${t.id}`}
+                                  >
+                                    {formatPlaylistTrackCreatedAt(t.created_at)}
+                                  </time>
+                                </p>
+                              </div>
+                              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  data-testid={`playlist-track-play-${t.id}`}
+                                  className="interactive-lift min-h-10 rounded-sm border border-lofi-accent bg-lofi-accent/20 px-3 py-1.5 text-xs font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/30 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                                  aria-pressed={playlistTrackPlayingId === t.id}
+                                  onClick={() => {
+                                    togglePlaylistTrackPlayback(t.id);
+                                  }}
+                                >
+                                  {playlistTrackPlayingId === t.id ? 'Hide player' : 'Play'}
+                                </button>
+                                <a
+                                  data-testid={`playlist-track-download-${t.id}`}
+                                  href={playlistTrackFileUrl(activePlaylistId, t.id)}
+                                  download={t.filename}
+                                  className="interactive-lift inline-flex min-h-10 items-center rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/40 px-3 py-1.5 text-xs font-semibold text-lofi-text outline-none transition hover:border-lofi-accent/50 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                                >
+                                  Download
+                                </a>
+                                <button
+                                  type="button"
+                                  data-testid={`playlist-track-delete-${t.id}`}
+                                  className="interactive-lift min-h-10 rounded-sm border border-red-400/50 bg-red-950/30 px-3 py-1.5 text-xs font-semibold text-red-100 outline-none transition hover:bg-red-950/45 focus-visible:ring-2 focus-visible:ring-red-300"
+                                  onClick={() => {
+                                    void handleDeletePlaylistTrack(t);
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                            {playlistTrackPlayingId === t.id && activePlaylistId !== null && (
+                              <video
+                                controls
+                                playsInline
+                                className="mt-2 w-full max-h-48 rounded-sm border border-lofi-accentMuted/40 bg-black/40"
+                                src={playlistTrackFileUrl(activePlaylistId, t.id)}
+                                data-testid={`playlist-track-video-${t.id}`}
+                              />
+                            )}
                           </li>
                         ))}
                       </ul>

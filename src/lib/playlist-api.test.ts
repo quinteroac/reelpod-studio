@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createPlaylist, fetchPlaylistTracks, patchPlaylistName, uploadPlaylistTrack } from './playlist-api';
+import {
+  createPlaylist,
+  deletePlaylistTrack,
+  fetchPlaylistTracks,
+  patchPlaylistName,
+  playlistTrackFileUrl,
+  uploadPlaylistTrack,
+} from './playlist-api';
 
 describe('uploadPlaylistTrack', () => {
   afterEach(() => {
@@ -124,5 +131,26 @@ describe('createPlaylist', () => {
       }),
     );
     expect(pl.id).toBe('new-id');
+  });
+});
+
+describe('playlistTrackFileUrl', () => {
+  it('US-005-AC02: matches GET /api/playlists/{playlist}/tracks/{track}/file', () => {
+    expect(playlistTrackFileUrl('pl-x', 'tr-y')).toBe('/api/playlists/pl-x/tracks/tr-y/file');
+  });
+});
+
+describe('deletePlaylistTrack', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('US-005-AC04: sends DELETE to the track resource', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await deletePlaylistTrack('pl-1', 'tr-9');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/playlists/pl-1/tracks/tr-9', { method: 'DELETE' });
   });
 });

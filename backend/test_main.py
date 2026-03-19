@@ -789,6 +789,117 @@ class TestPlaylistTrackUpload:
         assert r.status_code == 400
 
 
+class TestPlaylistTrackFileAndDelete:
+    def test_get_track_file_streams_mp4(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        recordings_root = tmp_path / "recordings"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        monkeypatch.setattr(playlist_service, "RECORDINGS_ROOT", recordings_root)
+
+        pid = "playlist-uuid-1"
+        tid = "track-uuid-1"
+        dest = recordings_root / pid / f"{tid}.mp4"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(MP4_HEADER)
+
+        playlists_path.write_text(
+            json.dumps(
+                {
+                    "playlists": [
+                        {
+                            "id": pid,
+                            "name": "Mine",
+                            "tracks": [
+                                {
+                                    "id": tid,
+                                    "filename": "clip.mp4",
+                                    "created_at": "2024-01-01T00:00:00Z",
+                                    "size_bytes": len(MP4_HEADER),
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = client.get(f"/api/playlists/{pid}/tracks/{tid}/file")
+        assert r.status_code == 200
+        assert r.headers.get("content-type", "").startswith("video/mp4")
+        assert r.content == MP4_HEADER
+
+    def test_get_track_file_unknown_track_returns_404(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        pid = "p1"
+        playlists_path.write_text(
+            json.dumps({"playlists": [{"id": pid, "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+        r = client.get(f"/api/playlists/{pid}/tracks/missing-id/file")
+        assert r.status_code == 404
+
+    def test_delete_track_removes_file_and_json_entry(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        recordings_root = tmp_path / "recordings"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        monkeypatch.setattr(playlist_service, "RECORDINGS_ROOT", recordings_root)
+
+        pid = "playlist-uuid-1"
+        tid = "track-uuid-1"
+        dest = recordings_root / pid / f"{tid}.mp4"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(MP4_HEADER)
+
+        playlists_path.write_text(
+            json.dumps(
+                {
+                    "playlists": [
+                        {
+                            "id": pid,
+                            "name": "Mine",
+                            "tracks": [
+                                {
+                                    "id": tid,
+                                    "filename": "clip.mp4",
+                                    "created_at": "2024-01-01T00:00:00Z",
+                                    "size_bytes": len(MP4_HEADER),
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        r = client.delete(f"/api/playlists/{pid}/tracks/{tid}")
+        assert r.status_code == 204
+        assert not dest.is_file()
+        stored = json.loads(playlists_path.read_text(encoding="utf-8"))
+        assert stored["playlists"][0]["tracks"] == []
+
+    def test_delete_unknown_track_returns_404(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        playlists_path = tmp_path / "playlists.json"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", playlists_path)
+        pid = "p1"
+        playlists_path.write_text(
+            json.dumps({"playlists": [{"id": pid, "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+        r = client.delete(f"/api/playlists/{pid}/tracks/missing-id")
+        assert r.status_code == 404
+
+
 class TestViteProxyConfiguration:
     def test_generate_image_proxy_routes_to_backend_port_8000(self) -> None:
         vite_config = Path(__file__).resolve().parents[1].joinpath("vite.config.ts").read_text(encoding="utf-8")

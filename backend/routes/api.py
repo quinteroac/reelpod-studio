@@ -82,6 +82,34 @@ async def add_playlist_track(playlist_id: str, file: UploadFile = File(...)) -> 
     return AddPlaylistTrackResponse(track=PlaylistTrackItem(**row))
 
 
+@router.get("/api/playlists/{playlist_id}/tracks/{track_id}/file")
+def get_playlist_track_file(playlist_id: str, track_id: str) -> FileResponse:
+    try:
+        path, filename = playlist_service.get_track_mp4_path(playlist_id, track_id)
+    except playlist_service.PlaylistNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except playlist_service.TrackNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Track file not found on disk")
+    return FileResponse(
+        path=str(path),
+        media_type="video/mp4",
+        filename=filename,
+    )
+
+
+@router.delete("/api/playlists/{playlist_id}/tracks/{track_id}")
+def delete_playlist_track(playlist_id: str, track_id: str) -> Response:
+    try:
+        playlist_service.delete_track(playlist_id, track_id)
+    except playlist_service.PlaylistNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except playlist_service.TrackNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+
 def _build_multipart_response(mp4_bytes: bytes, metadata: dict[str, str]) -> Response:
     meta_json = json_lib.dumps(metadata).encode()
     sep = f"--{_MULTIPART_BOUNDARY}\r\n".encode()

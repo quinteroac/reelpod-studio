@@ -171,6 +171,18 @@ function fetchMethod(input: string | URL | Request): string {
 /** GET list, GET tracks, POST create — replaces bare mockPlaylistsResponse() after US-004. */
 function playlistFetchCompatibilityMock(url: string, method: string): Response {
   const pathOnly = playlistPathOnly(url);
+  if (
+    method === 'GET' &&
+    /^\/api\/playlists\/[^/]+\/tracks\/[^/]+\/file$/.test(pathOnly)
+  ) {
+    return new Response(new Uint8Array([0]), {
+      status: 200,
+      headers: { 'content-type': 'video/mp4' },
+    });
+  }
+  if (method === 'DELETE' && /^\/api\/playlists\/[^/]+\/tracks\/[^/]+$/.test(pathOnly)) {
+    return new Response(null, { status: 204 });
+  }
   if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
     return new Response(JSON.stringify({ tracks: [] }), {
       status: 200,
@@ -216,6 +228,18 @@ function mockFetchUs004MultiPlaylist(): ReturnType<typeof vi.fn> {
     }
 
     if (url.includes('/api/playlists')) {
+      if (
+        method === 'GET' &&
+        /^\/api\/playlists\/[^/]+\/tracks\/[^/]+\/file$/.test(pathOnly)
+      ) {
+        return new Response(new Uint8Array([0]), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (method === 'DELETE' && /^\/api\/playlists\/[^/]+\/tracks\/[^/]+$/.test(pathOnly)) {
+        return new Response(null, { status: 204 });
+      }
       if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
         const match = pathOnly.match(/\/api\/playlists\/([^/]+)\/tracks$/);
         const pid = match?.[1] ?? '';
@@ -694,6 +718,192 @@ describe('Playlists create and switch (US-004)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('playlist-track-track-b1')).toBeInTheDocument();
       expect(screen.getByText('second.mp4')).toBeInTheDocument();
+    });
+  });
+});
+
+function mockFetchUs005PlaylistWithTrack(): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const method =
+      typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
+    const pathOnly = playlistPathOnly(url);
+
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponse();
+    }
+    if (url.endsWith('/api/recordings/convert-mp4')) {
+      return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+        status: 200,
+        headers: { 'content-type': 'video/mp4' },
+      });
+    }
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/api/playlists')) {
+      if (method === 'GET' && pathOnly === '/api/playlists') {
+        return new Response(
+          JSON.stringify({
+            playlists: [
+              {
+                id: 'pl-1',
+                name: 'My Playlist',
+                tracks: [],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      if (method === 'GET' && pathOnly === '/api/playlists/pl-1/tracks') {
+        return new Response(
+          JSON.stringify({
+            tracks: [
+              {
+                id: 'track-1',
+                filename: 'clip.mp4',
+                created_at: '2024-01-01T12:00:00Z',
+                size_bytes: 2097152,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      if (
+        method === 'GET' &&
+        pathOnly === '/api/playlists/pl-1/tracks/track-1/file'
+      ) {
+        return new Response(new Uint8Array([0, 0, 0, 32]), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (method === 'DELETE' && pathOnly === '/api/playlists/pl-1/tracks/track-1') {
+        return new Response(null, { status: 204 });
+      }
+    }
+    return mockPlaylistsResponse();
+  });
+}
+
+describe('Playlist track actions (US-005)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('US-005-AC01: each track row shows filename, size, created time, and actions', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchUs005PlaylistWithTrack());
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-track-filename-track-1')).toHaveTextContent('clip.mp4');
+    });
+    expect(screen.getByTestId('playlist-track-size-track-1')).toHaveTextContent('2.00 MB');
+    expect(screen.getByTestId('playlist-track-created-track-1')).toBeInTheDocument();
+    expect(screen.getByTestId('playlist-track-play-track-1')).toBeInTheDocument();
+    expect(screen.getByTestId('playlist-track-download-track-1')).toBeInTheDocument();
+    expect(screen.getByTestId('playlist-track-delete-track-1')).toBeInTheDocument();
+  });
+
+  it('US-005-AC02: Play uses GET .../tracks/{id}/file as video src', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchUs005PlaylistWithTrack());
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-track-play-track-1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('playlist-track-play-track-1'));
+
+    await waitFor(() => {
+      const video = screen.getByTestId('playlist-track-video-track-1') as HTMLVideoElement;
+      expect(video.getAttribute('src')).toContain('/api/playlists/pl-1/tracks/track-1/file');
+    });
+  });
+
+  it('US-005-AC03: Download points at the track file URL', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchUs005PlaylistWithTrack());
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const link = screen.getByTestId('playlist-track-download-track-1') as HTMLAnchorElement;
+      expect(link.getAttribute('href')).toContain('/api/playlists/pl-1/tracks/track-1/file');
+      expect(link.getAttribute('download')).toBe('clip.mp4');
+    });
+  });
+
+  it('US-005-AC05: delete shows a confirmation dialog before removing', async () => {
+    const fetchMock = mockFetchUs005PlaylistWithTrack();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-track-delete-track-1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('playlist-track-delete-track-1'));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.some(
+        (c) =>
+          typeof c[0] === 'string' &&
+          c[0].includes('/api/playlists/pl-1/tracks/track-1') &&
+          (c[1] as { method?: string } | undefined)?.method === 'DELETE'
+      )
+    ).toBe(false);
+    expect(screen.getByTestId('playlist-track-track-1')).toBeInTheDocument();
+  });
+
+  it('US-005-AC04: delete confirms, sends DELETE, and removes the row', async () => {
+    const fetchMock = mockFetchUs005PlaylistWithTrack();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-track-delete-track-1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('playlist-track-delete-track-1'));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          (c) =>
+            typeof c[0] === 'string' &&
+            playlistPathOnly(c[0] as string) === '/api/playlists/pl-1/tracks/track-1' &&
+            (c[1] as { method?: string } | undefined)?.method === 'DELETE'
+        )
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('playlist-track-track-1')).not.toBeInTheDocument();
     });
   });
 });
