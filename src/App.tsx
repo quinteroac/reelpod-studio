@@ -34,7 +34,7 @@ import {
 } from './api/constants';
 import { sanitizeFilename } from './lib/sanitize-filename';
 import type { PlaylistTrack } from './lib/playlist-api';
-import { uploadPlaylistTrack } from './lib/playlist-api';
+import { patchPlaylistName, uploadPlaylistTrack } from './lib/playlist-api';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -345,6 +345,13 @@ export function App() {
   const [playlistTrackUploadError, setPlaylistTrackUploadError] = useState<
     string | null
   >(null);
+  const [isEditingPlaylistName, setIsEditingPlaylistName] = useState(false);
+  const [playlistNameDraft, setPlaylistNameDraft] = useState('');
+  const [playlistRenameError, setPlaylistRenameError] = useState<string | null>(null);
+  const [isPlaylistRenameSaving, setIsPlaylistRenameSaving] = useState(false);
+  const playlistNameInputRef = useRef<HTMLInputElement | null>(null);
+  const playlistRenameInFlightRef = useRef(false);
+  const skipPlaylistNameBlurCommitRef = useRef(false);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -413,6 +420,77 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isEditingPlaylistName) {
+      return;
+    }
+    const id = window.requestAnimationFrame(() => {
+      playlistNameInputRef.current?.focus();
+      playlistNameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isEditingPlaylistName]);
+
+  const beginEditPlaylistName = useCallback(() => {
+    if (activePlaylistId === null || playlistHeaderName === null) {
+      return;
+    }
+    skipPlaylistNameBlurCommitRef.current = false;
+    setPlaylistNameDraft(playlistHeaderName);
+    setPlaylistRenameError(null);
+    setIsEditingPlaylistName(true);
+  }, [activePlaylistId, playlistHeaderName]);
+
+  const cancelEditPlaylistName = useCallback(() => {
+    skipPlaylistNameBlurCommitRef.current = true;
+    setIsEditingPlaylistName(false);
+    setPlaylistNameDraft('');
+  }, []);
+
+  const commitPlaylistName = useCallback(async () => {
+    if (activePlaylistId === null || !isEditingPlaylistName) {
+      return;
+    }
+    if (playlistRenameInFlightRef.current) {
+      return;
+    }
+    const next = playlistNameDraft.trim();
+    if (next === '') {
+      setPlaylistRenameError('Playlist name cannot be empty.');
+      setIsEditingPlaylistName(false);
+      setPlaylistNameDraft('');
+      return;
+    }
+    const current = (playlistHeaderName ?? '').trim();
+    if (next === current) {
+      setIsEditingPlaylistName(false);
+      setPlaylistRenameError(null);
+      return;
+    }
+    playlistRenameInFlightRef.current = true;
+    setIsPlaylistRenameSaving(true);
+    setPlaylistRenameError(null);
+    try {
+      const updated = await patchPlaylistName(activePlaylistId, next);
+      setPlaylistHeaderName(updated.name);
+      setPlaylistTracks(updated.tracks);
+      setIsEditingPlaylistName(false);
+    } catch (err) {
+      setPlaylistRenameError(
+        err instanceof Error ? err.message : 'Could not rename playlist.'
+      );
+    } finally {
+      setIsPlaylistRenameSaving(false);
+      playlistRenameInFlightRef.current = false;
+    }
+  }, [
+    activePlaylistId,
+    isEditingPlaylistName,
+    playlistHeaderName,
+    playlistNameDraft,
+  ]);
+
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
   const activeEffects = useMemo(
@@ -1668,13 +1746,73 @@ export function App() {
                       <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-lofi-accentMuted">
                         Queue
                       </p>
-                      <h2
-                        className="truncate text-sm font-semibold text-lofi-text"
-                        data-testid="playlist-header-name"
-                        title={playlistHeaderName ?? undefined}
-                      >
-                        {playlistHeaderName ?? '\u00a0'}
-                      </h2>
+                      <div className="flex min-w-0 items-center gap-1">
+                        {isEditingPlaylistName ? (
+                          <input
+                            ref={playlistNameInputRef}
+                            type="text"
+                            data-testid="playlist-name-input"
+                            className="min-w-0 flex-1 rounded-sm border border-lofi-accent/50 bg-lofi-bg/80 px-2 py-1 text-sm font-semibold text-lofi-text outline-none focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:opacity-60"
+                            value={playlistNameDraft}
+                            onChange={(e) => setPlaylistNameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void commitPlaylistName();
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditPlaylistName();
+                              }
+                            }}
+                            onBlur={() => {
+                              if (skipPlaylistNameBlurCommitRef.current) {
+                                skipPlaylistNameBlurCommitRef.current = false;
+                                return;
+                              }
+                              void commitPlaylistName();
+                            }}
+                            disabled={isPlaylistRenameSaving}
+                            aria-label="Playlist name"
+                          />
+                        ) : (
+                          <h2
+                            className="min-w-0 flex-1 truncate text-sm font-semibold text-lofi-text"
+                            data-testid="playlist-header-name"
+                            title={playlistHeaderName ?? undefined}
+                          >
+                            {playlistHeaderName ?? '\u00a0'}
+                          </h2>
+                        )}
+                        {!isEditingPlaylistName &&
+                          activePlaylistId !== null &&
+                          playlistHeaderName !== null && (
+                            <button
+                              type="button"
+                              data-testid="playlist-rename-button"
+                              className="interactive-lift shrink-0 rounded-sm p-1.5 text-lofi-accent outline-none transition hover:bg-lofi-accent/20 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                              aria-label="Rename playlist"
+                              title="Rename playlist"
+                              onClick={beginEditPlaylistName}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                              >
+                                <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+                                <path d="M13.5 6.5l4 4" />
+                              </svg>
+                            </button>
+                          )}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -1762,6 +1900,15 @@ export function App() {
                     </p>
                   )}
                 </div>
+                {playlistRenameError && (
+                  <div
+                    role="alert"
+                    data-testid="playlist-rename-error"
+                    className="rounded-md border border-red-400/60 bg-red-950/40 p-3 text-sm font-semibold text-red-100"
+                  >
+                    {playlistRenameError}
+                  </div>
+                )}
                 {playlistTrackUploadError && (
                   <div
                     role="alert"

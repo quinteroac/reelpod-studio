@@ -1,10 +1,16 @@
-import { playlistTracksEndpoint } from '../api/constants';
+import { playlistEndpoint, playlistTracksEndpoint } from '../api/constants';
 
 export interface PlaylistTrack {
   id: string;
   filename: string;
   created_at: string;
   size_bytes: number;
+}
+
+export interface PlaylistItem {
+  id: string;
+  name: string;
+  tracks: PlaylistTrack[];
 }
 
 function parseErrorMessage(payload: unknown): string | null {
@@ -74,4 +80,76 @@ export async function uploadPlaylistTrack(
     throw new Error('Invalid track payload');
   }
   return { id, filename: fn, created_at: created, size_bytes: size };
+}
+
+function parsePlaylistTracks(raw: unknown): PlaylistTrack[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: PlaylistTrack[] = [];
+  for (const t of raw) {
+    if (typeof t !== 'object' || t === null) {
+      continue;
+    }
+    const tr = t as Record<string, unknown>;
+    if (
+      typeof tr.id === 'string' &&
+      typeof tr.filename === 'string' &&
+      typeof tr.created_at === 'string' &&
+      typeof tr.size_bytes === 'number'
+    ) {
+      out.push({
+        id: tr.id,
+        filename: tr.filename,
+        created_at: tr.created_at,
+        size_bytes: tr.size_bytes,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Renames a playlist via PATCH /api/playlists/{id}.
+ */
+export async function patchPlaylistName(
+  playlistId: string,
+  name: string
+): Promise<PlaylistItem> {
+  const res = await fetch(playlistEndpoint(playlistId), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!res.ok) {
+    let message = `Could not rename playlist (${res.status})`;
+    try {
+      const payload: unknown = await res.json();
+      const parsed = parseErrorMessage(payload);
+      if (parsed) {
+        message = parsed;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data: unknown = await res.json();
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('Invalid playlist response');
+  }
+  const row = data as Record<string, unknown>;
+  const id = row.id;
+  const plName = row.name;
+  const tracksRaw = row.tracks;
+  if (typeof id !== 'string' || typeof plName !== 'string') {
+    throw new Error('Invalid playlist payload');
+  }
+  return {
+    id,
+    name: plName,
+    tracks: parsePlaylistTracks(tracksRaw),
+  };
 }

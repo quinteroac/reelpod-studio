@@ -126,6 +126,20 @@ class PlaylistsListResponse(BaseModel):
     playlists: list[PlaylistItem]
 
 
+class UpdatePlaylistRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: StrictStr
+
+    @field_validator("name")
+    @classmethod
+    def validate_playlist_name(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Name must be a non-empty string.")
+        return trimmed
+
+
 class AddPlaylistTrackResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

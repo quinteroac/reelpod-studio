@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { uploadPlaylistTrack } from './playlist-api';
+import { patchPlaylistName, uploadPlaylistTrack } from './playlist-api';
 
 describe('uploadPlaylistTrack', () => {
   afterEach(() => {
@@ -43,5 +43,28 @@ describe('uploadPlaylistTrack', () => {
     );
     expect(track.id).toBe('t1');
     expect(track.size_bytes).toBe(4);
+  });
+
+  it('US-003-AC02: PATCHes playlist endpoint with JSON name', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'pl-1',
+        name: 'Lofi Session March',
+        tracks: [],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pl = await patchPlaylistName('pl-1', 'Lofi Session March');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/playlists/pl-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Lofi Session March' }),
+      }),
+    );
+    expect(pl.name).toBe('Lofi Session March');
   });
 });

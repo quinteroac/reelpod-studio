@@ -618,6 +618,39 @@ class TestPlaylistsApi:
         assert body["playlists"][0]["name"] == "Existing"
         assert body["playlists"][0]["tracks"] == []
 
+    def test_patch_playlist_name_updates_json_and_returns_playlist(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        pid = "custom-id-1"
+        target.write_text(
+            json.dumps({"playlists": [{"id": pid, "name": "Old Name", "tracks": []}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+
+        r = client.patch(f"/api/playlists/{pid}", json={"name": "Lofi Session March"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["id"] == pid
+        assert data["name"] == "Lofi Session March"
+        assert data["tracks"] == []
+
+        stored = json.loads(target.read_text(encoding="utf-8"))
+        assert stored["playlists"][0]["name"] == "Lofi Session March"
+
+    def test_patch_unknown_playlist_returns_404(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        target.write_text(
+            json.dumps({"playlists": [{"id": "x", "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        r = client.patch("/api/playlists/missing-id", json={"name": "New"})
+        assert r.status_code == 404
+
 
 class TestPlaylistTrackUpload:
     def test_post_track_saves_mp4_and_updates_playlists_json(

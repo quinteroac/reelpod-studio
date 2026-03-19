@@ -174,3 +174,41 @@ def add_track(playlist_id: str, file_bytes: bytes, original_filename: str | None
 
     _write_store(PLAYLISTS_JSON_PATH, {"playlists": updated})
     return track
+
+
+def update_playlist_name(playlist_id: str, name: str) -> dict[str, Any]:
+    """Update a playlist's display name in playlists.json and return the normalized playlist row."""
+    pid = playlist_id.strip()
+    if not pid:
+        raise PlaylistNotFoundError("Missing playlist id")
+    trimmed = name.strip()
+    if not trimmed:
+        raise ValueError("Empty playlist name")
+
+    playlists = get_playlists()
+    if not any(p["id"] == pid for p in playlists):
+        raise PlaylistNotFoundError(f"Playlist not found: {pid}")
+
+    store = _read_store(PLAYLISTS_JSON_PATH)
+    raw_list = store.get("playlists")
+    if not isinstance(raw_list, list):
+        raw_list = []
+    updated: list[Any] = []
+    found = False
+    for p in raw_list:
+        if isinstance(p, dict) and p.get("id") == pid:
+            found = True
+            pl = dict(p)
+            pl["name"] = trimmed
+            updated.append(pl)
+        else:
+            updated.append(p)
+    if not found:
+        raise PlaylistNotFoundError(f"Playlist not found in store: {pid}")
+
+    _write_store(PLAYLISTS_JSON_PATH, {"playlists": updated})
+    refreshed = get_playlists()
+    match = next((p for p in refreshed if p["id"] == pid), None)
+    if match is None:
+        raise PlaylistNotFoundError(f"Playlist not found after update: {pid}")
+    return match

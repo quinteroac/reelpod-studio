@@ -27,6 +27,7 @@ from models.schemas import (
     PlaylistItem,
     PlaylistTrackItem,
     PlaylistsListResponse,
+    UpdatePlaylistRequestBody,
 )
 from services import audio_service, image_service, playlist_service
 from services import video_service
@@ -41,6 +42,15 @@ _MULTIPART_BOUNDARY = "reelpod"
 def list_playlists() -> PlaylistsListResponse:
     rows = playlist_service.get_playlists()
     return PlaylistsListResponse(playlists=[PlaylistItem(**row) for row in rows])
+
+
+@router.patch("/api/playlists/{playlist_id}", response_model=PlaylistItem)
+def update_playlist(playlist_id: str, body: UpdatePlaylistRequestBody) -> PlaylistItem:
+    try:
+        row = playlist_service.update_playlist_name(playlist_id, body.name)
+    except playlist_service.PlaylistNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PlaylistItem(**row)
 
 
 @router.post("/api/playlists/{playlist_id}/tracks", response_model=AddPlaylistTrackResponse)

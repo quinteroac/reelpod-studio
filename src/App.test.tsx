@@ -156,7 +156,38 @@ function mockPlaylistsResponse(): Response {
 function mockVideoFetch(): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const method =
+      typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
     if (url.includes('/api/playlists')) {
+      if (method === 'PATCH' && /\/api\/playlists\/[^/]+$/.test(url)) {
+        let newName = 'Renamed Playlist';
+        try {
+          if (typeof input !== 'string' && !(input instanceof URL)) {
+            const body: unknown = await input.clone().json();
+            if (
+              body &&
+              typeof body === 'object' &&
+              typeof (body as { name?: unknown }).name === 'string'
+            ) {
+              const trimmed = (body as { name: string }).name.trim();
+              if (trimmed) {
+                newName = trimmed;
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+        const idFromUrl = url.split('/').pop() ?? '';
+        return new Response(
+          JSON.stringify({
+            id: idFromUrl,
+            name: newName,
+            tracks: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
       return mockPlaylistsResponse();
     }
     if (url.endsWith('/api/generate')) {
@@ -287,6 +318,146 @@ describe('Playlist track upload (US-002)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('playlist-track-existing-track-1')).toBeInTheDocument();
       expect(screen.getByText('existing.mp4')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Playlist rename (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('US-003-AC01: shows playlist name with rename affordance when queue is open', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('My Playlist');
+    });
+    expect(screen.getByRole('button', { name: 'Rename playlist' })).toBeInTheDocument();
+  });
+
+  it('US-003-AC02: renaming sends PATCH with JSON body', async () => {
+    const fetchMock = mockVideoFetch();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename playlist' }));
+    const input = await screen.findByTestId('playlist-name-input');
+    fireEvent.change(input, { target: { value: 'Lofi Session March' } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/playlists/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        expect.objectContaining({
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Lofi Session March' }),
+        }),
+      );
+    });
+  });
+
+  it('US-003-AC04: UI shows new name after successful rename', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('My Playlist');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename playlist' }));
+    const input = await screen.findByTestId('playlist-name-input');
+    fireEvent.change(input, { target: { value: 'Spring Mix' } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('Spring Mix');
+    });
+  });
+
+  it('US-003-AC04: name from GET after remount matches persisted playlist name', async () => {
+    let persistedName = 'My Playlist';
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method =
+        typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
+      if (url.includes('/api/playlists')) {
+        if (method === 'PATCH' && /\/api\/playlists\/[^/]+$/.test(url)) {
+          const body: unknown = await (input as Request).clone().json();
+          if (
+            body &&
+            typeof body === 'object' &&
+            typeof (body as { name?: unknown }).name === 'string'
+          ) {
+            persistedName = (body as { name: string }).name.trim();
+          }
+          return new Response(
+            JSON.stringify({
+              id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+              name: persistedName,
+              tracks: [],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            playlists: [
+              {
+                id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+                name: persistedName,
+                tracks: [],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/api/generate')) {
+        return createVideoResponse();
+      }
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url.includes('/mcp/')) {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    const { unmount } = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('My Playlist');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename playlist' }));
+    const input = await screen.findByTestId('playlist-name-input');
+    fireEvent.change(input, { target: { value: 'After Reload' } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('After Reload');
+    });
+    unmount();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('After Reload');
     });
   });
 });
