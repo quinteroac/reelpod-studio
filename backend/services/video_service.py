@@ -155,6 +155,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, st
     trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
     wan_clip_path = temp_dir.joinpath("wan_clip.mp4")
+    wan_bridge_clip_path = temp_dir.joinpath("wan_bridge_clip.mp4")
+    wan_concat_clip_path = temp_dir.joinpath("wan_concat_clip.mp4")
     upscaled_resized_clip_path = temp_dir.joinpath("upscaled_resized_clip.mp4")
     looped_clip_path = temp_dir.joinpath("looped_clip.mp4")
     output_path = temp_dir.joinpath("output.mp4")
@@ -241,16 +243,60 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, st
             wan_clip_path.stat().st_size,
         )
 
-        pre_loop_clip_path = wan_clip_path
+        wan_pre_upscale_clip_path = wan_clip_path
+        try:
+            logger.info(
+                "Video pipeline: starting bridge clip generation from %s (%d bytes)",
+                wan_clip_path,
+                wan_clip_path.stat().st_size,
+            )
+            _wan_clip_path = wan_clip_path
+            wan_bridge_clip_path = _run_with_timeout(
+                lambda: video_repository.run_bridge_inference(
+                    _wan_pipeline,
+                    clip1_path=_wan_clip_path,
+                    prompt=_video_prompt,
+                    target_width=body.image_target_width,
+                    target_height=body.image_target_height,
+                    temp_dir=temp_dir,
+                ),
+                timeout_seconds=remaining_seconds(),
+                timeout_message="Video generation timed out while generating bridge clip",
+            )
+            logger.info(
+                "Video pipeline: bridge clip saved to %s (%d bytes)",
+                wan_bridge_clip_path,
+                wan_bridge_clip_path.stat().st_size,
+            )
+            logger.info(
+                "Video pipeline: concatenating clip1 %s and bridge clip %s",
+                wan_clip_path,
+                wan_bridge_clip_path,
+            )
+            media_repository.concatenate_videos([wan_clip_path, wan_bridge_clip_path], wan_concat_clip_path)
+            logger.info(
+                "Video pipeline: concatenated clip saved to %s (%d bytes)",
+                wan_concat_clip_path,
+                wan_concat_clip_path.stat().st_size,
+            )
+            wan_pre_upscale_clip_path = wan_concat_clip_path
+        except Exception as exc:
+            logger.warning(
+                "Video pipeline: bridge clip generation failed; falling back to clip 1 only (%s)",
+                exc,
+            )
+
+        pre_loop_clip_path = wan_pre_upscale_clip_path
         try:
             logger.info(
                 "Video pipeline: upscaling Wan clip 4x and resizing to target %dx%d",
                 body.image_target_width,
                 body.image_target_height,
             )
+            _wan_pre_upscale_clip_path = wan_pre_upscale_clip_path
             _run_with_timeout(
                 lambda: video_repository.upscale_video_with_realesrgan_and_resize(
-                    wan_clip_path,
+                    _wan_pre_upscale_clip_path,
                     upscaled_resized_clip_path,
                     target_width=body.image_target_width,
                     target_height=body.image_target_height,
@@ -350,6 +396,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, st
             trimmed_audio_path,
             image_path,
             wan_clip_path,
+            wan_bridge_clip_path,
+            wan_concat_clip_path,
             upscaled_resized_clip_path,
             looped_clip_path,
             output_path,

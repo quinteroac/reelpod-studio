@@ -1158,6 +1158,238 @@ def test_us003_pipeline_loops_wan_clip_to_audio_duration(
 
 
 # ---------------------------------------------------------------------------
+# US-003 (new) – Bridge clip generation, concatenation, and fallback
+# ---------------------------------------------------------------------------
+
+
+def _fake_orchestrate_lofi() -> "OrchestrationResult":  # noqa: F821
+    from services.orchestration_service import OrchestrationResult
+
+    return OrchestrationResult(
+        song_title="Lofi Session",
+        audio_prompt="lofi 90 BPM",
+        image_prompt="score_9, score_8, best quality, highres, lofi artwork",
+        video_prompt="A calm lofi scene with soft lighting and warm tones.",
+        youtube_title="Lofi Session | Lofi Music",
+        youtube_description="A calm lofi scene with soft lighting and warm tones.",
+    )
+
+
+def _standard_probe(path: Path) -> dict[str, object]:
+    if path.name == "audio_trimmed.wav":
+        return {"format": {"duration": "40.0"}}
+    return {
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 1024, "height": 1024},
+            {"codec_type": "audio", "codec_name": "aac"},
+        ],
+        "format": {"duration": "40.0"},
+    }
+
+
+def test_us003_new_ac01_run_bridge_inference_called_after_wan_i2v(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC01: run_bridge_inference is called with clip1_path=wan_clip_path after run_video_inference."""
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+
+    fake_pipeline = object()
+    monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", lambda _p: _fake_orchestrate_lofi())
+
+    seen: dict[str, object] = {}
+
+    def fake_run_video_inference(
+        pipeline: object,
+        *,
+        input_image: object,
+        prompt: str,
+        target_width: int,
+        target_height: int,
+        temp_dir: Path,
+    ) -> Path:
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    def fake_run_bridge_inference(
+        pipeline: object,
+        *,
+        clip1_path: Path,
+        prompt: str,
+        target_width: int,
+        target_height: int,
+        temp_dir: Path,
+    ) -> Path:
+        seen["bridge_called"] = True
+        seen["clip1_name"] = clip1_path.name
+        bridge_path = temp_dir / "wan_bridge_clip.mp4"
+        bridge_path.write_bytes(MP4_HEADER)
+        return bridge_path
+
+    def fake_concatenate_videos(input_paths: list[Path], output_path: Path) -> None:
+        seen["concat_inputs"] = [p.name for p in input_paths]
+        output_path.write_bytes(MP4_HEADER)
+
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    monkeypatch.setattr(video_service.video_repository, "run_bridge_inference", fake_run_bridge_inference)
+    monkeypatch.setattr(video_service.media_repository, "concatenate_videos", fake_concatenate_videos)
+    monkeypatch.setattr(
+        video_service.video_repository,
+        "upscale_video_with_realesrgan_and_resize",
+        lambda inp, out, **kw: out.write_bytes(inp.read_bytes()),
+    )
+    _patch_loop_and_mux_noop(monkeypatch)
+    monkeypatch.setattr(video_service.media_repository, "probe_media", _standard_probe)
+
+    video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+
+    assert seen.get("bridge_called") is True
+    assert seen.get("clip1_name") == "wan_clip.mp4"
+
+
+def test_us003_new_ac02_concat_called_with_clip1_then_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC02: concatenate_videos is called with [wan_clip_path, wan_bridge_clip_path] (clip 1 first)."""
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+
+    fake_pipeline = object()
+    monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", lambda _p: _fake_orchestrate_lofi())
+
+    concat_args: list[list[str]] = []
+
+    def fake_run_video_inference(pipeline, *, input_image, prompt, target_width, target_height, temp_dir):  # noqa: ANN001
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    def fake_run_bridge_inference(pipeline, *, clip1_path, prompt, target_width, target_height, temp_dir):  # noqa: ANN001
+        bridge_path = temp_dir / "wan_bridge_clip.mp4"
+        bridge_path.write_bytes(MP4_HEADER)
+        return bridge_path
+
+    def fake_concatenate_videos(input_paths: list[Path], output_path: Path) -> None:
+        concat_args.append([p.name for p in input_paths])
+        output_path.write_bytes(MP4_HEADER)
+
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    monkeypatch.setattr(video_service.video_repository, "run_bridge_inference", fake_run_bridge_inference)
+    monkeypatch.setattr(video_service.media_repository, "concatenate_videos", fake_concatenate_videos)
+    monkeypatch.setattr(
+        video_service.video_repository,
+        "upscale_video_with_realesrgan_and_resize",
+        lambda inp, out, **kw: out.write_bytes(inp.read_bytes()),
+    )
+    _patch_loop_and_mux_noop(monkeypatch)
+    monkeypatch.setattr(video_service.media_repository, "probe_media", _standard_probe)
+
+    video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+
+    assert len(concat_args) == 1
+    assert concat_args[0] == ["wan_clip.mp4", "wan_bridge_clip.mp4"]
+
+
+def test_us003_new_ac03_upscaling_applied_to_concat_clip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC03: upscale_video_with_realesrgan_and_resize receives wan_concat_clip.mp4 when bridge succeeds."""
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+
+    fake_pipeline = object()
+    monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", lambda _p: _fake_orchestrate_lofi())
+
+    upscale_input_name: list[str] = []
+
+    def fake_run_video_inference(pipeline, *, input_image, prompt, target_width, target_height, temp_dir):  # noqa: ANN001
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    def fake_run_bridge_inference(pipeline, *, clip1_path, prompt, target_width, target_height, temp_dir):  # noqa: ANN001
+        bridge_path = temp_dir / "wan_bridge_clip.mp4"
+        bridge_path.write_bytes(MP4_HEADER)
+        return bridge_path
+
+    def fake_concatenate_videos(input_paths: list[Path], output_path: Path) -> None:
+        output_path.write_bytes(MP4_HEADER)
+
+    def fake_upscale(inp: Path, out: Path, *, target_width: int, target_height: int, tile: int = 256, tile_pad: int = 10) -> None:
+        upscale_input_name.append(inp.name)
+        out.write_bytes(inp.read_bytes())
+
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    monkeypatch.setattr(video_service.video_repository, "run_bridge_inference", fake_run_bridge_inference)
+    monkeypatch.setattr(video_service.media_repository, "concatenate_videos", fake_concatenate_videos)
+    monkeypatch.setattr(video_service.video_repository, "upscale_video_with_realesrgan_and_resize", fake_upscale)
+    _patch_loop_and_mux_noop(monkeypatch)
+    monkeypatch.setattr(video_service.media_repository, "probe_media", _standard_probe)
+
+    video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+
+    assert len(upscale_input_name) == 1
+    assert upscale_input_name[0] == "wan_concat_clip.mp4"
+
+
+def test_us003_new_ac04_bridge_failure_falls_back_to_clip1_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """AC04: When run_bridge_inference raises, pipeline falls back to wan_clip_path and logs a warning."""
+    _patch_trim_trailing_silence_to_copy(monkeypatch)
+
+    fake_pipeline = object()
+    monkeypatch.setattr(video_service, "wan_pipeline", fake_pipeline)
+    monkeypatch.setattr(video_service.audio_service, "generate_audio_for_request", lambda _body: WAV_HEADER)
+    monkeypatch.setattr(video_service.image_service, "generate_image_png", lambda _body: PNG_HEADER)
+    monkeypatch.setattr(video_service.orchestration_service, "orchestrate", lambda _p: _fake_orchestrate_lofi())
+
+    upscale_input_name: list[str] = []
+    concat_called: list[bool] = []
+
+    def fake_run_video_inference(pipeline, *, input_image, prompt, target_width, target_height, temp_dir):  # noqa: ANN001
+        clip_path = temp_dir / "wan_clip.mp4"
+        clip_path.write_bytes(MP4_HEADER)
+        return clip_path
+
+    def failing_bridge(pipeline, *, clip1_path, prompt, target_width, target_height, temp_dir):  # noqa: ANN001
+        raise RuntimeError("bridge GPU OOM")
+
+    def fake_concatenate_videos(input_paths: list[Path], output_path: Path) -> None:
+        concat_called.append(True)
+        output_path.write_bytes(MP4_HEADER)
+
+    def fake_upscale(inp: Path, out: Path, *, target_width: int, target_height: int, tile: int = 256, tile_pad: int = 10) -> None:
+        upscale_input_name.append(inp.name)
+        out.write_bytes(inp.read_bytes())
+
+    monkeypatch.setattr(video_service.video_repository, "run_video_inference", fake_run_video_inference)
+    monkeypatch.setattr(video_service.video_repository, "run_bridge_inference", failing_bridge)
+    monkeypatch.setattr(video_service.media_repository, "concatenate_videos", fake_concatenate_videos)
+    monkeypatch.setattr(video_service.video_repository, "upscale_video_with_realesrgan_and_resize", fake_upscale)
+    _patch_loop_and_mux_noop(monkeypatch)
+    monkeypatch.setattr(video_service.media_repository, "probe_media", _standard_probe)
+
+    caplog.set_level("WARNING")
+    mp4_bytes, *_ = video_service.generate_video_mp4_for_request(GenerateRequestBody(prompt="lofi", duration=40))
+
+    assert mp4_bytes == MP4_HEADER
+    assert not concat_called, "concatenate_videos must not be called when bridge fails"
+    assert len(upscale_input_name) == 1
+    assert upscale_input_name[0] == "wan_clip.mp4"
+    assert "bridge clip generation failed" in caplog.text
+    assert "falling back to clip 1 only" in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # US-002 – Song title propagation
 # ---------------------------------------------------------------------------
 

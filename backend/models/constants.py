@@ -68,7 +68,7 @@ REAL_ESRGAN_VIDEO_WEIGHTS_URL = (
 )
 
 QUEUE_WAIT_TIMEOUT_SECONDS = 300.0
-VIDEO_GENERATION_TIMEOUT_SECONDS = 1800.0  # 30 min — Wan I2V with 8 steps can take 10+ minutes
+VIDEO_GENERATION_TIMEOUT_SECONDS = 3600.0  # 60 min — two Wan I2V passes (clip + bridge) can take 20+ minutes each
 MP4_DURATION_TOLERANCE_SECONDS = 0.2
 
 # Wan 2.2 Image-to-Video via comfy-diffusion (ComfyUI inference engine)

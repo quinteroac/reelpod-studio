@@ -129,6 +129,21 @@ def mux_video_and_audio_to_mp4(
         raise RuntimeError(detail or "ffmpeg video mux failed") from exc
 
 
+def concatenate_videos(input_paths: list[Path], output_path: Path) -> None:
+    ffmpeg_module = _load_ffmpeg_module()
+    inputs = [ffmpeg_module.input(str(p)) for p in input_paths]
+    try:
+        (
+            ffmpeg_module.concat(*inputs, v=1, a=0)
+            .output(str(output_path))
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except ffmpeg_module.Error as exc:
+        detail = exc.stderr.decode("utf-8", errors="ignore").strip()
+        raise RuntimeError(detail or "ffmpeg concat failed") from exc
+
+
 def transcode_to_mp4(
     input_path: Path,
     output_path: Path | None = None,
