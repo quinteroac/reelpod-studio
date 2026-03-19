@@ -126,6 +126,24 @@ class PlaylistsListResponse(BaseModel):
     playlists: list[PlaylistItem]
 
 
+class CreatePlaylistRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: StrictStr = Field(default="New Playlist")
+
+    @field_validator("name")
+    @classmethod
+    def validate_create_playlist_name(cls, value: str) -> str:
+        trimmed = value.strip()
+        return trimmed if trimmed else "New Playlist"
+
+
+class PlaylistTracksListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tracks: list[PlaylistTrackItem]
+
+
 class UpdatePlaylistRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

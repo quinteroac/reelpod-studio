@@ -34,7 +34,12 @@ import {
 } from './api/constants';
 import { sanitizeFilename } from './lib/sanitize-filename';
 import type { PlaylistTrack } from './lib/playlist-api';
-import { patchPlaylistName, uploadPlaylistTrack } from './lib/playlist-api';
+import {
+  createPlaylist,
+  fetchPlaylistTracks,
+  patchPlaylistName,
+  uploadPlaylistTrack,
+} from './lib/playlist-api';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -341,7 +346,9 @@ export function App() {
   } | null>(null);
   const [playlistHeaderName, setPlaylistHeaderName] = useState<string | null>(null);
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [allPlaylists, setAllPlaylists] = useState<{ id: string; name: string }[]>([]);
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrack[]>([]);
+  const [playlistPanelError, setPlaylistPanelError] = useState<string | null>(null);
   const [playlistTrackUploadError, setPlaylistTrackUploadError] = useState<
     string | null
   >(null);
@@ -376,40 +383,43 @@ export function App() {
           return;
         }
         const playlists = (data as { playlists: unknown[] }).playlists;
-        const first = playlists[0];
-        if (first && typeof first === 'object' && first !== null) {
-          const row = first as Record<string, unknown>;
-          if (typeof row.name === 'string' && row.name.trim()) {
-            setPlaylistHeaderName(row.name.trim());
+        const catalog: { id: string; name: string }[] = [];
+        for (const item of playlists) {
+          if (typeof item !== 'object' || item === null) {
+            continue;
           }
-          if (typeof row.id === 'string' && row.id.trim()) {
-            setActivePlaylistId(row.id.trim());
+          const row = item as Record<string, unknown>;
+          if (
+            typeof row.id === 'string' &&
+            row.id.trim() &&
+            typeof row.name === 'string' &&
+            row.name.trim()
+          ) {
+            catalog.push({ id: row.id.trim(), name: row.name.trim() });
           }
-          const rawTracks = row.tracks;
-          if (Array.isArray(rawTracks)) {
-            const parsed: PlaylistTrack[] = [];
-            for (const t of rawTracks) {
-              if (typeof t !== 'object' || t === null) {
-                continue;
-              }
-              const tr = t as Record<string, unknown>;
-              if (
-                typeof tr.id === 'string' &&
-                typeof tr.filename === 'string' &&
-                typeof tr.created_at === 'string' &&
-                typeof tr.size_bytes === 'number'
-              ) {
-                parsed.push({
-                  id: tr.id,
-                  filename: tr.filename,
-                  created_at: tr.created_at,
-                  size_bytes: tr.size_bytes,
-                });
-              }
-            }
-            setPlaylistTracks(parsed);
-          } else {
+        }
+        if (cancelled) {
+          return;
+        }
+        setAllPlaylists(catalog);
+        const first = catalog[0];
+        if (!first) {
+          return;
+        }
+        setPlaylistHeaderName(first.name);
+        setActivePlaylistId(first.id);
+        try {
+          const tracks = await fetchPlaylistTracks(first.id);
+          if (!cancelled) {
+            setPlaylistTracks(tracks);
+            setPlaylistPanelError(null);
+          }
+        } catch (err) {
+          if (!cancelled) {
             setPlaylistTracks([]);
+            setPlaylistPanelError(
+              err instanceof Error ? err.message : 'Could not load playlist tracks.'
+            );
           }
         }
       } catch {
@@ -475,6 +485,11 @@ export function App() {
       const updated = await patchPlaylistName(activePlaylistId, next);
       setPlaylistHeaderName(updated.name);
       setPlaylistTracks(updated.tracks);
+      setAllPlaylists((prev) =>
+        prev.map((p) =>
+          p.id === activePlaylistId ? { ...p, name: updated.name } : p
+        )
+      );
       setIsEditingPlaylistName(false);
     } catch (err) {
       setPlaylistRenameError(
@@ -490,6 +505,49 @@ export function App() {
     playlistHeaderName,
     playlistNameDraft,
   ]);
+
+  const handleActivePlaylistChange = useCallback(
+    async (nextId: string) => {
+      if (nextId === activePlaylistId) {
+        return;
+      }
+      skipPlaylistNameBlurCommitRef.current = true;
+      setIsEditingPlaylistName(false);
+      setPlaylistNameDraft('');
+      const pl = allPlaylists.find((p) => p.id === nextId);
+      setActivePlaylistId(nextId);
+      setPlaylistHeaderName(pl?.name ?? null);
+      setPlaylistPanelError(null);
+      try {
+        const tracks = await fetchPlaylistTracks(nextId);
+        setPlaylistTracks(tracks);
+      } catch (err) {
+        setPlaylistTracks([]);
+        setPlaylistPanelError(
+          err instanceof Error ? err.message : 'Could not load playlist tracks.'
+        );
+      }
+    },
+    [activePlaylistId, allPlaylists]
+  );
+
+  const handleCreatePlaylist = useCallback(async () => {
+    setPlaylistPanelError(null);
+    try {
+      const created = await createPlaylist();
+      setAllPlaylists((prev) => [...prev, { id: created.id, name: created.name }]);
+      skipPlaylistNameBlurCommitRef.current = true;
+      setIsEditingPlaylistName(false);
+      setPlaylistNameDraft('');
+      setActivePlaylistId(created.id);
+      setPlaylistHeaderName(created.name);
+      setPlaylistTracks(created.tracks);
+    } catch (err) {
+      setPlaylistPanelError(
+        err instanceof Error ? err.message : 'Could not create playlist.'
+      );
+    }
+  }, []);
 
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
@@ -1746,6 +1804,37 @@ export function App() {
                       <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-lofi-accentMuted">
                         Queue
                       </p>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <label htmlFor="active-playlist-select" className="sr-only">
+                          Active playlist
+                        </label>
+                        <select
+                          id="active-playlist-select"
+                          data-testid="playlist-selector"
+                          className="min-w-0 max-w-[min(100%,18rem)] flex-1 rounded-sm border border-lofi-accent/50 bg-lofi-bg/80 px-2 py-1.5 text-sm font-medium text-lofi-text outline-none transition focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-50"
+                          value={activePlaylistId ?? ''}
+                          onChange={(e) => {
+                            void handleActivePlaylistChange(e.target.value);
+                          }}
+                          disabled={allPlaylists.length === 0}
+                          aria-label="Active playlist"
+                        >
+                          {allPlaylists.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          data-testid="new-playlist-button"
+                          className="interactive-lift shrink-0 rounded-sm border border-lofi-accent/45 bg-lofi-bg/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-lofi-accent outline-none transition hover:bg-lofi-accent/15 focus-visible:ring-2 focus-visible:ring-lofi-accent"
+                          onClick={() => void handleCreatePlaylist()}
+                          aria-label="New playlist"
+                        >
+                          New Playlist
+                        </button>
+                      </div>
                       <div className="flex min-w-0 items-center gap-1">
                         {isEditingPlaylistName ? (
                           <input
@@ -1900,6 +1989,15 @@ export function App() {
                     </p>
                   )}
                 </div>
+                {playlistPanelError && (
+                  <div
+                    role="alert"
+                    data-testid="playlist-panel-error"
+                    className="rounded-md border border-red-400/60 bg-red-950/40 p-3 text-sm font-semibold text-red-100"
+                  >
+                    {playlistPanelError}
+                  </div>
+                )}
                 {playlistRenameError && (
                   <div
                     role="alert"

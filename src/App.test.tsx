@@ -153,13 +153,139 @@ function mockPlaylistsResponse(): Response {
   );
 }
 
+function playlistPathOnly(url: string): string {
+  try {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return new URL(url).pathname;
+    }
+  } catch {
+    // ignore
+  }
+  return url.split('?')[0];
+}
+
+function fetchMethod(input: string | URL | Request): string {
+  return typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
+}
+
+/** GET list, GET tracks, POST create — replaces bare mockPlaylistsResponse() after US-004. */
+function playlistFetchCompatibilityMock(url: string, method: string): Response {
+  const pathOnly = playlistPathOnly(url);
+  if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
+    return new Response(JSON.stringify({ tracks: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (method === 'POST' && pathOnly === '/api/playlists') {
+    return new Response(
+      JSON.stringify({
+        id: 'created-in-test-mock',
+        name: 'New Playlist',
+        tracks: [],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    );
+  }
+  return mockPlaylistsResponse();
+}
+
+/** US-004: two playlists; tracks only on pl-b; POST create returns pl-new */
+function mockFetchUs004MultiPlaylist(): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const method =
+      typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
+    const pathOnly = playlistPathOnly(url);
+
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponse();
+    }
+    if (url.endsWith('/api/recordings/convert-mp4')) {
+      return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+        status: 200,
+        headers: { 'content-type': 'video/mp4' },
+      });
+    }
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (url.includes('/api/playlists')) {
+      if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
+        const match = pathOnly.match(/\/api\/playlists\/([^/]+)\/tracks$/);
+        const pid = match?.[1] ?? '';
+        const tracks =
+          pid === 'pl-b'
+            ? [
+                {
+                  id: 'track-b1',
+                  filename: 'second.mp4',
+                  created_at: '2024-01-01T00:00:00Z',
+                  size_bytes: 2048,
+                },
+              ]
+            : [];
+        return new Response(JSON.stringify({ tracks }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (method === 'POST' && pathOnly === '/api/playlists') {
+        return new Response(
+          JSON.stringify({
+            id: 'pl-new',
+            name: 'New Playlist',
+            tracks: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      if (method === 'GET' && pathOnly === '/api/playlists') {
+        return new Response(
+          JSON.stringify({
+            playlists: [
+              { id: 'pl-a', name: 'Playlist A', tracks: [] },
+              { id: 'pl-b', name: 'Playlist B', tracks: [] },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+    }
+
+    throw new Error(`Unexpected endpoint called: ${url}`);
+  });
+}
+
 function mockVideoFetch(): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method =
       typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
     if (url.includes('/api/playlists')) {
-      if (method === 'PATCH' && /\/api\/playlists\/[^/]+$/.test(url)) {
+      const pathOnly = playlistPathOnly(url);
+      if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
+        return new Response(JSON.stringify({ tracks: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (method === 'POST' && pathOnly === '/api/playlists') {
+        return new Response(
+          JSON.stringify({
+            id: 'new-pl-from-post',
+            name: 'New Playlist',
+            tracks: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      if (method === 'PATCH' && /\/api\/playlists\/[^/]+$/.test(pathOnly)) {
         let newName = 'Renamed Playlist';
         try {
           if (typeof input !== 'string' && !(input instanceof URL)) {
@@ -178,7 +304,7 @@ function mockVideoFetch(): ReturnType<typeof vi.fn> {
         } catch {
           // ignore
         }
-        const idFromUrl = url.split('/').pop() ?? '';
+        const idFromUrl = pathOnly.split('/').pop() ?? '';
         return new Response(
           JSON.stringify({
             id: idFromUrl,
@@ -267,21 +393,32 @@ describe('Playlist track upload (US-002)', () => {
             : input instanceof URL
               ? input.toString()
               : input.url;
-        if (url.includes('/api/playlists') && !url.includes('/tracks')) {
+        const method =
+          typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
+        const pathOnly = playlistPathOnly(url);
+        if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
+          return new Response(
+            JSON.stringify({
+              tracks: [
+                {
+                  id: 'existing-track-1',
+                  filename: 'existing.mp4',
+                  created_at: '2024-01-01T00:00:00Z',
+                  size_bytes: 1024000,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+        if (pathOnly === '/api/playlists' && method === 'GET') {
           return new Response(
             JSON.stringify({
               playlists: [
                 {
                   id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
                   name: 'My Playlist',
-                  tracks: [
-                    {
-                      id: 'existing-track-1',
-                      filename: 'existing.mp4',
-                      created_at: '2024-01-01T00:00:00Z',
-                      size_bytes: 1024000,
-                    },
-                  ],
+                  tracks: [],
                 },
               ],
             }),
@@ -390,7 +527,14 @@ describe('Playlist rename (US-003)', () => {
       const method =
         typeof input === 'string' || input instanceof URL ? 'GET' : input.method;
       if (url.includes('/api/playlists')) {
-        if (method === 'PATCH' && /\/api\/playlists\/[^/]+$/.test(url)) {
+        const pathOnly = playlistPathOnly(url);
+        if (method === 'GET' && /\/api\/playlists\/[^/]+\/tracks$/.test(pathOnly)) {
+          return new Response(JSON.stringify({ tracks: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (method === 'PATCH' && /\/api\/playlists\/[^/]+$/.test(pathOnly)) {
           const body: unknown = await (input as Request).clone().json();
           if (
             body &&
@@ -458,6 +602,98 @@ describe('Playlist rename (US-003)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
     await waitFor(() => {
       expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('After Reload');
+    });
+  });
+});
+
+describe('Playlists create and switch (US-004)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('US-004-AC01: New Playlist sends POST /api/playlists with default name', async () => {
+    const fetchMock = mockFetchUs004MultiPlaylist();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-selector')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('new-playlist-button'));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/playlists',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'New Playlist' }),
+        })
+      );
+    });
+  });
+
+  it('US-004-AC02: playlist selector lists all playlists', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchUs004MultiPlaylist());
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      const select = screen.getByTestId('playlist-selector') as HTMLSelectElement;
+      const options = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
+      expect(options).toContain('Playlist A');
+      expect(options).toContain('Playlist B');
+    });
+  });
+
+  it('US-004-AC03: selecting a playlist updates header and active selection', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchUs004MultiPlaylist());
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect((screen.getByTestId('playlist-selector') as HTMLSelectElement).value).toBe('pl-a');
+    });
+
+    fireEvent.change(screen.getByTestId('playlist-selector'), {
+      target: { value: 'pl-b' },
+    });
+
+    await waitFor(() => {
+      expect((screen.getByTestId('playlist-selector') as HTMLSelectElement).value).toBe('pl-b');
+      expect(screen.getByTestId('playlist-header-name')).toHaveTextContent('Playlist B');
+    });
+  });
+
+  it('US-004-AC04: active playlist tracks are loaded from GET .../tracks', async () => {
+    const fetchMock = mockFetchUs004MultiPlaylist();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-tracks-empty')).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/playlists/pl-a/tracks',
+      expect.objectContaining({ method: 'GET' })
+    );
+
+    fireEvent.change(screen.getByTestId('playlist-selector'), {
+      target: { value: 'pl-b' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('playlist-track-track-b1')).toBeInTheDocument();
+      expect(screen.getByText('second.mp4')).toBeInTheDocument();
     });
   });
 });
@@ -594,7 +830,7 @@ describe('App unified generate flow (US-003)', () => {
     const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       // MCP bridge calls — return immediately
       if (url.includes('/mcp/')) {
@@ -657,7 +893,7 @@ describe('App unified generate flow (US-003)', () => {
       const url =
         typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       return createVideoResponse(500);
     });
@@ -805,7 +1041,7 @@ describe('App unified generate flow (US-003)', () => {
       const url =
         typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       return createVideoResponse(500);
     });
@@ -854,7 +1090,7 @@ describe('App unified generate flow (US-003)', () => {
         const url =
           typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
         if (url.includes('/api/playlists')) {
-          return mockPlaylistsResponse();
+          return playlistFetchCompatibilityMock(url, fetchMethod(input));
         }
         return createUnexpectedContentTypeResponse();
       }
@@ -2165,7 +2401,7 @@ describe('US-003 (song title as MP4 filename)', () => {
     return vi.fn().mockImplementation(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       if (url.endsWith('/api/generate')) {
         const { body, contentType } = buildMultipartBody({ song_title: title });
@@ -2424,7 +2660,7 @@ describe('YouTube recording uploads (US-002)', () => {
             ? input.toString()
             : input.url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
@@ -2467,7 +2703,7 @@ describe('YouTube recording uploads (US-002)', () => {
               ? input.toString()
               : input.url;
         if (url.includes('/api/playlists')) {
-          return mockPlaylistsResponse();
+          return playlistFetchCompatibilityMock(url, fetchMethod(input));
         }
         return new Promise<Response>((resolve) => {
           resolveConvert = resolve;
@@ -2522,7 +2758,7 @@ describe('YouTube recording uploads (US-002)', () => {
               ? input.toString()
               : input.url;
         if (url.includes('/api/playlists')) {
-          return mockPlaylistsResponse();
+          return playlistFetchCompatibilityMock(url, fetchMethod(input));
         }
         if (url.endsWith('/api/recordings/convert-mp4')) {
           return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
@@ -2579,7 +2815,7 @@ describe('YouTube recording uploads (US-002)', () => {
             ? input.toString()
             : input.url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
@@ -2627,7 +2863,7 @@ describe('YouTube recording uploads (US-002)', () => {
             ? input.toString()
             : input.url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
@@ -2681,7 +2917,7 @@ function mockVideoFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
     if (url.includes('/api/playlists')) {
-      return mockPlaylistsResponse();
+      return playlistFetchCompatibilityMock(url, fetchMethod(input));
     }
     if (url.endsWith('/api/generate')) {
       return createVideoResponseWithTitle(title);
@@ -2793,7 +3029,7 @@ function mockVideoFetchWithYouTubeMeta(
           ? input.toString()
           : (input as Request).url;
     if (url.includes('/api/playlists')) {
-      return mockPlaylistsResponse();
+      return playlistFetchCompatibilityMock(url, fetchMethod(input));
     }
     if (url.endsWith('/api/generate')) {
       return createVideoResponseWithYouTubeMeta(youtubeTitle, youtubeDescription);
@@ -2907,7 +3143,7 @@ describe('YouTube publish dialog (US-004)', () => {
             ? input.toString()
             : (input as Request).url;
       if (url.includes('/api/playlists')) {
-        return mockPlaylistsResponse();
+        return playlistFetchCompatibilityMock(url, fetchMethod(input));
       }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
@@ -3075,7 +3311,7 @@ describe('YouTube publish dialog (US-004)', () => {
               ? input.toString()
               : (input as Request).url;
         if (url.includes('/api/playlists')) {
-          return mockPlaylistsResponse();
+          return playlistFetchCompatibilityMock(url, fetchMethod(input));
         }
         if (url.endsWith('/api/generate')) {
           return createVideoResponseWithYouTubeMeta(

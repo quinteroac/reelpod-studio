@@ -1,4 +1,8 @@
-import { playlistEndpoint, playlistTracksEndpoint } from '../api/constants';
+import {
+  PLAYLISTS_ENDPOINT_PATH,
+  playlistEndpoint,
+  playlistTracksEndpoint,
+} from '../api/constants';
 
 export interface PlaylistTrack {
   id: string;
@@ -80,6 +84,75 @@ export async function uploadPlaylistTrack(
     throw new Error('Invalid track payload');
   }
   return { id, filename: fn, created_at: created, size_bytes: size };
+}
+
+/**
+ * Fetches track rows for a playlist via GET /api/playlists/{id}/tracks.
+ */
+export async function fetchPlaylistTracks(playlistId: string): Promise<PlaylistTrack[]> {
+  const res = await fetch(playlistTracksEndpoint(playlistId), { method: 'GET' });
+
+  if (!res.ok) {
+    let message = `Could not load playlist tracks (${res.status})`;
+    try {
+      const payload: unknown = await res.json();
+      const parsed = parseErrorMessage(payload);
+      if (parsed) {
+        message = parsed;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data: unknown = await res.json();
+  if (typeof data !== 'object' || data === null || !('tracks' in data)) {
+    throw new Error('Invalid playlist tracks response');
+  }
+  return parsePlaylistTracks((data as { tracks: unknown }).tracks);
+}
+
+/**
+ * Creates a playlist via POST /api/playlists (default name "New Playlist").
+ */
+export async function createPlaylist(name = 'New Playlist'): Promise<PlaylistItem> {
+  const res = await fetch(PLAYLISTS_ENDPOINT_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!res.ok) {
+    let message = `Could not create playlist (${res.status})`;
+    try {
+      const payload: unknown = await res.json();
+      const parsed = parseErrorMessage(payload);
+      if (parsed) {
+        message = parsed;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data: unknown = await res.json();
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('Invalid playlist response');
+  }
+  const row = data as Record<string, unknown>;
+  const id = row.id;
+  const plName = row.name;
+  const tracksRaw = row.tracks;
+  if (typeof id !== 'string' || typeof plName !== 'string') {
+    throw new Error('Invalid playlist payload');
+  }
+  return {
+    id,
+    name: plName,
+    tracks: parsePlaylistTracks(tracksRaw),
+  };
 }
 
 function parsePlaylistTracks(raw: unknown): PlaylistTrack[] {

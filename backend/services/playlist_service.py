@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 _DEFAULT_PLAYLIST_NAME = "My Playlist"
+_NEW_PLAYLIST_DEFAULT_NAME = "New Playlist"
 
 PLAYLISTS_JSON_PATH: Path = Path(__file__).resolve().parents[1] / "playlists.json"
 RECORDINGS_ROOT: Path = Path(__file__).resolve().parents[1] / "recordings"
@@ -120,6 +121,36 @@ def get_playlists() -> list[dict[str, Any]]:
     entry = {"id": new_id, "name": _DEFAULT_PLAYLIST_NAME, "tracks": []}
     _write_store(path, {"playlists": [entry]})
     return [entry]
+
+
+def create_playlist(name: str | None = None) -> dict[str, Any]:
+    """Append a new empty playlist to playlists.json and return its row."""
+    trimmed = (name or "").strip()
+    if not trimmed:
+        trimmed = _NEW_PLAYLIST_DEFAULT_NAME
+    _ = get_playlists()
+    store = _read_store(PLAYLISTS_JSON_PATH)
+    raw_list = store.get("playlists")
+    if not isinstance(raw_list, list):
+        raw_list = []
+    new_id = str(uuid.uuid4())
+    entry: dict[str, Any] = {"id": new_id, "name": trimmed, "tracks": []}
+    raw_list = list(raw_list)
+    raw_list.append(entry)
+    _write_store(PLAYLISTS_JSON_PATH, {"playlists": raw_list})
+    return {"id": new_id, "name": trimmed, "tracks": []}
+
+
+def get_playlist_tracks(playlist_id: str) -> list[dict[str, Any]]:
+    """Return normalized track rows for a playlist id."""
+    pid = playlist_id.strip()
+    if not pid:
+        raise PlaylistNotFoundError("Missing playlist id")
+    playlists = get_playlists()
+    match = next((p for p in playlists if p["id"] == pid), None)
+    if match is None:
+        raise PlaylistNotFoundError(f"Playlist not found: {pid}")
+    return [dict(t) for t in match["tracks"]]
 
 
 def add_track(playlist_id: str, file_bytes: bytes, original_filename: str | None) -> dict[str, Any]:

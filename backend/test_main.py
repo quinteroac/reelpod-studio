@@ -651,6 +651,69 @@ class TestPlaylistsApi:
         r = client.patch("/api/playlists/missing-id", json={"name": "New"})
         assert r.status_code == 404
 
+    def test_post_playlists_creates_named_playlist(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        client.get("/api/playlists")
+        r = client.post("/api/playlists", json={"name": "New Playlist"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["name"] == "New Playlist"
+        assert data["tracks"] == []
+        uuid.UUID(data["id"])
+        stored = json.loads(target.read_text(encoding="utf-8"))
+        assert len(stored["playlists"]) == 2
+        names = {p["name"] for p in stored["playlists"]}
+        assert names == {"My Playlist", "New Playlist"}
+
+    def test_get_playlist_tracks_returns_tracks_for_id(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pid = "playlist-uuid-1"
+        target = tmp_path / "playlists.json"
+        target.write_text(
+            json.dumps(
+                {
+                    "playlists": [
+                        {
+                            "id": pid,
+                            "name": "Mine",
+                            "tracks": [
+                                {
+                                    "id": "t1",
+                                    "filename": "a.mp4",
+                                    "created_at": "2024-01-01T00:00:00Z",
+                                    "size_bytes": 100,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        r = client.get(f"/api/playlists/{pid}/tracks")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["tracks"]) == 1
+        assert body["tracks"][0]["id"] == "t1"
+        assert body["tracks"][0]["filename"] == "a.mp4"
+
+    def test_get_playlist_tracks_unknown_returns_404(
+        self, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "playlists.json"
+        target.write_text(
+            json.dumps({"playlists": [{"id": "x", "name": "Mine", "tracks": []}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(playlist_service, "PLAYLISTS_JSON_PATH", target)
+        r = client.get("/api/playlists/missing-id/tracks")
+        assert r.status_code == 404
+
 
 class TestPlaylistTrackUpload:
     def test_post_track_saves_mp4_and_updates_playlists_json(

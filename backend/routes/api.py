@@ -22,11 +22,13 @@ from models.errors import (
 )
 from models.schemas import (
     AddPlaylistTrackResponse,
+    CreatePlaylistRequestBody,
     GenerateImageRequestBody,
     GenerateRequestBody,
     PlaylistItem,
     PlaylistTrackItem,
     PlaylistsListResponse,
+    PlaylistTracksListResponse,
     UpdatePlaylistRequestBody,
 )
 from services import audio_service, image_service, playlist_service
@@ -44,6 +46,12 @@ def list_playlists() -> PlaylistsListResponse:
     return PlaylistsListResponse(playlists=[PlaylistItem(**row) for row in rows])
 
 
+@router.post("/api/playlists", response_model=PlaylistItem)
+def create_playlist(body: CreatePlaylistRequestBody = CreatePlaylistRequestBody()) -> PlaylistItem:
+    row = playlist_service.create_playlist(body.name)
+    return PlaylistItem(**row)
+
+
 @router.patch("/api/playlists/{playlist_id}", response_model=PlaylistItem)
 def update_playlist(playlist_id: str, body: UpdatePlaylistRequestBody) -> PlaylistItem:
     try:
@@ -51,6 +59,15 @@ def update_playlist(playlist_id: str, body: UpdatePlaylistRequestBody) -> Playli
     except playlist_service.PlaylistNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return PlaylistItem(**row)
+
+
+@router.get("/api/playlists/{playlist_id}/tracks", response_model=PlaylistTracksListResponse)
+def list_playlist_tracks(playlist_id: str) -> PlaylistTracksListResponse:
+    try:
+        rows = playlist_service.get_playlist_tracks(playlist_id)
+    except playlist_service.PlaylistNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PlaylistTracksListResponse(tracks=[PlaylistTrackItem(**row) for row in rows])
 
 
 @router.post("/api/playlists/{playlist_id}/tracks", response_model=AddPlaylistTrackResponse)
