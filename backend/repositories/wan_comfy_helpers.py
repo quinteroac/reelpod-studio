@@ -117,6 +117,85 @@ def wan_image_to_video(
     return positive, negative, out_latent
 
 
+def wan_first_last_frame_to_video(
+    positive: Any,
+    negative: Any,
+    vae: Any,
+    width: int,
+    height: int,
+    length: int,
+    batch_size: int,
+    start_image: Any | None = None,
+    end_image: Any | None = None,
+    clip_vision_output: Any | None = None,
+) -> tuple[Any, Any, dict]:
+    """Conditions the Wan I2V latent on both a start image and an end image.
+
+    Returns (positive, negative, out_latent). Latent is empty 16ch @ 1/8;
+    encodes start_image into the first latent position and end_image into the
+    last latent position using the same 16ch @ 1/8 concat pattern as
+    wan_image_to_video. The concat mask marks [:1] and [-1:] as 0.0
+    (conditioned) and everything else as 1.0 (free to denoise).
+    """
+    _ensure_comfy()
+    import torch
+    import comfy.model_management
+    import comfy.utils
+    import node_helpers
+
+    latent = torch.zeros(
+        [batch_size, 16, ((length - 1) // 4) + 1, height // 8, width // 8],
+        device=comfy.model_management.intermediate_device(),
+    )
+
+    if start_image is not None or end_image is not None:
+        ref = start_image if start_image is not None else end_image
+        image = torch.ones(
+            (length, height, width, ref.shape[-1]),
+            device=ref.device,
+            dtype=ref.dtype,
+        ) * 0.5
+
+        if start_image is not None:
+            start_image = comfy.utils.common_upscale(
+                start_image[:length].movedim(-1, 1), width, height, "bilinear", "center"
+            ).movedim(1, -1)
+            image[: start_image.shape[0]] = start_image
+
+        if end_image is not None:
+            end_image = comfy.utils.common_upscale(
+                end_image[:length].movedim(-1, 1), width, height, "bilinear", "center"
+            ).movedim(1, -1)
+            image[length - end_image.shape[0] :] = end_image
+
+        concat_latent_image = vae.encode(image[:, :, :, :3])
+        mask = torch.ones(
+            (1, 1, latent.shape[2], concat_latent_image.shape[-2], concat_latent_image.shape[-1]),
+            device=image.device,
+            dtype=image.dtype,
+        )
+        mask[:, :, :1] = 0.0
+        mask[:, :, -1:] = 0.0
+
+        positive = node_helpers.conditioning_set_values(
+            positive, {"concat_latent_image": concat_latent_image, "concat_mask": mask}
+        )
+        negative = node_helpers.conditioning_set_values(
+            negative, {"concat_latent_image": concat_latent_image, "concat_mask": mask}
+        )
+
+        if clip_vision_output is not None:
+            positive = node_helpers.conditioning_set_values(
+                positive, {"clip_vision_output": clip_vision_output}
+            )
+            negative = node_helpers.conditioning_set_values(
+                negative, {"clip_vision_output": clip_vision_output}
+            )
+
+    out_latent = {"samples": latent}
+    return positive, negative, out_latent
+
+
 def apply_model_sampling_shift(
     model: Any, shift: float = 5.0, multiplier: float = 1000.0
 ) -> Any:
