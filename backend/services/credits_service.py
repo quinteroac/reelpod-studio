@@ -33,7 +33,11 @@ def _format_credits(data: dict[str, Any]) -> str:
             parts.append(name)
     if not parts:
         return ""
-    return "Models used: " + " · ".join(parts)
+    credits = "Models used: " + " · ".join(parts)
+    footer = data.get("footer", "")
+    if footer and isinstance(footer, str) and footer.strip():
+        credits = credits + "\n\n" + footer.strip()
+    return credits
 
 
 def _load(path: Path = _CREDITS_FILE) -> str:

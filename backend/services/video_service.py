@@ -70,6 +70,8 @@ def _resolve_pipeline_prompts(
     credits = credits_service.get_credits_text()
     if credits:
         youtube_description = youtube_description + "\n\n" + credits
+    if orchestration.youtube_hashtags:
+        youtube_description = youtube_description + "\n\n" + " ".join(orchestration.youtube_hashtags)
     return (
         audio_request_body,
         orchestration.image_prompt,

@@ -128,3 +128,44 @@ class TestCreditsServiceMalformedYaml:
         text = credits_service.get_credits_text()
 
         assert text == ""
+
+
+class TestCreditsServiceFooter:
+    def test_footer_is_appended_when_present(self, tmp_path: Path) -> None:
+        yaml_file = tmp_path / "model_credits.yaml"
+        yaml_file.write_text(
+            "models:\n"
+            "  - name: ACEStep 1.5\n"
+            "    role: Music generation\n"
+            "footer: 'Generated with ReelPod Studio'\n",
+            encoding="utf-8",
+        )
+
+        credits_service.startup(yaml_file)
+        text = credits_service.get_credits_text()
+
+        assert "Generated with ReelPod Studio" in text
+        assert text.index("Models used:") < text.index("Generated with ReelPod Studio")
+
+    def test_footer_is_omitted_when_absent(self, tmp_path: Path) -> None:
+        yaml_file = tmp_path / "model_credits.yaml"
+        yaml_file.write_text(
+            "models:\n"
+            "  - name: ACEStep 1.5\n"
+            "    role: Music generation\n",
+            encoding="utf-8",
+        )
+
+        credits_service.startup(yaml_file)
+        text = credits_service.get_credits_text()
+
+        assert text == "Models used: ACEStep 1.5 (Music generation)"
+
+    def test_real_yaml_includes_footer(self) -> None:
+        real_path = Path(__file__).parent / "config" / "model_credits.yaml"
+        assert real_path.is_file()
+
+        credits_service.startup(real_path)
+        text = credits_service.get_credits_text()
+
+        assert "Generated with ReelPod Studio" in text

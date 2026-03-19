@@ -310,7 +310,89 @@ def test_creative_director_system_prompt_contains_youtube_rules() -> None:
     prompt = orchestration_service.CREATIVE_DIRECTOR_SYSTEM_PROMPT
     assert "youtube_title" in prompt
     assert "youtube_description" in prompt
+    assert "youtube_hashtags" in prompt
     assert "100" in prompt  # max 100 characters rule for youtube_title
+
+
+def test_orchestration_result_youtube_hashtags_default_empty() -> None:
+    result = orchestration_service.OrchestrationResult(
+        song_title="Neon Dreams",
+        audio_prompt="synthwave, moody, 90 BPM, analog bass, dreamy pads",
+        image_prompt="score_9, score_8, best quality, highres, neon cityscape",
+        video_prompt="A soft neon glow drifts over the city at night.",
+        youtube_title="Neon Dreams - Synthwave",
+        youtube_description="A moody synthwave track for late-night city drives.",
+    )
+    assert result.youtube_hashtags == []
+
+
+def test_orchestration_result_youtube_hashtags_valid() -> None:
+    result = orchestration_service.OrchestrationResult(
+        song_title="Neon Dreams",
+        audio_prompt="synthwave, moody, 90 BPM, analog bass, dreamy pads",
+        image_prompt="score_9, score_8, best quality, highres, neon cityscape",
+        video_prompt="A soft neon glow drifts over the city at night.",
+        youtube_title="Neon Dreams - Synthwave",
+        youtube_description="A moody synthwave track for late-night city drives.",
+        youtube_hashtags=["#synthwave", "#lofi", "#chillhop"],
+    )
+    assert result.youtube_hashtags == ["#synthwave", "#lofi", "#chillhop"]
+
+
+def test_orchestration_result_youtube_hashtags_auto_prepends_hash() -> None:
+    result = orchestration_service.OrchestrationResult(
+        song_title="Neon Dreams",
+        audio_prompt="synthwave, moody, 90 BPM, analog bass, dreamy pads",
+        image_prompt="score_9, score_8, best quality, highres, neon cityscape",
+        video_prompt="A soft neon glow drifts over the city at night.",
+        youtube_title="Neon Dreams - Synthwave",
+        youtube_description="A moody synthwave track for late-night city drives.",
+        youtube_hashtags=["synthwave", "#lofi", "chill hop"],
+    )
+    assert result.youtube_hashtags == ["#synthwave", "#lofi", "#chillhop"]
+
+
+def test_orchestration_result_youtube_hashtags_skips_empty_entries() -> None:
+    result = orchestration_service.OrchestrationResult(
+        song_title="Neon Dreams",
+        audio_prompt="synthwave, moody, 90 BPM, analog bass, dreamy pads",
+        image_prompt="score_9, score_8, best quality, highres, neon cityscape",
+        video_prompt="A soft neon glow drifts over the city at night.",
+        youtube_title="Neon Dreams - Synthwave",
+        youtube_description="A moody synthwave track for late-night city drives.",
+        youtube_hashtags=["#synthwave", "  ", "", "#lofi"],
+    )
+    assert result.youtube_hashtags == ["#synthwave", "#lofi"]
+
+
+def test_orchestrate_uses_youtube_hashtags_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    image_prompt = (
+        "score_9, score_8, best quality, highres, newest, safe, 1girl, hatsune miku, vocaloid"
+    )
+    payload = {
+        "song_title": "Neon Solitude",
+        "audio_prompt": "synthwave, moody, 90 BPM, analog bass, dreamy pads",
+        "image_prompt": image_prompt,
+        "video_prompt": "A lone singer under neon lights.",
+        "youtube_title": "Neon Solitude - Synthwave",
+        "youtube_description": "A moody synthwave track for late nights.",
+        "youtube_hashtags": ["#synthwave", "#lofi", "#chillhop"],
+    }
+
+    monkeypatch.setattr(
+        orchestration_service,
+        "_generate_json_concept",
+        lambda _clip, _prompt: __import__("json").dumps(payload),
+    )
+    monkeypatch.setattr(
+        orchestration_service,
+        "_generate_video_prompt_ltx2",
+        lambda _clip, seed: f"Style: cinematic. {seed}",
+    )
+
+    result = orchestration_service.orchestrate("night city vibes")
+
+    assert result.youtube_hashtags == ["#synthwave", "#lofi", "#chillhop"]
 
 
 def test_startup_captures_load_failure_and_orchestrate_raises(monkeypatch: pytest.MonkeyPatch) -> None:

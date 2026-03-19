@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json as json_lib
+import re
+
 from fastapi.testclient import TestClient
 
 import main
@@ -8,6 +11,22 @@ from routes import api as api_routes
 WAV_HEADER = b"RIFF" + b"\x00" * 100
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 MP4_HEADER = b"\x00\x00\x00\x20" + b"ftyp" + b"\x00" * 28
+
+
+def _extract_multipart_metadata(content: bytes, content_type: str) -> dict[str, str]:
+    """Parse the JSON metadata object from a multipart/mixed response body."""
+    boundary_match = re.search(r"boundary=([^\s;]+)", content_type)
+    assert boundary_match, "No boundary in content-type"
+    boundary = boundary_match.group(1).encode()
+    # Split on the boundary marker; first real part is between parts[1] and parts[2]
+    parts = content.split(b"--" + boundary)
+    # parts[0] = preamble (empty), parts[1] = JSON part, parts[2] = video part, parts[3] = epilogue
+    json_part = parts[1]
+    # Strip part headers (everything up to the first \r\n\r\n)
+    body_start = json_part.find(b"\r\n\r\n")
+    assert body_start != -1, "No header/body separator in JSON part"
+    json_bytes = json_part[body_start + 4:].strip()
+    return json_lib.loads(json_bytes)
 
 
 def test_post_generate_preserves_contract(monkeypatch) -> None:
@@ -33,15 +52,19 @@ def test_post_generate_preserves_contract(monkeypatch) -> None:
         wrong_method = client.get("/api/generate")
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "video/mp4"
-    assert response.content.startswith(b"\x00\x00\x00\x20ftyp")
+    assert response.headers["content-type"].startswith("multipart/mixed")
+    metadata = _extract_multipart_metadata(response.content, response.headers["content-type"])
+    assert metadata["song_title"] == "Midnight Rain Lofi"
+    assert metadata["youtube_title"] == "Midnight Rain Lofi | Lofi Music"
+    assert "youtube_description" in metadata
+    assert MP4_HEADER in response.content
     assert seen["mode"] == "llm"
     assert seen["prompt"] == "warm hip-hop beat"
     assert seen["duration"] == 90
     assert wrong_method.status_code == 405
 
 
-def test_post_generate_includes_song_title_header_for_llm_mode(monkeypatch) -> None:
+def test_post_generate_includes_song_title_in_metadata_for_llm_mode(monkeypatch) -> None:
     monkeypatch.setattr(
         api_routes.video_service,
         "generate_video_mp4_for_request",
@@ -55,10 +78,11 @@ def test_post_generate_includes_song_title_header_for_llm_mode(monkeypatch) -> N
         )
 
     assert response.status_code == 200
-    assert response.headers.get("x-song-title") == "Midnight Rain Lofi"
+    metadata = _extract_multipart_metadata(response.content, response.headers["content-type"])
+    assert metadata.get("song_title") == "Midnight Rain Lofi"
 
 
-def test_post_generate_omits_song_title_header_when_none(monkeypatch) -> None:
+def test_post_generate_omits_song_title_in_metadata_when_none(monkeypatch) -> None:
     monkeypatch.setattr(
         api_routes.video_service,
         "generate_video_mp4_for_request",
@@ -72,7 +96,8 @@ def test_post_generate_omits_song_title_header_when_none(monkeypatch) -> None:
         )
 
     assert response.status_code == 200
-    assert "x-song-title" not in response.headers
+    metadata = _extract_multipart_metadata(response.content, response.headers["content-type"])
+    assert "song_title" not in metadata
 
 
 def test_post_generate_requests_preserves_contract(monkeypatch) -> None:

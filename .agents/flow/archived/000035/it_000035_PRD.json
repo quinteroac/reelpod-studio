@@ -13,11 +13,11 @@
       "acceptanceCriteria": [
         {
           "id": "US-001-AC01",
-          "text": "`OrchestrationResult` gains two new fields: `youtube_title` (max 100 chars) and"
+          "text": "`OrchestrationResult` gains two new fields: `youtube_title` (max 100 chars) and `youtube_description` (max 5000 chars)."
         },
         {
           "id": "US-001-AC02",
-          "text": "The `CREATIVE_DIRECTOR_SYSTEM_PROMPT` is updated to instruct the LLM to return these"
+          "text": "The `CREATIVE_DIRECTOR_SYSTEM_PROMPT` is updated to instruct the LLM to return these two fields in its JSON output."
         },
         {
           "id": "US-001-AC03",

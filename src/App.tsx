@@ -189,6 +189,43 @@ function buildQueueSummary(params: GenerationParams): string {
   return `${brief} · ${params.duration}s`;
 }
 
+function _findByteSeq(haystack: Uint8Array, needle: Uint8Array, start = 0): number {
+  outer: for (let i = start; i <= haystack.length - needle.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+function _parseMultipartMixed(
+  buffer: ArrayBuffer,
+  boundary: string,
+): { metadata: Record<string, string>; videoBytes: Uint8Array } {
+  const bytes = new Uint8Array(buffer);
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const CRLF2 = enc.encode('\r\n\r\n');
+  const nextBound = enc.encode(`\r\n--${boundary}`);
+
+  // Part 1: JSON — body starts after first boundary's headers
+  const part1HeaderEnd = _findByteSeq(bytes, CRLF2, 0);
+  const jsonStart = part1HeaderEnd + 4;
+  const jsonEnd = _findByteSeq(bytes, nextBound, jsonStart);
+  const metadata: Record<string, string> = JSON.parse(dec.decode(bytes.slice(jsonStart, jsonEnd)));
+
+  // Part 2: video — body starts after second boundary's headers
+  const part2Start = jsonEnd + nextBound.length;
+  const part2HeaderEnd = _findByteSeq(bytes, CRLF2, part2Start);
+  const videoStart = part2HeaderEnd + 4;
+  const endMark = enc.encode(`\r\n--${boundary}--`);
+  const videoEnd = _findByteSeq(bytes, endMark, videoStart);
+  const videoBytes = bytes.slice(videoStart, videoEnd === -1 ? undefined : videoEnd);
+
+  return { metadata, videoBytes };
+}
+
 async function requestGeneratedVideo(
   params: GenerationParams,
   imagePrompt: string,
@@ -231,18 +268,23 @@ async function requestGeneratedVideo(
   }
 
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-  if (!contentType.startsWith('video/mp4')) {
-    throw new Error('Could not generate video: Expected video/mp4 response');
+
+  if (contentType.startsWith('multipart/mixed')) {
+    const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+    if (!boundaryMatch) {
+      throw new Error('Could not generate video: Missing multipart boundary');
+    }
+    const buffer = await response.arrayBuffer();
+    const { metadata, videoBytes } = _parseMultipartMixed(buffer, boundaryMatch[1]);
+    return {
+      blob: new Blob([videoBytes], { type: 'video/mp4' }),
+      songTitle: metadata.song_title?.trim() || null,
+      youtubeTitle: metadata.youtube_title?.trim() || null,
+      youtubeDescription: metadata.youtube_description?.trim() || null,
+    };
   }
 
-  const rawTitle = response.headers.get('x-song-title');
-  const songTitle = rawTitle && rawTitle.trim().length > 0 ? rawTitle.trim() : null;
-  const rawYoutubeTitle = response.headers.get('x-youtube-title');
-  const youtubeTitle = rawYoutubeTitle && rawYoutubeTitle.trim().length > 0 ? rawYoutubeTitle.trim() : null;
-  const rawYoutubeDescription = response.headers.get('x-youtube-description');
-  const youtubeDescription = rawYoutubeDescription && rawYoutubeDescription.trim().length > 0 ? rawYoutubeDescription.trim() : null;
-  const blob = await response.blob();
-  return { blob, songTitle, youtubeTitle, youtubeDescription };
+  throw new Error('Could not generate video: Expected multipart/mixed response');
 }
 
 export function App() {

@@ -105,16 +105,30 @@ function mockVideoPlaybackApi(): void {
 
 function createVideoResponse(status = 200): Response {
   if (status >= 200 && status < 300) {
-    return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
-      status,
-      headers: { 'content-type': 'video/mp4' }
-    });
+    const { body, contentType } = buildMultipartBody({});
+    return new Response(body, { status, headers: { 'content-type': contentType } });
   }
 
   return new Response(JSON.stringify({ error: 'video generation failed' }), {
     status,
     headers: { 'content-type': 'application/json' }
   });
+}
+
+function buildMultipartBody(metadata: Record<string, string>): { body: Uint8Array; contentType: string } {
+  const BOUNDARY = 'reelpod';
+  const enc = new TextEncoder();
+  const metaJson = JSON.stringify(metadata);
+  const parts: Uint8Array[] = [
+    enc.encode(`--${BOUNDARY}\r\nContent-Type: application/json\r\n\r\n${metaJson}\r\n`),
+    enc.encode(`--${BOUNDARY}\r\nContent-Type: video/mp4\r\n\r\nfake-mp4-data\r\n`),
+    enc.encode(`--${BOUNDARY}--\r\n`),
+  ];
+  const totalLen = parts.reduce((s, p) => s + p.length, 0);
+  const body = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const p of parts) { body.set(p, offset); offset += p.length; }
+  return { body, contentType: `multipart/mixed; boundary=${BOUNDARY}` };
 }
 
 function createUnexpectedContentTypeResponse(): Response {
@@ -539,7 +553,7 @@ describe('App unified generate flow (US-003)', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/generate', expect.anything());
   });
 
-  it('fails with a clear error when /api/generate does not return video/mp4', async () => {
+  it('fails with a clear error when /api/generate does not return multipart/mixed', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () => createUnexpectedContentTypeResponse()
     );
@@ -552,7 +566,7 @@ describe('App unified generate flow (US-003)', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Could not generate video: Expected video/mp4 response'
+        'Could not generate video: Expected multipart/mixed response'
       );
     });
   });
@@ -1849,10 +1863,8 @@ describe('US-003 (song title as MP4 filename)', () => {
     return vi.fn().mockImplementation(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/api/generate')) {
-        return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
-          status: 200,
-          headers: { 'content-type': 'video/mp4', 'x-song-title': title }
-        });
+        const { body, contentType } = buildMultipartBody({ song_title: title });
+        return new Response(body, { status: 200, headers: { 'content-type': contentType } });
       }
       if (url.endsWith('/api/recordings/convert-mp4')) {
         return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
@@ -2336,10 +2348,8 @@ describe('YouTube recording uploads (US-002)', () => {
 // ---------------------------------------------------------------------------
 
 function createVideoResponseWithTitle(title: string): Response {
-  return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
-    status: 200,
-    headers: { 'content-type': 'video/mp4', 'x-song-title': title }
-  });
+  const { body, contentType } = buildMultipartBody({ song_title: title });
+  return new Response(body, { status: 200, headers: { 'content-type': contentType } });
 }
 
 function mockVideoFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
@@ -2435,15 +2445,12 @@ function createVideoResponseWithYouTubeMeta(
   youtubeTitle: string,
   youtubeDescription: string
 ): Response {
-  return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
-    status: 200,
-    headers: {
-      'content-type': 'video/mp4',
-      'x-song-title': 'Test Track',
-      'x-youtube-title': youtubeTitle,
-      'x-youtube-description': youtubeDescription,
-    },
+  const { body, contentType } = buildMultipartBody({
+    song_title: 'Test Track',
+    youtube_title: youtubeTitle,
+    youtube_description: youtubeDescription,
   });
+  return new Response(body, { status: 200, headers: { 'content-type': contentType } });
 }
 
 function mockVideoFetchWithYouTubeMeta(

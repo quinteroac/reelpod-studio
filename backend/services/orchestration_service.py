@@ -46,8 +46,10 @@ CREATIVE_DIRECTOR_SYSTEM_PROMPT = (
     "4) youtube_title: a YouTube-optimised title for the track (max 100 characters). Must be human-readable "
     "with no underscores and no file-extension suffixes (e.g. no .mp3, .mp4, .wav).\n"
     "5) youtube_description: a short paragraph (1–3 sentences) describing the song concept, mood, and "
-    "listening context. Max 5000 characters.\n"
-    "6) No markdown, no code fences, no explanations, JSON only."
+    "listening context. Max 5000 characters. Do NOT include hashtags here.\n"
+    "6) youtube_hashtags: a JSON array of 3–7 relevant hashtags for the track "
+    "(e.g. [\"#lofi\", \"#chillhop\", \"#studymusic\"]). Each entry must start with # and contain no spaces.\n"
+    "7) No markdown, no code fences, no explanations, JSON only."
 )
 
 
@@ -61,6 +63,7 @@ class OrchestrationResult(BaseModel):
     video_prompt: str = Field(min_length=20, max_length=10000)
     youtube_title: str = Field(min_length=1, max_length=100)
     youtube_description: str = Field(min_length=10, max_length=5000)
+    youtube_hashtags: list[str] = Field(default_factory=list)
 
     @field_validator("song_title", "audio_prompt", "image_prompt", "video_prompt", "youtube_title", "youtube_description")
     @classmethod
@@ -94,6 +97,19 @@ class OrchestrationResult(BaseModel):
         if _FILE_EXTENSION_PATTERN.search(value):
             raise ValueError("youtube_title must not end with a file extension (e.g. .mp3, .mp4).")
         return value
+
+    @field_validator("youtube_hashtags")
+    @classmethod
+    def _validate_youtube_hashtags(cls, tags: list[str]) -> list[str]:
+        result = []
+        for tag in tags:
+            t = tag.strip().replace(" ", "")
+            if not t:
+                continue
+            if not t.startswith("#"):
+                t = f"#{t}"
+            result.append(t)
+        return result
 
 
 def _ensure_comfyui_vendor_on_path() -> None:
@@ -223,6 +239,7 @@ def orchestrate(user_prompt: str) -> OrchestrationResult:
                 #"video_prompt": ltx2_prompt,
                 "youtube_title": validated.youtube_title,
                 "youtube_description": validated.youtube_description,
+                "youtube_hashtags": validated.youtube_hashtags,
             }
         )
     except ValidationError as exc:

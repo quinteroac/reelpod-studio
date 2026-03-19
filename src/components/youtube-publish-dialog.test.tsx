@@ -136,4 +136,51 @@ describe('YouTubePublishDialog', () => {
 
     expect(onCancel).toHaveBeenCalledOnce();
   });
+
+  it('shows description character counter', () => {
+    render(
+      <YouTubePublishDialog
+        initialTitle="Title"
+        initialDescription="Hello"
+        onCancel={vi.fn()}
+        onPublish={vi.fn()}
+      />,
+    );
+
+    const counter = screen.getByTestId('youtube-publish-description-counter');
+    expect(counter).toHaveTextContent('5 / 5000');
+  });
+
+  it('Publish button is disabled when description exceeds 5000 chars', () => {
+    const longDescription = 'a'.repeat(5001);
+
+    render(
+      <YouTubePublishDialog
+        initialTitle="Title"
+        initialDescription={longDescription}
+        onCancel={vi.fn()}
+        onPublish={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('youtube-publish-confirm')).toBeDisabled();
+    expect(
+      screen.getByTestId('youtube-publish-description-counter'),
+    ).toHaveTextContent('description is too long');
+  });
+
+  it('Publish button is enabled when description is exactly 5000 chars', () => {
+    const exactDescription = 'a'.repeat(5000);
+
+    render(
+      <YouTubePublishDialog
+        initialTitle="Title"
+        initialDescription={exactDescription}
+        onCancel={vi.fn()}
+        onPublish={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('youtube-publish-confirm')).not.toBeDisabled();
+  });
 });

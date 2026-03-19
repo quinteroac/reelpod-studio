@@ -1,0 +1,136 @@
+{
+  "goals": [
+    "Produce a seamless video loop by generating a reverse bridge clip (clip 2) that transitions from the last frame of clip 1 back to its first frame.",
+    "Keep the change transparent to the user: the pipeline runs automatically with no new controls.",
+    "Apply Real-ESRGAN upscaling once on the concatenated clip (not per-clip) to avoid redundant GPU work."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "`wan_first_last_frame_to_video` helper in `wan_comfy_helpers.py`",
+      "description": "As a backend pipeline, I want a helper that conditions the Wan I2V latent on both a start image and an end image so that the generated clip transitions smoothly from the start frame to the end frame.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "New function `wan_first_last_frame_to_video(positive, negative, vae, width, height, length, batch_size, start_image, end_image, clip_vision_output=None)` added to `wan_comfy_helpers.py`."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The function encodes `start_image` into the first latent position and `end_image` into the last latent position using the same 16ch @ 1/8 concat pattern as `wan_image_to_video`."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "The concat mask marks the first frame's latent region (`[:1]`) and the last frame's region as 0.0 (conditioned) and everything else as 1.0 (free to denoise)."
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "Existing `wan_image_to_video` behavior is unchanged."
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Unit test for the new helper verifies output shapes are consistent with a same-duration call to `wan_image_to_video`."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "`run_bridge_inference` in `video_repository.py`",
+      "description": "As a backend pipeline, I want a function that, given the path of clip 1, extracts its first and last frames, swaps them, and generates a bridge clip of the same duration so that the bridge animates from the last frame of clip 1 back to its first frame.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "New function `run_bridge_inference(pipeline, clip1_path, prompt, target_width, target_height, temp_dir)` added to `video_repository.py`."
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "Uses PyAV (`av`) to decode `clip1_path` and extract frame 0 (first frame) and the last frame as PIL images."
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "Calls `run_video_inference`-equivalent logic using `wan_first_last_frame_to_video` with `start_image=last_frame`, `end_image=first_frame`."
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "Output clip duration equals `WAN_VIDEO_CLIP_DURATION_SECONDS` (same as clip 1)."
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Returns the `Path` to the saved bridge MP4."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Pipeline integration in `video_service.py`",
+      "description": "As a backend pipeline, I want the video pipeline to automatically generate the bridge clip and concatenate it with clip 1 before upscaling so that the final looped video has a seamless transition at the loop point.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "After `run_video_inference` produces `wan_clip_path`, `video_service.py` calls `run_bridge_inference` to produce `wan_bridge_clip_path`."
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "Both clips are concatenated (clip 1 first, bridge second) into `wan_concat_clip_path` using a `media_repository` helper (`concatenate_videos` or equivalent ffmpeg concat)."
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Real-ESRGAN upscaling is applied to `wan_concat_clip_path` (not to individual clips)."
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "If `run_bridge_inference` raises any exception, the pipeline logs a warning and falls back to `wan_clip_path` alone (same behavior as the current upscale fallback)."
+        },
+        {
+          "id": "US-003-AC05",
+          "text": "`VIDEO_GENERATION_TIMEOUT_SECONDS` in `models/constants.py` is increased to account for the second Wan inference (e.g. from 1800s to 3600s)."
+        },
+        {
+          "id": "US-003-AC06",
+          "text": "Pipeline logs include: bridge clip generation start/end, concatenation start/end, each with file sizes."
+        },
+        {
+          "id": "US-003-AC07",
+          "text": "Backend test in `backend/test_orchestration_service.py` or `backend/test_api_contract.py` is updated/added to cover the bridge step being called and the fallback path."
+        },
+        {
+          "id": "US-003-AC08",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "`wan_first_last_frame_to_video` must accept both a `start_image` and an `end_image` tensor and inject both into the latent conditioning, conditioning the last temporal latent position for the end image."
+    },
+    {
+      "id": "FR-2",
+      "description": "`run_bridge_inference` must extract video frames using PyAV (already a project dependency) and reuse the two-stage sampling already in `run_video_inference`."
+    },
+    {
+      "id": "FR-3",
+      "description": "Clip concatenation must be done at the raw video level (no re-encode) using ffmpeg concat demuxer or PyAV stream copy to preserve quality."
+    },
+    {
+      "id": "FR-4",
+      "description": "Upscaling with Real-ESRGAN is applied once to the concatenated clip; the per-clip upscale is removed from the individual clip steps."
+    },
+    {
+      "id": "FR-5",
+      "description": "`VIDEO_GENERATION_TIMEOUT_SECONDS` must be raised to at least 3600s (60 min) to accommodate two Wan inference passes."
+    },
+    {
+      "id": "FR-6",
+      "description": "If bridge generation fails, the pipeline must not raise; it must log a warning and continue with clip 1 only."
+    }
+  ]
+}

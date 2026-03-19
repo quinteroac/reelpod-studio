@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json as json_lib
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -26,23 +27,45 @@ from repositories import media_repository
 
 router = APIRouter()
 
+_MULTIPART_BOUNDARY = "reelpod"
+
+
+def _build_multipart_response(mp4_bytes: bytes, metadata: dict[str, str]) -> Response:
+    meta_json = json_lib.dumps(metadata).encode()
+    sep = f"--{_MULTIPART_BOUNDARY}\r\n".encode()
+    body = (
+        sep
+        + b"Content-Type: application/json\r\n\r\n"
+        + meta_json
+        + b"\r\n"
+        + sep
+        + b"Content-Type: video/mp4\r\n\r\n"
+        + mp4_bytes
+        + b"\r\n"
+        + f"--{_MULTIPART_BOUNDARY}--\r\n".encode()
+    )
+    return Response(
+        content=body,
+        media_type=f"multipart/mixed; boundary={_MULTIPART_BOUNDARY}",
+    )
+
 
 @router.post("/api/generate")
-def generate_video(body: GenerateRequestBody) -> StreamingResponse:
+def generate_video(body: GenerateRequestBody) -> Response:
     try:
         mp4_bytes, song_title, youtube_title, youtube_description = video_service.generate_video_mp4_for_request(body)
     except (AudioGenerationTimeoutError, VideoGenerationTimeoutError) as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except (AudioGenerationFailedError, ImageGenerationFailedError, VideoGenerationFailedError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    headers: dict[str, str] = {}
+    metadata: dict[str, str] = {}
     if song_title:
-        headers["X-Song-Title"] = song_title
+        metadata["song_title"] = song_title
     if youtube_title:
-        headers["X-Youtube-Title"] = youtube_title
+        metadata["youtube_title"] = youtube_title
     if youtube_description:
-        headers["X-Youtube-Description"] = youtube_description
-    return Response(content=mp4_bytes, media_type="video/mp4", headers=headers)
+        metadata["youtube_description"] = youtube_description
+    return _build_multipart_response(mp4_bytes, metadata)
 
 
 @router.post("/api/generate-requests")
