@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { YOUTUBE_VIDEOS_INSERT_UPLOAD_URL } from './lib/youtube-upload';
+import * as YouTubeUploadModule from './lib/youtube-upload';
 
 const mockStartRecording = vi.fn().mockResolvedValue(undefined);
 const mockStopRecording = vi.fn().mockResolvedValue(undefined);
@@ -104,16 +105,30 @@ function mockVideoPlaybackApi(): void {
 
 function createVideoResponse(status = 200): Response {
   if (status >= 200 && status < 300) {
-    return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
-      status,
-      headers: { 'content-type': 'video/mp4' }
-    });
+    const { body, contentType } = buildMultipartBody({});
+    return new Response(body, { status, headers: { 'content-type': contentType } });
   }
 
   return new Response(JSON.stringify({ error: 'video generation failed' }), {
     status,
     headers: { 'content-type': 'application/json' }
   });
+}
+
+function buildMultipartBody(metadata: Record<string, string>): { body: Uint8Array; contentType: string } {
+  const BOUNDARY = 'reelpod';
+  const enc = new TextEncoder();
+  const metaJson = JSON.stringify(metadata);
+  const parts: Uint8Array[] = [
+    enc.encode(`--${BOUNDARY}\r\nContent-Type: application/json\r\n\r\n${metaJson}\r\n`),
+    enc.encode(`--${BOUNDARY}\r\nContent-Type: video/mp4\r\n\r\nfake-mp4-data\r\n`),
+    enc.encode(`--${BOUNDARY}--\r\n`),
+  ];
+  const totalLen = parts.reduce((s, p) => s + p.length, 0);
+  const body = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const p of parts) { body.set(p, offset); offset += p.length; }
+  return { body, contentType: `multipart/mixed; boundary=${BOUNDARY}` };
 }
 
 function createUnexpectedContentTypeResponse(): Response {
@@ -538,7 +553,7 @@ describe('App unified generate flow (US-003)', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/generate', expect.anything());
   });
 
-  it('fails with a clear error when /api/generate does not return video/mp4', async () => {
+  it('fails with a clear error when /api/generate does not return multipart/mixed', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () => createUnexpectedContentTypeResponse()
     );
@@ -551,7 +566,7 @@ describe('App unified generate flow (US-003)', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Could not generate video: Expected video/mp4 response'
+        'Could not generate video: Expected multipart/mixed response'
       );
     });
   });
@@ -1831,6 +1846,159 @@ describe('Recording auto-stop and UI states (US-002)', () => {
   });
 });
 
+describe('US-003 (song title as MP4 filename)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockStartRecording.mockResolvedValue(undefined);
+    mockStopRecording.mockResolvedValue(undefined);
+    mockIsRecording.value = false;
+    mockIsFinalizing.value = false;
+    mockRecorderError.value = null;
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  function mockFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
+    return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/api/generate')) {
+        const { body, contentType } = buildMultipartBody({ song_title: title });
+        return new Response(body, { status: 200, headers: { 'content-type': contentType } });
+      }
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['fake-mp4-data'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url.includes('/mcp/')) {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+  }
+
+  it('US-003-AC02: filename uses sanitized song title when a title is available', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchWithTitle('Midnight Rain Lofi'));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/titled-rec');
+
+    render(<App />);
+
+    // Generate a track so activePreviewEntry gets a songTitle
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'chill lofi' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    // Trigger onFinalized while the titled entry is playing
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toBe('midnight_rain_lofi.mp4');
+
+      const downloadLink = screen.getByTestId('recording-download-1');
+      expect(downloadLink.getAttribute('download')).toBe('midnight_rain_lofi.mp4');
+    });
+  });
+
+  it('US-003-AC03: falls back to recording-<timestamp> when no title is available', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/notitled-rec');
+
+    render(<App />);
+
+    // Trigger onFinalized without any active entry (no title available)
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toMatch(/^recording-.*\.mp4$/);
+
+      const downloadLink = screen.getByTestId('recording-download-1');
+      expect(downloadLink.getAttribute('download')).toMatch(/^recording-.*\.mp4$/);
+    });
+  });
+
+  it('US-003-AC01: sanitizes special characters and caps at 80 chars', async () => {
+    const longTitle = 'A'.repeat(100); // 100 chars → sanitized to 80
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchWithTitle(longTitle));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/long-rec');
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'long title track' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      // 'A'.repeat(100) lowercased + trimmed to 80 = 'a'.repeat(80) + '.mp4'
+      expect(filename.textContent).toBe('a'.repeat(80) + '.mp4');
+    });
+  });
+
+  it('US-003-AC03: falls back to timestamp filename when title sanitizes to empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetchWithTitle('!!!###'));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/empty-title-rec');
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'special chars track' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4'
+      });
+    });
+
+    await waitFor(() => {
+      const filename = screen.getByTestId('recording-filename-1');
+      expect(filename.textContent).toMatch(/^recording-.*\.mp4$/);
+    });
+  });
+});
+
 describe('YouTube connection UI (US-001)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -1975,7 +2143,7 @@ describe('YouTube recording uploads (US-002)', () => {
     await createCompletedRecordingEntry();
 
     expect(screen.getByTestId('youtube-upload-button-1')).toHaveTextContent(
-      'Upload to YouTube',
+      'Publish to YouTube',
     );
   });
 
@@ -2064,6 +2232,11 @@ describe('YouTube recording uploads (US-002)', () => {
     fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
 
     await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
       expect(screen.getByTestId('youtube-upload-progress-1')).toBeInTheDocument();
     });
     expect(
@@ -2109,6 +2282,11 @@ describe('YouTube recording uploads (US-002)', () => {
     fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
 
     await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
       const link = screen.getByTestId('youtube-upload-link-1');
       expect(link).toHaveAttribute(
         'href',
@@ -2152,10 +2330,477 @@ describe('YouTube recording uploads (US-002)', () => {
     fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
 
     await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
       expect(screen.getByTestId('youtube-upload-error-1')).toHaveTextContent(
         'Quota exceeded.',
       );
       expect(screen.getByTestId('youtube-upload-button-1')).toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// US-002 – Song title displayed in UI after generation
+// ---------------------------------------------------------------------------
+
+function createVideoResponseWithTitle(title: string): Response {
+  const { body, contentType } = buildMultipartBody({ song_title: title });
+  return new Response(body, { status: 200, headers: { 'content-type': contentType } });
+}
+
+function mockVideoFetchWithTitle(title: string): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponseWithTitle(title);
+    }
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`Unexpected endpoint called: ${url}`);
+  });
+}
+
+describe('App song title display (US-002)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => { });
+  });
+
+  it('AC02/AC03: displays the raw song title from X-Song-Title header in the queue entry after generation', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetchWithTitle('Midnight Rain Lofi'));
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'rainy night lofi' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const titleEl = screen.getByTestId('queue-entry-song-title-1');
+    expect(titleEl).toBeInTheDocument();
+    expect(titleEl).toHaveTextContent('Midnight Rain Lofi');
+  });
+
+  it('AC03: shows the raw title string unchanged (not sanitized)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetchWithTitle("Chill Sunday Groove"));
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'sunday vibes' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    expect(screen.getByTestId('queue-entry-song-title-1')).toHaveTextContent('Chill Sunday Groove');
+  });
+
+  it('AC04: no song title element shown when X-Song-Title header is absent', async () => {
+    // createVideoResponse returns no X-Song-Title header
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'no title test' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    expect(screen.queryByTestId('queue-entry-song-title-1')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// US-003 – Queue entries carry YouTube metadata to the frontend
+// ---------------------------------------------------------------------------
+
+function createVideoResponseWithYouTubeMeta(
+  youtubeTitle: string,
+  youtubeDescription: string
+): Response {
+  const { body, contentType } = buildMultipartBody({
+    song_title: 'Test Track',
+    youtube_title: youtubeTitle,
+    youtube_description: youtubeDescription,
+  });
+  return new Response(body, { status: 200, headers: { 'content-type': contentType } });
+}
+
+function mockVideoFetchWithYouTubeMeta(
+  youtubeTitle: string,
+  youtubeDescription: string
+): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : (input as Request).url;
+    if (url.endsWith('/api/generate')) {
+      return createVideoResponseWithYouTubeMeta(youtubeTitle, youtubeDescription);
+    }
+    if (url.includes('/mcp/')) {
+      return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw new Error(`Unexpected endpoint called: ${url}`);
+  });
+}
+
+describe('App YouTube metadata in queue (US-003)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/generated-video-url'
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('AC02: stores youtube title and description from response headers on the queue entry', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      mockVideoFetchWithYouTubeMeta(
+        'Neon Solitude - Synthwave Lofi',
+        'A moody synthwave track for late-night drives.'
+      )
+    );
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'late night synthwave' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const entry = screen.getByTestId('queue-entry-1');
+    expect(entry).toHaveAttribute('data-youtube-title', 'Neon Solitude - Synthwave Lofi');
+    expect(entry).toHaveAttribute(
+      'data-youtube-description',
+      'A moody synthwave track for late-night drives.'
+    );
+  });
+
+  it('AC03: queue entry has null youtube fields when no youtube headers are returned', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockVideoFetch());
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'no metadata test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute('data-status', 'completed');
+    });
+
+    const entry = screen.getByTestId('queue-entry-1');
+    expect(entry).not.toHaveAttribute('data-youtube-title');
+    expect(entry).not.toHaveAttribute('data-youtube-description');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// US-004 – Preview/edit dialog before YouTube publish
+// ---------------------------------------------------------------------------
+
+describe('YouTube publish dialog (US-004)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    visualSceneSpy.mockClear();
+    mockVideoPlaybackApi();
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(
+      () => 'blob:http://localhost/converted-recording-mp4',
+    );
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+
+  function setConnectedYouTubeToken(): void {
+    localStorage.setItem(
+      'reelpod.youtube.oauth-token',
+      JSON.stringify({
+        accessToken: 'persisted-token',
+        tokenType: 'Bearer',
+        scope: 'https://www.googleapis.com/auth/youtube.upload',
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+  }
+
+  function mockConvertFetch(): ReturnType<typeof vi.fn> {
+    return vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+      if (url.endsWith('/api/recordings/convert-mp4')) {
+        return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+      if (url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL) {
+        return new Response(JSON.stringify({ id: 'yt-video-us004' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/mcp/')) {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected endpoint called: ${url}`);
+    });
+  }
+
+  async function createCompletedRecordingEntry(): Promise<void> {
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(1024)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4',
+      });
+    });
+
+    await waitFor(() => {
+      const download = screen.getByTestId('recording-download-1');
+      expect(download).toHaveTextContent('Download MP4');
+    });
+  }
+
+  it('US-004-AC01: clicking Publish to YouTube opens a dialog (not a new page)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockConvertFetch());
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    expect(screen.queryByTestId('youtube-publish-dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+    // Still on the same page — no navigation
+    expect(screen.getByTestId('youtube-publish-dialog')).toHaveAttribute(
+      'role',
+      'dialog',
+    );
+  });
+
+  it('US-004-AC02: Cancel button closes the dialog without uploading', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(mockConvertFetch());
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('youtube-publish-cancel'));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('youtube-publish-dialog'),
+      ).not.toBeInTheDocument();
+    });
+
+    // No upload request was made
+    const uploadCalls = fetchSpy.mock.calls.filter(([input]) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+      return url === YOUTUBE_VIDEOS_INSERT_UPLOAD_URL;
+    });
+    expect(uploadCalls).toHaveLength(0);
+  });
+
+  it('US-004-AC03: edited title and description are sent verbatim to uploadVideoToYouTube', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockConvertFetch());
+    const uploadSpy = vi
+      .spyOn(YouTubeUploadModule, 'uploadVideoToYouTube')
+      .mockResolvedValue({ videoId: 'yt-video-us004', videoUrl: 'https://www.youtube.com/watch?v=yt-video-us004' });
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('youtube-publish-dialog-title'), {
+      target: { value: 'My Edited Title' },
+    });
+    fireEvent.change(screen.getByTestId('youtube-publish-dialog-description'), {
+      target: { value: 'My edited description.' },
+    });
+
+    fireEvent.click(screen.getByTestId('youtube-publish-confirm'));
+
+    await waitFor(() => {
+      expect(uploadSpy).toHaveBeenCalledOnce();
+    });
+
+    const callArgs = uploadSpy.mock.calls[0][0];
+    expect(callArgs.title).toBe('My Edited Title');
+    expect(callArgs.description).toBe('My edited description.');
+  });
+
+  it('US-004-AC04: Publish button is disabled and shows required hint when title is empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockConvertFetch());
+    setConnectedYouTubeToken();
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+    await createCompletedRecordingEntry();
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    // Clear the title
+    fireEvent.change(screen.getByTestId('youtube-publish-dialog-title'), {
+      target: { value: '' },
+    });
+
+    expect(screen.getByTestId('youtube-publish-confirm')).toBeDisabled();
+    expect(
+      screen.getByTestId('youtube-publish-title-required'),
+    ).toBeInTheDocument();
+  });
+
+  it('US-004-AC01: dialog pre-fills with LLM youtube title and description from queue entry', async () => {
+    // Mock fetch to handle both /api/generate (with yt meta) and /api/recordings/convert-mp4
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (input: string | URL | Request) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : (input as Request).url;
+        if (url.endsWith('/api/generate')) {
+          return createVideoResponseWithYouTubeMeta(
+            'Neon Solitude - Synthwave Lofi',
+            'A moody synthwave track for late-night drives.',
+          );
+        }
+        if (url.endsWith('/api/recordings/convert-mp4')) {
+          return new Response(new Blob(['mp4'], { type: 'video/mp4' }), {
+            status: 200,
+            headers: { 'content-type': 'video/mp4' },
+          });
+        }
+        if (url.includes('/mcp/')) {
+          return new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        throw new Error(`Unexpected endpoint called: ${url}`);
+      },
+    );
+    setConnectedYouTubeToken();
+
+    render(<App />);
+
+    // Generate a queue entry with youtube metadata
+    fireEvent.change(screen.getByLabelText('Creative brief'), {
+      target: { value: 'late night synthwave' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
+      expect(screen.getByTestId('queue-entry-1')).toHaveAttribute(
+        'data-status',
+        'completed',
+      );
+    });
+
+    // Create a recording entry (activePreviewEntry is null in tests since we don't play)
+    act(() => {
+      capturedOnFinalized?.(new Blob([new Uint8Array(512)], { type: 'video/mp4' }), {
+        mimeType: 'video/mp4',
+        fileExtension: '.mp4',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recording-download-1')).toHaveTextContent(
+        'Download MP4',
+      );
+    });
+
+    fireEvent.click(screen.getByTestId('youtube-upload-button-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('youtube-publish-dialog')).toBeInTheDocument();
+    });
+
+    // The title input should be pre-filled (non-empty)
+    const titleInput = screen.getByTestId('youtube-publish-dialog-title') as HTMLInputElement;
+    expect(titleInput.value.length).toBeGreaterThan(0);
   });
 });

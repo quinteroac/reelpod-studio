@@ -1,0 +1,10 @@
+models:
+  - name: ACEStep 1.5
+    role: Music generation
+    url: https://github.com/ace-step/ACE-Step
+  - name: Anima
+    role: Image generation
+  - name: Wan 2.1 I2V
+    role: Video animation
+    url: https://github.com/Wan-Video/Wan2.1
+footer: "Generated with ReelPod Studio"

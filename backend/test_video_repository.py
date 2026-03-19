@@ -116,13 +116,18 @@ def _install_fake_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path | None
     def fake_apply_shift(model: Any, shift: float = 5.0, multiplier: float = 1000.0) -> Any:
         return model
 
+    def fake_wan_first_last_frame_to_video(*args: Any, **kwargs: Any) -> tuple[Any, Any, dict]:
+        return ("pos", "neg", {"samples": None})
+
     monkeypatch.setattr(video_repository, "apply_model_sampling_shift", fake_apply_shift)
     monkeypatch.setattr(video_repository, "wan_image_to_video", fake_wan_image_to_video)
+    monkeypatch.setattr(video_repository, "wan_first_last_frame_to_video", fake_wan_first_last_frame_to_video)
     monkeypatch.setattr(video_repository, "wan22_latent_to_wan21_for_decode", fake_wan22_latent)
     monkeypatch.setattr(video_repository, "save_frames_as_video", _fake_save_frames_as_video)
 
     fake_wan_helpers = ModuleType("repositories.wan_comfy_helpers")
     fake_wan_helpers.wan_image_to_video = fake_wan_image_to_video
+    fake_wan_helpers.wan_first_last_frame_to_video = fake_wan_first_last_frame_to_video
     fake_wan_helpers.wan22_latent_to_wan21_for_decode = fake_wan22_latent
     fake_wan_helpers.apply_model_sampling_shift = fake_apply_shift
     fake_wan_helpers.save_frames_as_video = _fake_save_frames_as_video
@@ -463,3 +468,122 @@ def test_upscale_video_with_realesrgan_and_resize_upscales_4x_then_lanczos_to_ta
     assert seen["encoded_frame_format"] == "rgb24"
     assert seen["codec"] == "libx264"
     assert encoded_frames
+
+
+# ---------------------------------------------------------------------------
+# run_bridge_inference – US-002
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_av_module(monkeypatch: pytest.MonkeyPatch, frame_arrays: list[np.ndarray]) -> None:
+    """Inject a fake `av` module that yields frame_arrays when decoding any container."""
+    from types import ModuleType
+
+    class FakeVideoStream:
+        pass
+
+    class FakeContainer:
+        streams = type("Streams", (), {"video": [FakeVideoStream()]})()
+
+        def decode(self, stream: object):  # type: ignore[override]
+            for arr in frame_arrays:
+                captured = arr
+
+                class _Frame:
+                    def to_ndarray(self, format: str = "rgb24") -> np.ndarray:
+                        return captured
+
+                yield _Frame()
+
+        def close(self) -> None:
+            pass
+
+    def fake_av_open(path: str, mode: str = "r") -> FakeContainer:
+        return FakeContainer()
+
+    fake_av = ModuleType("av")
+    fake_av.open = fake_av_open
+    monkeypatch.setitem(sys.modules, "av", fake_av)
+
+
+def test_run_bridge_inference_saves_bridge_mp4_in_temp_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC01, AC05: function exists and returns Path to wan_bridge.mp4."""
+    _install_fake_modules(monkeypatch, tmp_path)
+    _save_frames_as_video_calls.clear()
+
+    frame_arrays = [
+        np.full((480, 832, 3), 10, dtype=np.uint8),
+        np.full((480, 832, 3), 30, dtype=np.uint8),
+    ]
+    _make_fake_av_module(monkeypatch, frame_arrays)
+
+    clip1_path = tmp_path / "clip1.mp4"
+    clip1_path.write_bytes(b"\x00\x00\x00\x20ftypisom")
+
+    pipeline = video_repository.load_video_pipeline()
+    result = video_repository.run_bridge_inference(
+        pipeline,
+        clip1_path=clip1_path,
+        prompt="bridge test",
+        target_width=1920,
+        target_height=1080,
+        temp_dir=tmp_path,
+    )
+
+    assert result == tmp_path / "wan_bridge.mp4"
+    assert result.suffix == ".mp4"
+    assert len(_save_frames_as_video_calls) > 0
+    assert _save_frames_as_video_calls[-1]["path"] == result
+    # AC04: fps matches WAN_VIDEO_FPS (same duration as clip 1)
+    from models import constants as _c
+    assert _save_frames_as_video_calls[-1]["fps"] == _c.WAN_VIDEO_FPS
+
+
+def test_run_bridge_inference_uses_first_and_last_frame_swapped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC02 + AC03: first frame → end_image, last frame → start_image."""
+    _install_fake_modules(monkeypatch, tmp_path)
+    _save_frames_as_video_calls.clear()
+
+    # Three frames: distinct pixel values so we can identify each
+    frame_arrays = [
+        np.full((480, 832, 3), 10, dtype=np.uint8),   # frame 0 (first)
+        np.full((480, 832, 3), 20, dtype=np.uint8),   # frame 1 (middle)
+        np.full((480, 832, 3), 30, dtype=np.uint8),   # frame 2 (last)
+    ]
+    _make_fake_av_module(monkeypatch, frame_arrays)
+
+    bridge_calls: list[dict[str, Any]] = []
+
+    def capturing_wan_first_last(*args: Any, **kwargs: Any) -> tuple[Any, Any, dict]:
+        bridge_calls.append({"args": args, "kwargs": kwargs})
+        return ("pos", "neg", {"samples": None})
+
+    monkeypatch.setattr(video_repository, "wan_first_last_frame_to_video", capturing_wan_first_last)
+
+    clip1_path = tmp_path / "clip1.mp4"
+    clip1_path.write_bytes(b"\x00\x00\x00\x20ftypisom")
+
+    pipeline = video_repository.load_video_pipeline()
+    video_repository.run_bridge_inference(
+        pipeline,
+        clip1_path=clip1_path,
+        prompt="bridge swap test",
+        target_width=1920,
+        target_height=1080,
+        temp_dir=tmp_path,
+    )
+
+    assert len(bridge_calls) == 1
+    kwargs = bridge_calls[0]["kwargs"]
+
+    # start_image must be last frame (pixel ≈ 30/255)
+    start_val = float(kwargs["start_image"][0, 0, 0, 0])
+    assert start_val == pytest.approx(30.0 / 255.0, abs=0.01)
+
+    # end_image must be first frame (pixel ≈ 10/255)
+    end_val = float(kwargs["end_image"][0, 0, 0, 0])
+    assert end_val == pytest.approx(10.0 / 255.0, abs=0.01)

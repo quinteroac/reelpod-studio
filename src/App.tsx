@@ -6,10 +6,12 @@ import { useAgentParameters } from './hooks/use-agent-parameters';
 import { useAgentGeneration, type GenerationCommand } from './hooks/use-agent-generation';
 import { useAgentCommands } from './hooks/use-agent-commands';
 import {
+  buildVideoTitle,
   readYouTubeUploadTokenFromStorage,
   uploadVideoToYouTube,
   YouTubeUnauthorizedError,
 } from './lib/youtube-upload';
+import { YouTubePublishDialog } from './components/youtube-publish-dialog';
 
 type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
 
@@ -29,6 +31,7 @@ interface GenerationParams {
 import {
   GENERATE_ENDPOINT_PATH
 } from './api/constants';
+import { sanitizeFilename } from './lib/sanitize-filename';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -56,6 +59,8 @@ interface RecordingEntry {
   youtubeUploadStatus: 'idle' | 'uploading' | 'success' | 'error';
   youtubeUploadErrorMessage: string | null;
   youtubeVideoUrl: string | null;
+  youtubeTitle: string | null;
+  youtubeDescription: string | null;
 }
 
 interface QueueEntry {
@@ -67,6 +72,9 @@ interface QueueEntry {
   status: QueueEntryStatus;
   errorMessage: string | null;
   videoBlob: Blob | null;
+  songTitle: string | null;
+  youtubeTitle: string | null;
+  youtubeDescription: string | null;
 }
 
 const defaultParams: GenerationParams = {
@@ -181,12 +189,49 @@ function buildQueueSummary(params: GenerationParams): string {
   return `${brief} · ${params.duration}s`;
 }
 
+function _findByteSeq(haystack: Uint8Array, needle: Uint8Array, start = 0): number {
+  outer: for (let i = start; i <= haystack.length - needle.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+function _parseMultipartMixed(
+  buffer: ArrayBuffer,
+  boundary: string,
+): { metadata: Record<string, string>; videoBytes: Uint8Array } {
+  const bytes = new Uint8Array(buffer);
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const CRLF2 = enc.encode('\r\n\r\n');
+  const nextBound = enc.encode(`\r\n--${boundary}`);
+
+  // Part 1: JSON — body starts after first boundary's headers
+  const part1HeaderEnd = _findByteSeq(bytes, CRLF2, 0);
+  const jsonStart = part1HeaderEnd + 4;
+  const jsonEnd = _findByteSeq(bytes, nextBound, jsonStart);
+  const metadata: Record<string, string> = JSON.parse(dec.decode(bytes.slice(jsonStart, jsonEnd)));
+
+  // Part 2: video — body starts after second boundary's headers
+  const part2Start = jsonEnd + nextBound.length;
+  const part2HeaderEnd = _findByteSeq(bytes, CRLF2, part2Start);
+  const videoStart = part2HeaderEnd + 4;
+  const endMark = enc.encode(`\r\n--${boundary}--`);
+  const videoEnd = _findByteSeq(bytes, endMark, videoStart);
+  const videoBytes = bytes.slice(videoStart, videoEnd === -1 ? undefined : videoEnd);
+
+  return { metadata, videoBytes };
+}
+
 async function requestGeneratedVideo(
   params: GenerationParams,
   imagePrompt: string,
   targetWidth: number,
   targetHeight: number
-): Promise<Blob> {
+): Promise<{ blob: Blob; songTitle: string | null; youtubeTitle: string | null; youtubeDescription: string | null }> {
   const payload = {
     ...params,
     imagePrompt,
@@ -223,11 +268,23 @@ async function requestGeneratedVideo(
   }
 
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-  if (!contentType.startsWith('video/mp4')) {
-    throw new Error('Could not generate video: Expected video/mp4 response');
+
+  if (contentType.startsWith('multipart/mixed')) {
+    const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+    if (!boundaryMatch) {
+      throw new Error('Could not generate video: Missing multipart boundary');
+    }
+    const buffer = await response.arrayBuffer();
+    const { metadata, videoBytes } = _parseMultipartMixed(buffer, boundaryMatch[1]);
+    return {
+      blob: new Blob([videoBytes], { type: 'video/mp4' }),
+      songTitle: metadata.song_title?.trim() || null,
+      youtubeTitle: metadata.youtube_title?.trim() || null,
+      youtubeDescription: metadata.youtube_description?.trim() || null,
+    };
   }
 
-  return response.blob();
+  throw new Error('Could not generate video: Expected multipart/mixed response');
 }
 
 export function App() {
@@ -274,6 +331,11 @@ export function App() {
   const [fontSizePercent, setFontSizePercent] = useState(103);
   const seekPollRef = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [youtubePublishDialog, setYoutubePublishDialog] = useState<{
+    recordingId: number;
+    initialTitle: string;
+    initialDescription: string;
+  } | null>(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -331,6 +393,9 @@ export function App() {
       status: 'queued',
       errorMessage: null,
       videoBlob: null,
+      songTitle: null,
+      youtubeTitle: null,
+      youtubeDescription: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }, []);
@@ -362,7 +427,13 @@ export function App() {
   }, []);
 
   const uploadRecordingToBackend = useCallback(
-    async (entryId: number, blob: Blob, filename: string): Promise<void> => {
+    async (
+      entryId: number,
+      blob: Blob,
+      filename: string,
+      youtubeTitle: string | null,
+      youtubeDescription: string | null,
+    ): Promise<void> => {
       setRecordingEntries((prev) =>
         prev.map((entry) =>
           entry.id === entryId
@@ -413,7 +484,7 @@ export function App() {
               : entry,
           ),
         );
-        notifyAgent('recording_complete', { filename });
+        notifyAgent('recording_complete', { filename, youtubeTitle, youtubeDescription });
       } catch (error) {
         const message = getErrorMessage(error);
         setRecordingEntries((prev) =>
@@ -437,8 +508,12 @@ export function App() {
       startSeekPolling();
     },
     onFinalized: (blob: Blob, meta: { mimeType: string; fileExtension: string }) => {
+      const rawTitle = activePreviewEntry?.songTitle ?? null;
+      const sanitized = rawTitle ? sanitizeFilename(rawTitle) : null;
       const timestamp = new Date().toISOString();
-      const filename = `recording-${timestamp}${meta.fileExtension}`;
+      const filename = sanitized
+        ? `${sanitized}${meta.fileExtension}`
+        : `recording-${timestamp}${meta.fileExtension}`;
       const sizeInMb = parseFloat((blob.size / (1024 * 1024)).toFixed(2));
       const entryId = recordingIdRef.current++;
 
@@ -453,10 +528,12 @@ export function App() {
         youtubeUploadStatus: 'idle',
         youtubeUploadErrorMessage: null,
         youtubeVideoUrl: null,
+        youtubeTitle: activePreviewEntry?.youtubeTitle ?? null,
+        youtubeDescription: activePreviewEntry?.youtubeDescription ?? null,
       };
       setRecordingEntries((prev) => [...prev, entry]);
 
-      void uploadRecordingToBackend(entryId, blob, filename);
+      void uploadRecordingToBackend(entryId, blob, filename, entry.youtubeTitle, entry.youtubeDescription);
     }
   });
   const {
@@ -468,7 +545,7 @@ export function App() {
   } = useYouTubeAuth();
 
   const uploadRecordingToYouTube = useCallback(
-    async (recordingId: number): Promise<void> => {
+    async (recordingId: number, title: string, description: string): Promise<void> => {
       const token = readYouTubeUploadTokenFromStorage();
       if (!token) {
         setRecordingEntries((prev) =>
@@ -509,6 +586,8 @@ export function App() {
           blob: recording.mp4Blob,
           filename: recording.filename,
           token,
+          title,
+          description,
         });
 
         setRecordingEntries((prev) =>
@@ -781,7 +860,7 @@ export function App() {
       );
 
       try {
-        const videoBlob = await requestGeneratedVideo(
+        const { blob: videoBlob, songTitle, youtubeTitle, youtubeDescription } = await requestGeneratedVideo(
           entry.params,
           entry.imagePrompt,
           entry.targetWidth,
@@ -795,7 +874,10 @@ export function App() {
                 ...item,
                 status: 'completed',
                 errorMessage: null,
-                videoBlob
+                videoBlob,
+                songTitle,
+                youtubeTitle,
+                youtubeDescription
               }
               : item
           )
@@ -928,6 +1010,9 @@ export function App() {
       status: 'queued',
       errorMessage: null,
       videoBlob: null,
+      songTitle: null,
+      youtubeTitle: null,
+      youtubeDescription: null,
     };
     setQueueEntries((prev) => [...prev, nextEntry]);
   }
@@ -1072,11 +1157,15 @@ export function App() {
       setEnabledEffects(next);
     },
     onRecordQueue: () => void handleRecordQueue(),
-    onPublishToYoutube: () => {
+    onPublishToYoutube: (opts) => {
       const readyRecording = [...recordingEntries]
         .reverse()
         .find((e) => e.backendStatus === 'ready' && e.mp4Blob);
-      if (readyRecording) void uploadRecordingToYouTube(readyRecording.id);
+      if (readyRecording) {
+        const title = opts.title ?? readyRecording.youtubeTitle ?? buildVideoTitle(readyRecording.filename);
+        const description = opts.description ?? readyRecording.youtubeDescription ?? '';
+        void uploadRecordingToYouTube(readyRecording.id, title, description);
+      }
     },
   });
 
@@ -1601,9 +1690,15 @@ export function App() {
                                       type="button"
                                       data-testid={`youtube-upload-button-${rec.id}`}
                                       className="interactive-lift min-h-11 rounded-sm border border-red-300/70 bg-red-950/30 px-3 py-2 text-sm font-semibold text-red-100 outline-none transition hover:bg-red-900/40 focus-visible:ring-2 focus-visible:ring-red-300"
-                                      onClick={() => void uploadRecordingToYouTube(rec.id)}
+                                      onClick={() => {
+                                        setYoutubePublishDialog({
+                                          recordingId: rec.id,
+                                          initialTitle: rec.youtubeTitle ?? buildVideoTitle(rec.filename),
+                                          initialDescription: rec.youtubeDescription ?? '',
+                                        });
+                                      }}
                                     >
-                                      Upload to YouTube
+                                      Publish to YouTube
                                     </button>
                                   )}
                                 {isYouTubeConnected &&
@@ -1676,6 +1771,8 @@ export function App() {
                           data-testid={`queue-entry-${entry.id}`}
                           data-status={entry.status}
                           data-playing={isCurrentlyPlaying ? 'true' : undefined}
+                          data-youtube-title={entry.youtubeTitle ?? undefined}
+                          data-youtube-description={entry.youtubeDescription ?? undefined}
                           className={`rounded-sm border p-3 text-sm ${isCurrentlyPlaying
                             ? 'queue-playing-glow'
                             : ''
@@ -1696,13 +1793,21 @@ export function App() {
                               <p className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
                                 Track {trackNumber}
                               </p>
+                              {entry.songTitle && (
+                                <p
+                                  data-testid={`queue-entry-song-title-${entry.id}`}
+                                  className="text-sm font-semibold text-lofi-accent"
+                                >
+                                  {entry.songTitle}
+                                </p>
+                              )}
                               <p className="text-lofi-text">
                                 {isCurrentlyPlaying && (
                                   <span
-                                    className="mr-2 inline-flex items-center gap-1 text-lofi-accent"
+                                    className="text-lofi-accent"
                                     aria-hidden="true"
                                   >
-                                    ▶ Now playing
+                                    ▶ Now playing{' '}
                                   </span>
                                 )}
                                 {buildQueueSummary(entry.params)}
@@ -2026,6 +2131,18 @@ export function App() {
           </div>
         </div>
       </div>
+      {youtubePublishDialog && (
+        <YouTubePublishDialog
+          initialTitle={youtubePublishDialog.initialTitle}
+          initialDescription={youtubePublishDialog.initialDescription}
+          onCancel={() => setYoutubePublishDialog(null)}
+          onPublish={(title, description) => {
+            const { recordingId } = youtubePublishDialog;
+            setYoutubePublishDialog(null);
+            void uploadRecordingToYouTube(recordingId, title, description);
+          }}
+        />
+      )}
     </main>
   );
 }

@@ -21,7 +21,7 @@ from models.errors import (
 )
 from models.schemas import GenerateImageRequestBody, GenerateRequestBody
 from repositories import media_repository, video_repository
-from services import audio_service, image_service, orchestration_service
+from services import audio_service, credits_service, image_service, orchestration_service
 
 T = TypeVar("T")
 
@@ -58,7 +58,7 @@ def startup() -> None:
 
 def _resolve_pipeline_prompts(
     body: GenerateRequestBody,
-) -> tuple[GenerateRequestBody, str, str]:
+) -> tuple[GenerateRequestBody, str, str, str, str, str]:
     orchestration = orchestration_service.orchestrate(body.prompt or "")
     audio_request_body = body.model_copy(
         update={
@@ -66,7 +66,20 @@ def _resolve_pipeline_prompts(
             "prompt": orchestration.audio_prompt,
         }
     )
-    return audio_request_body, orchestration.image_prompt, orchestration.video_prompt
+    youtube_description = orchestration.youtube_description
+    credits = credits_service.get_credits_text()
+    if credits:
+        youtube_description = youtube_description + "\n\n" + credits
+    if orchestration.youtube_hashtags:
+        youtube_description = youtube_description + "\n\n" + " ".join(orchestration.youtube_hashtags)
+    return (
+        audio_request_body,
+        orchestration.image_prompt,
+        orchestration.video_prompt,
+        orchestration.song_title,
+        orchestration.youtube_title,
+        youtube_description,
+    )
 
 
 def _run_with_timeout(func: Callable[[], T], timeout_seconds: float, timeout_message: str) -> T:
@@ -134,7 +147,7 @@ def _parse_video_dimensions(mp4_probe_data: dict[str, Any]) -> tuple[int, int]:
     return width, height
 
 
-def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
+def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, str | None, str | None, str | None]:
     deadline = time.monotonic() + VIDEO_GENERATION_TIMEOUT_SECONDS
     temp_dir = Path(tempfile.mkdtemp(prefix="reelpod-video-"))
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -142,6 +155,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
     trimmed_audio_path = temp_dir.joinpath("audio_trimmed.wav")
     image_path = temp_dir.joinpath("image.png")
     wan_clip_path = temp_dir.joinpath("wan_clip.mp4")
+    wan_bridge_clip_path = temp_dir.joinpath("wan_bridge_clip.mp4")
+    wan_concat_clip_path = temp_dir.joinpath("wan_concat_clip.mp4")
     upscaled_resized_clip_path = temp_dir.joinpath("upscaled_resized_clip.mp4")
     looped_clip_path = temp_dir.joinpath("looped_clip.mp4")
     output_path = temp_dir.joinpath("output.mp4")
@@ -153,7 +168,7 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
         return remaining
 
     try:
-        audio_request_body, image_prompt, video_prompt = _resolve_pipeline_prompts(body)
+        audio_request_body, image_prompt, video_prompt, song_title, youtube_title, youtube_description = _resolve_pipeline_prompts(body)
         logger.info(
             "Video pipeline: starting audio generation (mode=%s, mood=%s, tempo=%s, duration=%s, style=%s)",
             audio_request_body.mode,
@@ -228,16 +243,62 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             wan_clip_path.stat().st_size,
         )
 
-        pre_loop_clip_path = wan_clip_path
+        wan_pre_upscale_clip_path = wan_clip_path
+        try:
+            logger.info(
+                "Video pipeline: starting bridge clip generation from %s (%d bytes)",
+                wan_clip_path,
+                wan_clip_path.stat().st_size,
+            )
+            _wan_clip_path = wan_clip_path
+            wan_bridge_clip_path = _run_with_timeout(
+                lambda: video_repository.run_bridge_inference(
+                    _wan_pipeline,
+                    clip1_path=_wan_clip_path,
+                    prompt=_video_prompt,
+                    target_width=body.image_target_width,
+                    target_height=body.image_target_height,
+                    temp_dir=temp_dir,
+                ),
+                timeout_seconds=remaining_seconds(),
+                timeout_message="Video generation timed out while generating bridge clip",
+            )
+            logger.info(
+                "Video pipeline: bridge clip saved to %s (%d bytes)",
+                wan_bridge_clip_path,
+                wan_bridge_clip_path.stat().st_size,
+            )
+            logger.info(
+                "Video pipeline: concatenating clip1 %s and bridge clip %s",
+                wan_clip_path,
+                wan_bridge_clip_path,
+            )
+            media_repository.concatenate_videos([wan_clip_path, wan_bridge_clip_path], wan_concat_clip_path)
+            logger.info(
+                "Video pipeline: concatenated clip saved to %s (%d bytes)",
+                wan_concat_clip_path,
+                wan_concat_clip_path.stat().st_size,
+            )
+            wan_pre_upscale_clip_path = wan_concat_clip_path
+        except (AudioGenerationTimeoutError, VideoGenerationTimeoutError):
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Video pipeline: bridge clip generation failed; falling back to clip 1 only (%s)",
+                exc,
+            )
+
+        pre_loop_clip_path = wan_pre_upscale_clip_path
         try:
             logger.info(
                 "Video pipeline: upscaling Wan clip 4x and resizing to target %dx%d",
                 body.image_target_width,
                 body.image_target_height,
             )
+            _wan_pre_upscale_clip_path = wan_pre_upscale_clip_path
             _run_with_timeout(
                 lambda: video_repository.upscale_video_with_realesrgan_and_resize(
-                    wan_clip_path,
+                    _wan_pre_upscale_clip_path,
                     upscaled_resized_clip_path,
                     target_width=body.image_target_width,
                     target_height=body.image_target_height,
@@ -253,6 +314,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
                 pre_loop_clip_path,
                 pre_loop_clip_path.stat().st_size,
             )
+        except (AudioGenerationTimeoutError, VideoGenerationTimeoutError):
+            raise
         except Exception as exc:
             logger.warning(
                 "Video pipeline: Real-ESRGAN upscale failed; falling back to original Wan clip (%s)",
@@ -324,7 +387,9 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             output_path.stat().st_size,
         )
 
-        return output_path.read_bytes()
+        if body.mode == "llm":
+            return output_path.read_bytes(), song_title, youtube_title, youtube_description
+        return output_path.read_bytes(), None, None, None
     except (AudioGenerationTimeoutError, ImageGenerationFailedError, VideoGenerationTimeoutError):
         raise
     except Exception as exc:
@@ -335,6 +400,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> bytes:
             trimmed_audio_path,
             image_path,
             wan_clip_path,
+            wan_bridge_clip_path,
+            wan_concat_clip_path,
             upscaled_resized_clip_path,
             looped_clip_path,
             output_path,

@@ -1,0 +1,191 @@
+{
+  "goals": [
+    "YouTube videos uploaded from ReelPod Studio have a polished, search-friendly title.",
+    "Descriptions include the song concept, mood/genre, and transparent AI model attribution.",
+    "Users can review and edit the title and description before confirming the upload.",
+    "Model credits are maintained in a single YAML file — easy to update without touching code."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "LLM generates a YouTube title and description during orchestration",
+      "description": "As a creator, I want the orchestration LLM to produce a YouTube-optimised title and description for my track so that I don't have to write metadata manually before publishing.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-001-AC01",
+          "text": "`OrchestrationResult` gains two new fields: `youtube_title` (max 100 chars) and `youtube_description` (max 5000 chars)."
+        },
+        {
+          "id": "US-001-AC02",
+          "text": "The `CREATIVE_DIRECTOR_SYSTEM_PROMPT` is updated to instruct the LLM to return these two fields in its JSON output."
+        },
+        {
+          "id": "US-001-AC03",
+          "text": "`youtube_title` is a human-readable string with no underscores and no file-extension"
+        },
+        {
+          "id": "US-001-AC04",
+          "text": "`youtube_description` contains a short paragraph describing the song concept, mood, and"
+        },
+        {
+          "id": "US-001-AC05",
+          "text": "Both fields are validated by Pydantic (non-empty, within length limits)."
+        },
+        {
+          "id": "US-001-AC06",
+          "text": "Existing fields (`song_title`, `audio_prompt`, `image_prompt`, `video_prompt`) are"
+        },
+        {
+          "id": "US-001-AC07",
+          "text": "Backend unit tests cover valid output and the case where the LLM omits these keys."
+        },
+        {
+          "id": "US-001-AC08",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Backend exposes a model-credits YAML and appends it to the description",
+      "description": "As a developer, I want model credits defined in a plain YAML file so that I can update the model list without touching Python or TypeScript code.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-002-AC01",
+          "text": "A new file `backend/config/model_credits.yaml` exists with at least the following"
+        },
+        {
+          "id": "US-002-AC02",
+          "text": "A backend helper reads this file at startup (or lazily) and exposes a function"
+        },
+        {
+          "id": "US-002-AC03",
+          "text": "The `/api/generate` response (or a new `/api/youtube-metadata` endpoint) returns both"
+        },
+        {
+          "id": "US-002-AC04",
+          "text": "If the YAML file is missing or malformed, a clear startup warning is logged and"
+        },
+        {
+          "id": "US-002-AC05",
+          "text": "Backend unit tests cover: valid YAML, missing file, malformed YAML."
+        },
+        {
+          "id": "US-002-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Queue entries carry YouTube metadata to the frontend",
+      "description": "As a creator, I want the generated YouTube title and description to be available in the recording queue so that they can be shown in the preview dialog.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-003-AC01",
+          "text": "The `QueueEntry` type in `App.tsx` gains optional fields `youtubeTitle: string | null`"
+        },
+        {
+          "id": "US-003-AC02",
+          "text": "When the backend returns `youtube_title` / `youtube_description` (via the"
+        },
+        {
+          "id": "US-003-AC03",
+          "text": "Existing queue entries where orchestration was not used (manual params, no LLM) have"
+        },
+        {
+          "id": "US-003-AC04",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Preview/edit dialog before YouTube publish",
+      "description": "As a creator, I want to review and optionally edit the YouTube title and description before the video is uploaded so that I can correct any LLM mistakes.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-004-AC01",
+          "text": "Clicking the \"Publish to YouTube\" button for a queue entry opens a modal dialog (not a"
+        },
+        {
+          "id": "US-004-AC02",
+          "text": "The dialog has a **Cancel** button (closes without uploading) and a **Publish** button"
+        },
+        {
+          "id": "US-004-AC03",
+          "text": "Field values edited by the user are sent verbatim to `uploadVideoToYouTube` — no"
+        },
+        {
+          "id": "US-004-AC04",
+          "text": "If `youtubeTitle` is empty in the dialog, the Publish button is disabled with a visible"
+        },
+        {
+          "id": "US-004-AC05",
+          "text": "Visually verified in browser: dialog opens, pre-fills correctly, edits are preserved on"
+        },
+        {
+          "id": "US-004-AC06",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "`publish_to_youtube` MCP tool uses the generated metadata",
+      "description": "As an automated agent, I want the `publish_to_youtube` MCP tool to default to the LLM-generated title and description so that publishing via MCP is also SEO-friendly without manual arguments.",
+      "acceptanceCriteria": [
+        {
+          "id": "US-005-AC01",
+          "text": "When `title` and `description` are omitted from the MCP call, the tool reads"
+        },
+        {
+          "id": "US-005-AC02",
+          "text": "When `title` or `description` are explicitly passed, those values take precedence"
+        },
+        {
+          "id": "US-005-AC03",
+          "text": "If no metadata is available (null), the tool falls back to the filename-derived title"
+        },
+        {
+          "id": "US-005-AC04",
+          "text": "Typecheck / lint passes."
+        }
+      ]
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-1",
+      "description": "`OrchestrationResult` must include `youtube_title` and `youtube_description` fields"
+    },
+    {
+      "id": "FR-2",
+      "description": "A `backend/config/model_credits.yaml` file defines model roles, names, and a footer"
+    },
+    {
+      "id": "FR-3",
+      "description": "`build_credits_block()` reads the YAML and returns a formatted plain-text string;"
+    },
+    {
+      "id": "FR-4",
+      "description": "The backend returns `youtube_title` and `youtube_description` to the frontend as part"
+    },
+    {
+      "id": "FR-5",
+      "description": "`QueueEntry` stores `youtubeTitle` and `youtubeDescription` for each completed entry."
+    },
+    {
+      "id": "FR-6",
+      "description": "A preview/edit modal in the UI lets the user review and optionally modify title and"
+    },
+    {
+      "id": "FR-7",
+      "description": "`uploadVideoToYouTube` sends the final (possibly user-edited) `snippet.description`"
+    },
+    {
+      "id": "FR-8",
+      "description": "The `publish_to_youtube` MCP tool defaults to queue-entry metadata when no arguments"
+    }
+  ]
+}

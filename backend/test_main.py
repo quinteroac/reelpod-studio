@@ -157,7 +157,7 @@ class TestGenerateEndpoint:
             seen["mode"] = body.mode
             seen["prompt"] = body.prompt
             seen["duration"] = body.duration
-            return MP4_HEADER
+            return MP4_HEADER, "Night City Drive", "Night City Drive | Lofi", "A smooth lofi beat."
 
         monkeypatch.setattr(
             video_service,

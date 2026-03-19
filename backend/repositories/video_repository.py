@@ -35,6 +35,7 @@ from models.constants import (
 )
 from repositories.wan_comfy_helpers import (
     wan_image_to_video,
+    wan_first_last_frame_to_video,
     wan22_latent_to_wan21_for_decode,
     apply_model_sampling_shift,
     save_frames_as_video,
@@ -317,6 +318,189 @@ def run_video_inference(
     frames = vae_decode_batch(pipeline.vae, to_decode)
 
     output_path = temp_dir / "wan_clip.mp4"
+    save_frames_as_video(frames, output_path, fps=WAN_VIDEO_FPS)
+    return output_path
+
+
+def _normalize_bridge_frame_colors(
+    frames: list[Any],
+    start_ref: "Image.Image",
+    end_ref: "Image.Image",
+) -> list[Any]:
+    """Per-channel mean/std normalization with a linear gradient across frames.
+
+    Frame 0 is normalized so its channel statistics match start_ref (clip1_last).
+    The last frame is normalized to match end_ref (clip1_first).
+    Intermediate frames interpolate between the two references.
+    This eliminates WAN-generated brightness flashes at the join and loop points.
+    """
+    import numpy as np
+    from PIL import Image
+
+    n = len(frames)
+    if n == 0:
+        return frames
+
+    ref_start = np.array(start_ref.convert("RGB")).astype(np.float32)
+    ref_end = np.array(end_ref.convert("RGB")).astype(np.float32)
+
+    def _stats(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        mean = arr.mean(axis=(0, 1))
+        std = arr.std(axis=(0, 1)) + 1e-6
+        return mean, std
+
+    start_mean, start_std = _stats(ref_start)
+    end_mean, end_std = _stats(ref_end)
+
+    normalized: list[Any] = []
+    for i, pil_img in enumerate(frames):
+        t = i / max(n - 1, 1)
+        ref_mean = (1.0 - t) * start_mean + t * end_mean
+        ref_std = (1.0 - t) * start_std + t * end_std
+
+        arr = np.array(pil_img.convert("RGB")).astype(np.float32)
+        frame_mean, frame_std = _stats(arr)
+
+        for c in range(3):
+            arr[:, :, c] = (arr[:, :, c] - frame_mean[c]) / frame_std[c] * ref_std[c] + ref_mean[c]
+
+        normalized.append(Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)))
+    return normalized
+
+
+def run_bridge_inference(
+    pipeline: WanComfyPipeline,
+    *,
+    clip1_path: Path,
+    prompt: str,
+    target_width: int,
+    target_height: int,
+    temp_dir: Path,
+) -> Path:
+    """Generate a bridge clip animating from the last frame of clip1 back to its first frame.
+
+    Extracts frame 0 (first) and the last frame from clip1_path via PyAV, then calls
+    wan_first_last_frame_to_video with start_image=last_frame, end_image=first_frame.
+    Output duration matches WAN_VIDEO_CLIP_DURATION_SECONDS.
+    """
+    import av
+    from PIL import Image
+    import numpy as np
+
+    from comfy_diffusion import vae_decode_batch
+    from comfy_diffusion.conditioning import encode_prompt
+    from comfy_diffusion.sampling import sample_advanced
+    from comfy_diffusion._runtime import ensure_comfyui_on_path
+
+    ensure_comfyui_on_path()
+    import comfy.model_management
+    import torch
+
+    # Extract first and last frames from clip1 via PyAV
+    first_frame_pil: Image.Image | None = None
+    last_frame_pil: Image.Image | None = None
+    container = av.open(str(clip1_path))
+    try:
+        video_stream = container.streams.video[0]
+        for frame in container.decode(video_stream):
+            arr = frame.to_ndarray(format="rgb24")
+            pil = Image.fromarray(arr)
+            if first_frame_pil is None:
+                first_frame_pil = pil
+            last_frame_pil = pil
+    finally:
+        container.close()
+
+    if first_frame_pil is None or last_frame_pil is None:
+        raise RuntimeError(f"Could not extract frames from clip: {clip1_path}")
+
+    wan_width, wan_height = pick_wan_resolution(target_width, target_height)
+    first_resized = first_frame_pil.resize((wan_width, wan_height), Image.Resampling.LANCZOS)
+    last_resized = last_frame_pil.resize((wan_width, wan_height), Image.Resampling.LANCZOS)
+
+    # Number of frames: must be (4*n)+1 for Wan latent; match clip duration at 16 fps
+    target_frames = int(WAN_VIDEO_CLIP_DURATION_SECONDS * WAN_VIDEO_FPS)
+    length = max(5, ((target_frames - 1) // 4) * 4 + 1)
+
+    # If low LoRA trigger keyword is set, prepend it to the prompt
+    effective_prompt = prompt
+    if WAN_COMFY_LORA_LOW_TRIGGER and WAN_COMFY_LORA_LOW_TRIGGER.strip():
+        effective_prompt = f"{WAN_COMFY_LORA_LOW_TRIGGER.strip()}, {prompt}"
+
+    # Encode prompts
+    positive = encode_prompt(pipeline.clip, effective_prompt)
+    negative = encode_prompt(pipeline.clip, WAN_COMFY_NEGATIVE_PROMPT)
+
+    device = comfy.model_management.intermediate_device()
+
+    def _to_tensor(img: Image.Image) -> Any:
+        arr = np.array(img.convert("RGB"))
+        return (torch.from_numpy(arr).float().to(device=device) / 255.0).unsqueeze(0)
+
+    # Bridge: last frame → first frame (start=last, end=first)
+    last_frame_tensor = _to_tensor(last_resized)
+    first_frame_tensor = _to_tensor(first_resized)
+
+    positive, negative, latent = wan_first_last_frame_to_video(
+        positive,
+        negative,
+        pipeline.vae,
+        wan_width,
+        wan_height,
+        length,
+        batch_size=1,
+        start_image=last_frame_tensor,
+        end_image=first_frame_tensor,
+        clip_vision_output=None,
+    )
+
+    # Two-stage sampling: high-noise then low-noise
+    denoised = sample_advanced(
+        pipeline.model_high,
+        positive,
+        negative,
+        latent,
+        steps=WAN_COMFY_STEPS,
+        cfg=WAN_COMFY_CFG,
+        sampler_name=WAN_COMFY_SAMPLER,
+        scheduler=WAN_COMFY_SCHEDULER,
+        noise_seed=0,
+        add_noise=True,
+        start_at_step=0,
+        end_at_step=WAN_COMFY_HIGH_STEPS,
+        denoise=1.0,
+        return_with_leftover_noise=True,
+    )
+    denoised = sample_advanced(
+        pipeline.model_low,
+        positive,
+        negative,
+        denoised,
+        steps=WAN_COMFY_STEPS,
+        cfg=WAN_COMFY_CFG,
+        sampler_name=WAN_COMFY_SAMPLER,
+        scheduler=WAN_COMFY_SCHEDULER,
+        noise_seed=0,
+        add_noise=False,
+        start_at_step=WAN_COMFY_HIGH_STEPS,
+        end_at_step=WAN_COMFY_STEPS,
+        denoise=1.0,
+        return_with_leftover_noise=False,
+    )
+
+    to_decode = wan22_latent_to_wan21_for_decode(denoised, wan_width, wan_height)
+    frames = vae_decode_batch(pipeline.vae, to_decode)
+
+    # Color-normalize each bridge frame so the join (bridge_start ≈ clip1_last)
+    # and the loop boundary (bridge_end ≈ clip1_first) are chromatically consistent,
+    # removing any WAN-generated brightness flash at the transition points.
+    frames = _normalize_bridge_frame_colors(
+        frames,
+        start_ref=last_resized,  # bridge should start looking like clip1_last
+        end_ref=first_resized,   # bridge should end looking like clip1_first
+    )
+
+    output_path = temp_dir / "wan_bridge.mp4"
     save_frames_as_video(frames, output_path, fps=WAN_VIDEO_FPS)
     return output_path
 

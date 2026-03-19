@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 
 from routes.api import handle_http_exception, handle_validation_error, router
-from services import audio_service, image_service, orchestration_service, video_service
+from services import audio_service, credits_service, image_service, orchestration_service, video_service
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(router)
@@ -14,6 +14,7 @@ app.add_exception_handler(RequestValidationError, handle_validation_error)
 
 @app.on_event("startup")
 def on_startup() -> None:
+    credits_service.startup()
     audio_service.startup()
     image_service.startup()
     orchestration_service.startup()
