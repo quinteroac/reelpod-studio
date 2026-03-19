@@ -156,17 +156,28 @@ def wan_first_last_frame_to_video(
             dtype=ref.dtype,
         ) * 0.5
 
+        # WAN temporal VAE stride: each latent position covers 4 video frames.
+        # Tile start/end images to fill a full latent block so the reference
+        # latent at each conditioned position is derived from a homogeneous
+        # sequence rather than [anchor_frame, gray, gray, gray], which would
+        # produce washed-out frames at the join and loop boundaries.
+        _latent_stride = 4
+
         if start_image is not None:
             start_image = comfy.utils.common_upscale(
                 start_image[:length].movedim(-1, 1), width, height, "bilinear", "center"
             ).movedim(1, -1)
-            image[: start_image.shape[0]] = start_image
+            n_start = min(_latent_stride, length)
+            image[:n_start] = start_image[0]
 
         if end_image is not None:
             end_image = comfy.utils.common_upscale(
                 end_image[:length].movedim(-1, 1), width, height, "bilinear", "center"
             ).movedim(1, -1)
-            image[length - end_image.shape[0] :] = end_image
+            n_start_used = min(_latent_stride, length) if start_image is not None else 0
+            n_end = min(_latent_stride, length - n_start_used)
+            if n_end > 0:
+                image[length - n_end :] = end_image[0]
 
         concat_latent_image = vae.encode(image[:, :, :, :3])
         mask = torch.ones(

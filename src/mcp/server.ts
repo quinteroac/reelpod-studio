@@ -208,8 +208,8 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
             };
           }
 
-          // Wait for the frontend to signal completion (up to 20 min)
-          const event = await pollEvent(sseBaseUrl, 'generation_complete', 1_200_000);
+          // Wait for the frontend to signal completion (up to 60 min — US-003 doubled Wan inference)
+          const event = await pollEvent(sseBaseUrl, 'generation_complete', 3_600_000);
 
           if (event.type === 'timeout') {
             return {

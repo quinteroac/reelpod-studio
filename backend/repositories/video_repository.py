@@ -322,6 +322,52 @@ def run_video_inference(
     return output_path
 
 
+def _normalize_bridge_frame_colors(
+    frames: list[Any],
+    start_ref: "Image.Image",
+    end_ref: "Image.Image",
+) -> list[Any]:
+    """Per-channel mean/std normalization with a linear gradient across frames.
+
+    Frame 0 is normalized so its channel statistics match start_ref (clip1_last).
+    The last frame is normalized to match end_ref (clip1_first).
+    Intermediate frames interpolate between the two references.
+    This eliminates WAN-generated brightness flashes at the join and loop points.
+    """
+    import numpy as np
+    from PIL import Image
+
+    n = len(frames)
+    if n == 0:
+        return frames
+
+    ref_start = np.array(start_ref.convert("RGB")).astype(np.float32)
+    ref_end = np.array(end_ref.convert("RGB")).astype(np.float32)
+
+    def _stats(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        mean = arr.mean(axis=(0, 1))
+        std = arr.std(axis=(0, 1)) + 1e-6
+        return mean, std
+
+    start_mean, start_std = _stats(ref_start)
+    end_mean, end_std = _stats(ref_end)
+
+    normalized: list[Any] = []
+    for i, pil_img in enumerate(frames):
+        t = i / max(n - 1, 1)
+        ref_mean = (1.0 - t) * start_mean + t * end_mean
+        ref_std = (1.0 - t) * start_std + t * end_std
+
+        arr = np.array(pil_img.convert("RGB")).astype(np.float32)
+        frame_mean, frame_std = _stats(arr)
+
+        for c in range(3):
+            arr[:, :, c] = (arr[:, :, c] - frame_mean[c]) / frame_std[c] * ref_std[c] + ref_mean[c]
+
+        normalized.append(Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)))
+    return normalized
+
+
 def run_bridge_inference(
     pipeline: WanComfyPipeline,
     *,
@@ -444,6 +490,15 @@ def run_bridge_inference(
 
     to_decode = wan22_latent_to_wan21_for_decode(denoised, wan_width, wan_height)
     frames = vae_decode_batch(pipeline.vae, to_decode)
+
+    # Color-normalize each bridge frame so the join (bridge_start ≈ clip1_last)
+    # and the loop boundary (bridge_end ≈ clip1_first) are chromatically consistent,
+    # removing any WAN-generated brightness flash at the transition points.
+    frames = _normalize_bridge_frame_colors(
+        frames,
+        start_ref=last_resized,  # bridge should start looking like clip1_last
+        end_ref=first_resized,   # bridge should end looking like clip1_first
+    )
 
     output_path = temp_dir / "wan_bridge.mp4"
     save_frames_as_video(frames, output_path, fps=WAN_VIDEO_FPS)

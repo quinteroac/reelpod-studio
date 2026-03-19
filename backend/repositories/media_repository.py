@@ -135,7 +135,7 @@ def concatenate_videos(input_paths: list[Path], output_path: Path) -> None:
     try:
         (
             ffmpeg_module.concat(*inputs, v=1, a=0)
-            .output(str(output_path))
+            .output(str(output_path), vcodec="libx264", pix_fmt="yuv420p")
             .overwrite_output()
             .run(capture_stdout=True, capture_stderr=True)
         )

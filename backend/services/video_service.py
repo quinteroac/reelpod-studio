@@ -280,6 +280,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, st
                 wan_concat_clip_path.stat().st_size,
             )
             wan_pre_upscale_clip_path = wan_concat_clip_path
+        except (AudioGenerationTimeoutError, VideoGenerationTimeoutError):
+            raise
         except Exception as exc:
             logger.warning(
                 "Video pipeline: bridge clip generation failed; falling back to clip 1 only (%s)",
@@ -312,6 +314,8 @@ def generate_video_mp4_for_request(body: GenerateRequestBody) -> tuple[bytes, st
                 pre_loop_clip_path,
                 pre_loop_clip_path.stat().st_size,
             )
+        except (AudioGenerationTimeoutError, VideoGenerationTimeoutError):
+            raise
         except Exception as exc:
             logger.warning(
                 "Video pipeline: Real-ESRGAN upscale failed; falling back to original Wan clip (%s)",
