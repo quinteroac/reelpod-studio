@@ -12,6 +12,7 @@ import {
   YouTubeUnauthorizedError,
 } from './lib/youtube-upload';
 import { YouTubePublishDialog } from './components/youtube-publish-dialog';
+import { PlaylistPanel } from './components/playlist-panel';
 
 type SocialFormatId = 'youtube' | 'tiktok-reels' | 'instagram-square';
 
@@ -39,10 +40,8 @@ import {
   deletePlaylistTrack,
   fetchPlaylistTracks,
   patchPlaylistName,
-  playlistTrackFileUrl,
   uploadPlaylistTrack,
 } from './lib/playlist-api';
-import { formatPlaylistTrackCreatedAt } from './lib/format-playlist-track-timestamp';
 import type { EffectType } from './components/effects';
 import { VisualScene } from './components/visual-scene';
 import type { VisualizerType } from './components/visualizers';
@@ -365,6 +364,7 @@ export function App() {
   const [playlistTrackPlayingId, setPlaylistTrackPlayingId] = useState<string | null>(
     null
   );
+  const [deleteConfirmTrack, setDeleteConfirmTrack] = useState<PlaylistTrack | null>(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-font-size', `${fontSizePercent}%`);
@@ -562,29 +562,32 @@ export function App() {
   }, []);
 
   const handleDeletePlaylistTrack = useCallback(
-    async (track: PlaylistTrack) => {
+    (track: PlaylistTrack) => {
       if (activePlaylistId === null) {
         return;
       }
-      const confirmed = window.confirm(
-        `Delete "${track.filename}" from this playlist? This cannot be undone.`
-      );
-      if (!confirmed) {
-        return;
-      }
-      setPlaylistPanelError(null);
-      try {
-        await deletePlaylistTrack(activePlaylistId, track.id);
-        setPlaylistTracks((prev) => prev.filter((t) => t.id !== track.id));
-        setPlaylistTrackPlayingId((prev) => (prev === track.id ? null : prev));
-      } catch (err) {
-        setPlaylistPanelError(
-          err instanceof Error ? err.message : 'Could not delete track.'
-        );
-      }
+      setDeleteConfirmTrack(track);
     },
     [activePlaylistId]
   );
+
+  const executeDeletePlaylistTrack = useCallback(async () => {
+    if (activePlaylistId === null || deleteConfirmTrack === null) {
+      return;
+    }
+    const track = deleteConfirmTrack;
+    setDeleteConfirmTrack(null);
+    setPlaylistPanelError(null);
+    try {
+      await deletePlaylistTrack(activePlaylistId, track.id);
+      setPlaylistTracks((prev) => prev.filter((t) => t.id !== track.id));
+      setPlaylistTrackPlayingId((prev) => (prev === track.id ? null : prev));
+    } catch (err) {
+      setPlaylistPanelError(
+        err instanceof Error ? err.message : 'Could not delete track.'
+      );
+    }
+  }, [activePlaylistId, deleteConfirmTrack]);
 
   const liveMirrorStateRef = useRef<LiveMirrorState>(DEFAULT_LIVE_MIRROR_STATE);
   const liveMirrorChannelRef = useRef<BroadcastChannel | null>(null);
@@ -1837,109 +1840,32 @@ export function App() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-3">
-                    <div className="min-w-0 max-w-[min(100%,20rem)]">
-                      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-lofi-accentMuted">
-                        Queue
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <label htmlFor="active-playlist-select" className="sr-only">
-                          Active playlist
-                        </label>
-                        <select
-                          id="active-playlist-select"
-                          data-testid="playlist-selector"
-                          className="min-w-0 max-w-[min(100%,18rem)] flex-1 rounded-sm border border-lofi-accent/50 bg-lofi-bg/80 px-2 py-1.5 text-sm font-medium text-lofi-text outline-none transition focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:cursor-not-allowed disabled:opacity-50"
-                          value={activePlaylistId ?? ''}
-                          onChange={(e) => {
-                            void handleActivePlaylistChange(e.target.value);
-                          }}
-                          disabled={allPlaylists.length === 0}
-                          aria-label="Active playlist"
-                        >
-                          {allPlaylists.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          data-testid="new-playlist-button"
-                          className="interactive-lift shrink-0 rounded-sm border border-lofi-accent/45 bg-lofi-bg/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-lofi-accent outline-none transition hover:bg-lofi-accent/15 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                          onClick={() => void handleCreatePlaylist()}
-                          aria-label="New playlist"
-                        >
-                          New Playlist
-                        </button>
-                      </div>
-                      <div className="flex min-w-0 items-center gap-1">
-                        {isEditingPlaylistName ? (
-                          <input
-                            ref={playlistNameInputRef}
-                            type="text"
-                            data-testid="playlist-name-input"
-                            className="min-w-0 flex-1 rounded-sm border border-lofi-accent/50 bg-lofi-bg/80 px-2 py-1 text-sm font-semibold text-lofi-text outline-none focus-visible:ring-2 focus-visible:ring-lofi-accent disabled:opacity-60"
-                            value={playlistNameDraft}
-                            onChange={(e) => setPlaylistNameDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                void commitPlaylistName();
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault();
-                                cancelEditPlaylistName();
-                              }
-                            }}
-                            onBlur={() => {
-                              if (skipPlaylistNameBlurCommitRef.current) {
-                                skipPlaylistNameBlurCommitRef.current = false;
-                                return;
-                              }
-                              void commitPlaylistName();
-                            }}
-                            disabled={isPlaylistRenameSaving}
-                            aria-label="Playlist name"
-                          />
-                        ) : (
-                          <h2
-                            className="min-w-0 flex-1 truncate text-sm font-semibold text-lofi-text"
-                            data-testid="playlist-header-name"
-                            title={playlistHeaderName ?? undefined}
-                          >
-                            {playlistHeaderName ?? '\u00a0'}
-                          </h2>
-                        )}
-                        {!isEditingPlaylistName &&
-                          activePlaylistId !== null &&
-                          playlistHeaderName !== null && (
-                            <button
-                              type="button"
-                              data-testid="playlist-rename-button"
-                              className="interactive-lift shrink-0 rounded-sm p-1.5 text-lofi-accent outline-none transition hover:bg-lofi-accent/20 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                              aria-label="Rename playlist"
-                              title="Rename playlist"
-                              onClick={beginEditPlaylistName}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden
-                              >
-                                <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
-                                <path d="M13.5 6.5l4 4" />
-                              </svg>
-                            </button>
-                          )}
-                      </div>
-                    </div>
+                    <PlaylistPanel
+                      activePlaylistId={activePlaylistId}
+                      allPlaylists={allPlaylists}
+                      playlistTracks={playlistTracks}
+                      playlistHeaderName={playlistHeaderName}
+                      playlistPanelError={playlistPanelError}
+                      playlistRenameError={playlistRenameError}
+                      playlistTrackUploadError={playlistTrackUploadError}
+                      isEditingPlaylistName={isEditingPlaylistName}
+                      playlistNameDraft={playlistNameDraft}
+                      isPlaylistRenameSaving={isPlaylistRenameSaving}
+                      playlistTrackPlayingId={playlistTrackPlayingId}
+                      playlistNameInputRef={playlistNameInputRef}
+                      skipPlaylistNameBlurCommitRef={skipPlaylistNameBlurCommitRef}
+                      onPlaylistNameDraftChange={setPlaylistNameDraft}
+                      onCommitPlaylistName={() => void commitPlaylistName()}
+                      onCancelEditPlaylistName={cancelEditPlaylistName}
+                      onBeginEditPlaylistName={beginEditPlaylistName}
+                      onActivePlaylistChange={(id) => void handleActivePlaylistChange(id)}
+                      onCreatePlaylist={() => void handleCreatePlaylist()}
+                      onToggleTrackPlayback={togglePlaylistTrackPlayback}
+                      onDeleteTrack={handleDeletePlaylistTrack}
+                      deleteConfirmTrack={deleteConfirmTrack}
+                      onDeleteConfirmClose={() => setDeleteConfirmTrack(null)}
+                      onDeleteConfirmProceed={() => void executeDeletePlaylistTrack()}
+                    />
                     <button
                       type="button"
                       onClick={() => window.open('/live', '_blank', 'noopener,noreferrer')}
@@ -2026,124 +1952,6 @@ export function App() {
                     </p>
                   )}
                 </div>
-                {playlistPanelError && (
-                  <div
-                    role="alert"
-                    data-testid="playlist-panel-error"
-                    className="rounded-md border border-red-400/60 bg-red-950/40 p-3 text-sm font-semibold text-red-100"
-                  >
-                    {playlistPanelError}
-                  </div>
-                )}
-                {playlistRenameError && (
-                  <div
-                    role="alert"
-                    data-testid="playlist-rename-error"
-                    className="rounded-md border border-red-400/60 bg-red-950/40 p-3 text-sm font-semibold text-red-100"
-                  >
-                    {playlistRenameError}
-                  </div>
-                )}
-                {playlistTrackUploadError && (
-                  <div
-                    role="alert"
-                    data-testid="playlist-track-upload-error"
-                    className="rounded-md border border-red-400/60 bg-red-950/40 p-3 text-sm font-semibold text-red-100"
-                  >
-                    {playlistTrackUploadError}
-                  </div>
-                )}
-                {activePlaylistId !== null && (
-                  <div className="space-y-2" data-testid="playlist-tracks-panel">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
-                      Playlist
-                    </h3>
-                    {playlistTracks.length === 0 ? (
-                      <p
-                        className="text-xs text-lofi-accentMuted"
-                        data-testid="playlist-tracks-empty"
-                      >
-                        No tracks saved yet — recordings appear here automatically.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2" data-testid="playlist-tracks">
-                        {playlistTracks.map((t) => (
-                          <li
-                            key={t.id}
-                            data-testid={`playlist-track-${t.id}`}
-                            className="rounded-sm border border-lofi-accentMuted/50 bg-lofi-bg/30 px-3 py-2 text-sm"
-                          >
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                              <div className="min-w-0 flex-1 space-y-1">
-                                <p
-                                  data-testid={`playlist-track-filename-${t.id}`}
-                                  className="truncate font-semibold text-lofi-text"
-                                >
-                                  {t.filename}
-                                </p>
-                                <p
-                                  className="text-xs text-lofi-accentMuted"
-                                  data-testid={`playlist-track-meta-${t.id}`}
-                                >
-                                  <span data-testid={`playlist-track-size-${t.id}`}>
-                                    {(t.size_bytes / (1024 * 1024)).toFixed(2)} MB
-                                  </span>
-                                  <span className="mx-1">·</span>
-                                  <time
-                                    dateTime={t.created_at}
-                                    data-testid={`playlist-track-created-${t.id}`}
-                                  >
-                                    {formatPlaylistTrackCreatedAt(t.created_at)}
-                                  </time>
-                                </p>
-                              </div>
-                              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  data-testid={`playlist-track-play-${t.id}`}
-                                  className="interactive-lift min-h-10 rounded-sm border border-lofi-accent bg-lofi-accent/20 px-3 py-1.5 text-xs font-semibold text-lofi-text outline-none transition hover:bg-lofi-accent/30 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                                  aria-pressed={playlistTrackPlayingId === t.id}
-                                  onClick={() => {
-                                    togglePlaylistTrackPlayback(t.id);
-                                  }}
-                                >
-                                  {playlistTrackPlayingId === t.id ? 'Hide player' : 'Play'}
-                                </button>
-                                <a
-                                  data-testid={`playlist-track-download-${t.id}`}
-                                  href={playlistTrackFileUrl(activePlaylistId, t.id)}
-                                  download={t.filename}
-                                  className="interactive-lift inline-flex min-h-10 items-center rounded-sm border border-lofi-accentMuted/70 bg-lofi-bg/40 px-3 py-1.5 text-xs font-semibold text-lofi-text outline-none transition hover:border-lofi-accent/50 focus-visible:ring-2 focus-visible:ring-lofi-accent"
-                                >
-                                  Download
-                                </a>
-                                <button
-                                  type="button"
-                                  data-testid={`playlist-track-delete-${t.id}`}
-                                  className="interactive-lift min-h-10 rounded-sm border border-red-400/50 bg-red-950/30 px-3 py-1.5 text-xs font-semibold text-red-100 outline-none transition hover:bg-red-950/45 focus-visible:ring-2 focus-visible:ring-red-300"
-                                  onClick={() => {
-                                    void handleDeletePlaylistTrack(t);
-                                  }}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </div>
-                            {playlistTrackPlayingId === t.id && activePlaylistId !== null && (
-                              <video
-                                controls
-                                playsInline
-                                className="mt-2 w-full max-h-48 rounded-sm border border-lofi-accentMuted/40 bg-black/40"
-                                src={playlistTrackFileUrl(activePlaylistId, t.id)}
-                                data-testid={`playlist-track-video-${t.id}`}
-                              />
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
                 {recordingEntries.length > 0 && (
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-lofi-accentMuted">
